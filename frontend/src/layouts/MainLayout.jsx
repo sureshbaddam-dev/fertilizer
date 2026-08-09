@@ -1,0 +1,68 @@
+import React, { useEffect, useState } from 'react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import PageLayout from '../components/layout/PageLayout';
+
+export default function MainLayout() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isBillingOpen, setIsBillingOpen] = useState(false);
+  const [quickAddedProduct, setQuickAddedProduct] = useState(null);
+
+  // Helper to trigger opening billing drawer + navigate to dashboard if on another route
+  const triggerGlobalBilling = () => {
+    if (location.pathname !== '/' && location.pathname !== '/dashboard') {
+      navigate('/dashboard');
+    }
+    setIsBillingOpen(true);
+  };
+
+  // Global F2 Key Listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        triggerGlobalBilling();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [location.pathname]);
+
+  const handleToggleSidebar = () => {
+    setSidebarOpen((prev) => !prev);
+  };
+
+  const handleCloseSidebarMobile = () => {
+    setSidebarOpen(false);
+  };
+
+  const handleOpenNewBill = () => {
+    triggerGlobalBilling();
+  };
+
+  const handleCloseNewBill = () => {
+    setIsBillingOpen(false);
+  };
+
+  const handleQuickAddProduct = (product) => {
+    setQuickAddedProduct(product);
+    triggerGlobalBilling();
+  };
+
+  return (
+    <PageLayout
+      sidebarOpen={sidebarOpen}
+      isBillingOpen={isBillingOpen}
+      onToggleSidebar={handleToggleSidebar}
+      onCloseSidebarMobile={handleCloseSidebarMobile}
+      onOpenNewBill={handleOpenNewBill}
+      onCloseNewBill={handleCloseNewBill}
+      onQuickAddProduct={handleQuickAddProduct}
+      quickAddedProduct={quickAddedProduct}
+    >
+      <Outlet context={{ onOpenNewBill: handleOpenNewBill, onQuickAddProduct: handleQuickAddProduct, isBillingOpen }} />
+    </PageLayout>
+  );
+}

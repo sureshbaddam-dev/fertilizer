@@ -1,0 +1,67 @@
+import React, { createContext, useContext, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { settingService } from '../services/settingService';
+
+const SettingsContext = createContext(null);
+
+export function SettingsProvider({ children }) {
+  const queryClient = useQueryClient();
+
+  const { data: settingsApi, isLoading, refetch } = useQuery({
+    queryKey: ['shop-settings-global'],
+    queryFn: () => settingService.getSettings(),
+    staleTime: 10 * 60 * 1000, // 10 mins caching
+    refetchOnWindowFocus: false,
+  });
+
+  const settings = useMemo(() => {
+    return settingsApi?.data || settingsApi || {};
+  }, [settingsApi]);
+
+  const updateMutation = useMutation({
+    mutationFn: (newSettings) => settingService.updateSettings(newSettings),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shop-settings-global']);
+      queryClient.invalidateQueries(['shop-settings-profile']);
+    },
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: (patchData) => settingService.patchSettings(patchData),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shop-settings-global']);
+      queryClient.invalidateQueries(['shop-settings-profile']);
+    },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => settingService.resetSettings(),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shop-settings-global']);
+      queryClient.invalidateQueries(['shop-settings-profile']);
+    },
+  });
+
+  const value = useMemo(
+    () => ({
+      settings,
+      isLoading,
+      refetchSettings: refetch,
+      updateSettings: updateMutation.mutateAsync,
+      patchSettings: patchMutation.mutateAsync,
+      resetSettings: resetMutation.mutateAsync,
+      isUpdating: updateMutation.isPending || patchMutation.isPending || resetMutation.isPending,
+    }),
+    [settings, isLoading, refetch, updateMutation, patchMutation, resetMutation]
+  );
+
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
+}
+
+export function useSettings() {
+  const context = useContext(SettingsContext);
+  if (!context) {
+    throw new Error('useSettings must be used within a SettingsProvider');
+  }
+  return context;
+}

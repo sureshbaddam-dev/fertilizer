@@ -1,0 +1,691 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: Aptos, "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "Cascadia Code", "IBM Plex Mono", Consolas, monospace;
+
+    /* Global Layout Tokens */
+    --container-max-width: 1360px;
+    --content-max-width: 1360px;
+    --sidebar-width: 250px;
+    --topbar-height: 68px;
+    --navbar-height: 68px;
+    --page-padding: 20px;
+    --page-padding-x: 20px;
+    --page-padding-y: 20px;
+    --section-gap: 20px;
+    --card-gap: 16px;
+    --card-padding: 16px;
+    --table-padding: 12px;
+    --widget-spacing: 16px;
+    --grid-gap: 16px;
+
+    /* Global Component Heights */
+    --button-height: 40px;
+    --input-height: 40px;
+    --search-height: 40px;
+    --tabs-height: 40px;
+    --dropdown-height: 40px;
+    --table-row-height: 48px;
+    --header-card-max-height: 100px;
+
+    /* Typography Sizes */
+    --font-size-sm: 12px;
+    --font-size-base: 14px;
+    --font-size-md: 14px;
+    --font-size-section: 18px;
+    --font-size-heading: 24px;
+
+    /* Border Radii */
+    --border-radius-sm: 8px;
+    --border-radius-md: 10px;
+    --border-radius-lg: 12px;
+    --border-radius: 12px;
+
+    /* Colors */
+    --color-page: #f4f7f2;
+    --color-surface: #ffffff;
+    --color-surface-muted: #f8faf8;
+    --color-surface-soft: rgba(255, 255, 255, 0.95);
+    --color-border: #dbe5dd;
+    --color-border-strong: #c5d5c7;
+    --color-text-strong: #102217;
+    --color-text-body: #344a3b;
+    --color-text-muted: #617565;
+    --color-brand: #0a7a43;
+    --color-brand-strong: #066238;
+    --color-brand-soft: #ebf8ef;
+    --color-danger: #c73d4b;
+    --color-warning: #b7791f;
+
+    --background: 96 22% 96%;
+    --foreground: 136 26% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 136 26% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 136 26% 10%;
+    --primary: 142 84% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 120 24% 96%;
+    --secondary-foreground: 136 26% 10%;
+    --muted: 120 18% 95%;
+    --muted-foreground: 130 12% 44%;
+    --accent: 120 18% 95%;
+    --accent-foreground: 136 26% 10%;
+    --destructive: 351 56% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 132 18% 87%;
+    --input: 132 18% 87%;
+    --ring: 142 84% 26%;
+
+    --shadow-subtle: 0 2px 8px rgba(15, 23, 42, 0.04);
+    --shadow-card: 0 4px 12px rgba(15, 23, 42, 0.06);
+    --shadow-overlay: 0 16px 40px rgba(15, 23, 42, 0.15);
+
+    --transition-base: 150ms ease;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    font-size: 14px;
+    touch-action: manipulation;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-text-body);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="date"],
+  textarea,
+  select {
+    accent-color: var(--color-brand);
+  }
+
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--color-brand);
+    cursor: pointer;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus,
+  button:focus-visible {
+    outline: none;
+    border-color: var(--color-brand) !important;
+    box-shadow: 0 0 0 3px rgba(10, 122, 67, 0.12) !important;
+  }
+
+  ::selection {
+    background-color: #d1fae5;
+    color: var(--color-brand-strong);
+  }
+}
+
+@layer components {
+  .page-title {
+    font-size: var(--font-size-heading);
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-strong);
+    letter-spacing: -0.015em;
+  }
+
+  .section-title {
+    font-size: var(--font-size-section);
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-strong);
+    letter-spacing: -0.01em;
+  }
+
+  .card-title {
+    font-size: var(--font-size-base);
+    line-height: 1.3;
+    font-weight: 700;
+    color: var(--color-text-strong);
+  }
+
+  .body-text {
+    font-size: var(--font-size-base);
+    line-height: 1.4;
+    color: var(--color-text-body);
+  }
+
+  .sidebar-text,
+  .table-header,
+  .table-body,
+  .button-text,
+  .input-text,
+  .form-label {
+    font-size: var(--font-size-base);
+  }
+
+  .helper-text {
+    font-size: var(--font-size-sm);
+    line-height: 1.3;
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  .app-shell {
+    min-height: 100vh;
+    background: transparent;
+  }
+
+  .app-main-column {
+    min-height: 100vh;
+    padding-left: 0;
+  }
+
+  .app-page-frame {
+    width: 100%;
+    max-width: var(--container-max-width);
+    margin: 0 auto;
+    padding: var(--page-padding);
+  }
+
+  .app-page-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+    width: 100%;
+  }
+
+  .app-topbar {
+    height: var(--topbar-height);
+    background: #ffffff;
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .app-surface {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+  }
+
+  .app-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 18px;
+    padding: var(--card-padding);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+
+  .app-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(10, 122, 67, 0.20);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.07);
+  }
+
+  .app-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    max-height: var(--header-card-max-height);
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .app-page-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .app-page-header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--border-radius-sm);
+    background: var(--color-brand-soft);
+    color: var(--color-brand);
+    border: 1px solid rgba(10, 122, 67, 0.15);
+    flex-shrink: 0;
+  }
+
+  .app-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .app-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(10, 122, 67, 0.18);
+    background: var(--color-brand-soft);
+    color: var(--color-brand-strong);
+    font-size: var(--font-size-base);
+    font-weight: 700;
+  }
+
+  .app-button-reset {
+    appearance: none;
+    border: none;
+    background: transparent;
+  }
+
+  .app-input,
+  .app-select,
+  .app-textarea {
+    width: 100%;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--color-border-strong);
+    background: #ffffff;
+    color: var(--color-text-strong);
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .app-input,
+  .app-select {
+    height: var(--input-height);
+    min-height: var(--input-height);
+    padding: 0 12px;
+    line-height: normal;
+  }
+
+  .app-textarea {
+    min-height: 5rem;
+    padding: 8px 12px;
+    resize: vertical;
+  }
+
+  .app-input::placeholder,
+  .app-textarea::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .app-input:hover,
+  .app-select:hover,
+  .app-textarea:hover {
+    border-color: rgba(10, 122, 67, 0.3);
+  }
+
+  .app-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.42);
+    backdrop-filter: blur(4px);
+  }
+
+  .app-modal-surface {
+    width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-overlay);
+    overflow: hidden;
+  }
+
+  .app-table-shell {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+
+  .app-table-head {
+    background: #f8faf8;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-table-head th {
+    height: 38px;
+    padding: 8px 12px;
+    font-size: var(--font-size-sm);
+    line-height: 1.2;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .app-table-body tr {
+    height: var(--table-row-height);
+    transition: background-color var(--transition-base);
+  }
+
+  .app-table-body tr:hover {
+    background: rgba(235, 248, 239, 0.5);
+  }
+
+  .app-table-body td {
+    padding: 8px 12px;
+    font-size: var(--font-size-base);
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--color-text-body);
+    vertical-align: middle;
+  }
+
+  .app-table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #f8faf8;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .app-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    border: 1px solid transparent;
+  }
+
+  .btn-agri-primary {
+    height: var(--button-height);
+    padding: 0 16px;
+    border-radius: var(--border-radius-sm);
+    background: var(--color-brand);
+    border: 1px solid var(--color-brand-strong);
+    color: #ffffff;
+    font-size: var(--font-size-base);
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(6, 98, 56, 0.15);
+  }
+
+  .btn-agri-primary:hover {
+    background: var(--color-brand-strong);
+  }
+
+  .btn-agri-secondary {
+    height: var(--button-height);
+    padding: 0 16px;
+    border-radius: var(--border-radius-sm);
+    background: var(--color-brand-soft);
+    border: 1px solid rgba(10, 122, 67, 0.16);
+    color: var(--color-brand-strong);
+    font-size: var(--font-size-base);
+    font-weight: 700;
+  }
+
+  .btn-agri-secondary:hover {
+    background: #dff4e6;
+  }
+
+  .badge-agri-active {
+    background: var(--color-brand-soft);
+    border: 1px solid rgba(10, 122, 67, 0.16);
+    color: var(--color-brand-strong);
+  }
+
+  .badge-agri-lowstock {
+    background: #fff8e8;
+    border: 1px solid rgba(183, 121, 31, 0.22);
+    color: var(--color-warning);
+  }
+
+  .badge-agri-critical {
+    background: #fff1f3;
+    border: 1px solid rgba(199, 61, 75, 0.18);
+    color: var(--color-danger);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(241, 246, 242, 0.85);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(10, 122, 67, 0.28);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(10, 122, 67, 0.48);
+}
+
+@media (min-width: 1024px) {
+  .app-main-column {
+    padding-left: var(--sidebar-width);
+  }
+}
+
+@media (max-width: 767px) {
+  .page-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .section-title {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  .app-page-header {
+    padding: 1.125rem;
+  }
+
+  .app-page-frame {
+    padding-bottom: 1.25rem;
+  }
+
+  .app-table-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  html,
+  body,
+  #root,
+  main {
+    width: 210mm !important;
+    height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  .no-print,
+  .print\:hidden,
+  .app-topbar,
+  .app-sidebar,
+  .app-modal-backdrop,
+  [class*="Sidebar"],
+  [class*="BillingDrawer"] {
+    display: none !important;
+  }
+
+  /* Printable Document Container (Fixed A4 Desktop Width 194mm regardless of mobile viewport) */
+  .printable-invoice-paper,
+  .printable-ledger-document {
+    display: block !important;
+    width: 194mm !important;
+    max-width: 194mm !important;
+    min-width: 194mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Printable Tax Invoice Table Layout (Fixed A4 width 194mm) */
+  .print-invoice-table {
+    width: 194mm !important;
+    max-width: 194mm !important;
+    min-width: 194mm !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    margin: 0 auto !important;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+  }
+
+  .print-invoice-table th,
+  .print-invoice-table td {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    font-stretch: normal !important;
+    font-variant-numeric: tabular-nums !important;
+    transform: none !important;
+    text-transform: none !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  .print-invoice-table th:nth-child(1),
+  .print-invoice-table td:nth-child(1) {
+    width: 10mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 6px 4px !important;
+  }
+
+  .print-invoice-table th:nth-child(2),
+  .print-invoice-table td:nth-child(2) {
+    width: 68mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    white-space: normal !important;
+    padding: 6px 8px !important;
+  }
+
+  .print-invoice-table th:nth-child(3),
+  .print-invoice-table td:nth-child(3) {
+    width: 24mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 6px 6px !important;
+  }
+
+  .print-invoice-table th:nth-child(4),
+  .print-invoice-table td:nth-child(4) {
+    width: 28mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+    padding: 6px 8px !important;
+  }
+
+  .print-invoice-table th:nth-child(5),
+  .print-invoice-table td:nth-child(5) {
+    width: 26mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+    padding: 6px 8px !important;
+  }
+
+  .print-invoice-table th:nth-child(6),
+  .print-invoice-table td:nth-child(6) {
+    width: 38mm !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+    padding: 6px 8px !important;
+  }
+}

@@ -1,0 +1,146 @@
+import React, { useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Home,
+  ShoppingCart,
+  FileText,
+  Package,
+  Users,
+  UserCheck,
+  Layers,
+  ShoppingBag,
+  BarChart3,
+  Settings,
+  Bell,
+  Tag,
+  X,
+  Truck,
+} from 'lucide-react';
+import ShopDiscountModal from '../settings/ShopDiscountModal';
+import { dashboardService } from '../../services/dashboardService';
+import BrandLogo from '../common/BrandLogo';
+
+const NAV_ITEMS = [
+  { name: 'Dashboard', path: '/', icon: Home },
+  { name: 'Bills / Invoices', path: '/invoices', icon: FileText },
+  { name: 'Products', path: '/products', icon: Package },
+  { name: 'Customers', path: '/customers', icon: Users },
+  { name: 'Inventory', path: '/inventory', icon: Layers },
+  { name: 'New Purchase', path: '/purchases/new', icon: ShoppingBag },
+  { name: 'Suppliers Directory', path: '/suppliers', icon: Truck },
+  { name: 'Reports', path: '/reports', icon: BarChart3 },
+  { name: 'General Customers', path: '/general-customers', icon: UserCheck },
+  { name: 'Settings', path: '/settings', icon: Settings },
+];
+
+export default function Sidebar({ isOpen, onCloseMobile }) {
+  const navigate = useNavigate();
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+
+  const { data: dashboardApi } = useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: () => dashboardService.getDashboardSummary(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const dashboardData = dashboardApi?.data?.data;
+  const stockAlerts = dashboardData?.stockAlerts || { totalAlerts: 8, lowStock: 6, outOfStock: 0, expiryAlerts: 2 };
+  const shopDiscount = dashboardData?.shopDiscount;
+
+  const discountLabel = shopDiscount?.isEnabled
+    ? shopDiscount.discountType === 'percentage'
+      ? `Flat ${shopDiscount.discountValue}% OFF`
+      : `Flat ₹${shopDiscount.discountValue} OFF`
+    : 'Disabled';
+
+  return (
+    <>
+      {/* Backdrop for tapping outside mobile sidebar drawer */}
+      {isOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden transition-opacity"
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 lg:top-[var(--topbar-height)] z-50 flex h-full lg:h-[calc(100vh-var(--topbar-height))] w-[260px] shrink-0 flex-col justify-start lg:justify-between overflow-y-auto border-r border-slate-200/80 bg-white px-3 py-3 shadow-xl lg:shadow-none transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        {/* Top Section: Logo Header + Navigation Menu (Top-Aligned) */}
+        <div className="flex flex-col w-full space-y-2">
+          {/* Mobile Header: Logo + Close Button (Starts immediately at top) */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 pt-0.5 lg:hidden">
+            <div className="flex items-center h-8">
+              <BrandLogo className="h-full w-auto object-contain" />
+            </div>
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Navigation Items (Starts immediately below logo with 8-12px spacing) */}
+          <div className="space-y-0.5">
+            {NAV_ITEMS.map((item) => {
+              const IconComponent = item.icon;
+              return (
+                <NavLink
+                  key={item.name}
+                  to={item.path}
+                  onClick={onCloseMobile}
+                  className={({ isActive }) =>
+                    `sidebar-text flex min-h-[38px] items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-all text-xs font-bold ${
+                      isActive
+                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-800 shadow-2xs'
+                        : 'border border-transparent text-slate-600 hover:bg-slate-100/90 hover:text-slate-900'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <IconComponent className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
+                      <span>{item.name}</span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bottom Card: Shop Discount (Desktop Only) */}
+        <div className="hidden space-y-3 border-t border-slate-100 pt-3 lg:block mt-auto">
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-emerald-700" />
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-slate-900">Shop Discount</span>
+                <span className="helper-text font-semibold">{discountLabel}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsDiscountModalOpen(true)}
+              className="inline-flex min-h-9 items-center rounded-xl px-3 text-sm font-semibold text-white btn-agri-primary cursor-pointer"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Shop Discount Settings Modal */}
+      <ShopDiscountModal
+        isOpen={isDiscountModalOpen}
+        onClose={() => setIsDiscountModalOpen(false)}
+      />
+    </>
+  );
+}
