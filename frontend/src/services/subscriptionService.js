@@ -11,4 +11,5 @@ export const subscriptionService = {
   adminActivate: (data) => apiClient.post('/subscriptions/admin/activate', data),
   createCoupon: (data) => apiClient.post('/subscriptions/admin/coupons', data),
   getCoupons: () => apiClient.get('/subscriptions/admin/coupons'),
+  requestFreeDemo: (requestedPlan) => apiClient.post('/subscriptions/demo-request', { requestedPlan }),
 };

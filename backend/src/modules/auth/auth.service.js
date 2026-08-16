@@ -17,22 +17,8 @@ export const authService = {
     // Store in Redis with 5 minutes TTL
     await redisService.set(redisKey, { otp }, OTP_EXPIRY_SECONDS);
 
-    // Development Mode Terminal Output Requirement
     if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-      const generatedAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      const formattedOtpBox =
-        `\n========================================\n\n` +
-        `🔐 OTP GENERATED\n\n` +
-        (ownerName ? `Owner Name : ${ownerName}\n\n` : '') +
-        `Mobile Number : ${mobile}\n\n` +
-        `OTP : ${otp}\n\n` +
-        `Expires In : 5 Minutes\n\n` +
-        `Generated At : ${generatedAt}\n\n` +
-        `========================================\n\n`;
-
-      process.stdout.write(formattedOtpBox);
-      console.log(formattedOtpBox);
-      logger.info({ mobile, otp, type }, `OTP Generated: ${otp} for ${mobile}`);
+      logger.info(`OTP: ${otp}`);
     }
 
     return otp;

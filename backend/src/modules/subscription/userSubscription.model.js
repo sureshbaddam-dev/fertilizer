@@ -55,7 +55,7 @@ const userSubscriptionSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['PENDING', 'SUCCESS', 'FAILED'],
+      enum: ['PENDING', 'SUCCESS', 'FAILED', 'ADMIN_GRANTED', 'DEMO'],
       default: 'SUCCESS',
     },
     razorpayOrderId: {

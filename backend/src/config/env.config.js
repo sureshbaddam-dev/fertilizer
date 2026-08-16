@@ -7,7 +7,9 @@ export const envConfig = {
   port: parseInt(process.env.PORT || '5000', 10),
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   mongo: {
-    uri: process.env.MONGO_URI || 'mongodb://localhost:27017/mandhi_erp',
+    uri: process.env.MAIN_MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/mandhi_erp',
+    mainUri: process.env.MAIN_MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/mandhi_erp',
+    backupUri: process.env.BACKUP_MONGODB_URI || process.env.MAIN_MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/mandhi_erp_backups',
   },
   redis: {
     host: process.env.REDIS_HOST || '127.0.0.1',
@@ -21,7 +23,7 @@ export const envConfig = {
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
   cors: {
-    allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(','),
+    allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000').split(','),
   },
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),

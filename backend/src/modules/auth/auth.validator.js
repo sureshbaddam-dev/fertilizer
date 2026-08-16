@@ -2,20 +2,15 @@ import { body, validationResult } from 'express-validator';
 import { AppError } from '../../utils/appError.js';
 import { HTTP_STATUS } from '../../common/httpStatuses.js';
 
-import { logger } from '../../config/logger.config.js';
-
 export const validateRequest = (req, _res, next) => {
-  logger.info(`[2] Request Received\nOwner Name: ${req.body.ownerName || 'N/A'}\nMobile: ${req.body.mobile || 'N/A'}`);
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const errorDetails = errors.array().map((err) => ({
       field: err.path,
       message: err.msg,
     }));
-    logger.error(`[Validation Error] ${JSON.stringify(errorDetails)}`);
     return next(new AppError('Validation Error', HTTP_STATUS.BAD_REQUEST, errorDetails));
   }
-  logger.info(`[3] Validation Passed`);
   next();
 };
 

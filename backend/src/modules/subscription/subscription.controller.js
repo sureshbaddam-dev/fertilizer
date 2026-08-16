@@ -48,3 +48,23 @@ export const getAllCoupons = asyncHandler(async (_req, res) => {
   const coupons = await subscriptionService.getAllCoupons();
   return sendSuccess(res, 'All coupons retrieved.', { coupons }, HTTP_STATUS.OK);
 });
+
+export const requestFreeDemo = asyncHandler(async (req, res) => {
+  const demoRequest = await subscriptionService.requestFreeDemo(req.user._id, req.body);
+  return sendSuccess(res, 'Free demo requested successfully.', { demoRequest }, HTTP_STATUS.CREATED);
+});
+
+export const getDemoRequests = asyncHandler(async (req, res) => {
+  const demoRequests = await subscriptionService.getDemoRequests(req.query.status);
+  return sendSuccess(res, 'Demo requests retrieved.', { demoRequests }, HTTP_STATUS.OK);
+});
+
+export const approveDemoRequest = asyncHandler(async (req, res) => {
+  const demoRequest = await subscriptionService.approveDemoRequest(req.user, req.params.id, req.body);
+  return sendSuccess(res, 'Demo request approved & granted.', { demoRequest }, HTTP_STATUS.OK);
+});
+
+export const rejectDemoRequest = asyncHandler(async (req, res) => {
+  const demoRequest = await subscriptionService.rejectDemoRequest(req.user, req.params.id, req.body);
+  return sendSuccess(res, 'Demo request rejected.', { demoRequest }, HTTP_STATUS.OK);
+});

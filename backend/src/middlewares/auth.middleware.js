@@ -30,3 +30,5 @@ export const protect = asyncHandler(async (req, _res, next) => {
     return next(new AppError('Invalid or expired authentication token. Please log in again.', HTTP_STATUS.UNAUTHORIZED));
   }
 });
+
+export const authenticate = protect;

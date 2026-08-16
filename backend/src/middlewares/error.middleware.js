@@ -61,33 +61,10 @@ export const globalErrorHandler = (err, req, res, _next) => {
     error.stack = err.stack || error.stack;
   }
 
-  const location = extractSourceLocation(error.stack);
-  const safeBody = sanitizeBody(req.body);
-  const timestamp = new Date().toISOString();
-
-  const fullDebugText =
-    `\n====================================================\n` +
-    `🚨 BACKEND ERROR OCCURRED\n` +
-    `----------------------------------------------------\n` +
-    `• Timestamp    : ${timestamp}\n` +
-    `• Route        : ${req.method} ${req.originalUrl}\n` +
-    `• Error Name   : ${error.name || 'Error'}\n` +
-    `• HTTP Status  : ${error.statusCode}\n` +
-    `• Message      : ${error.message}\n` +
-    `• File Location: ${location}\n` +
-    `----------------------------------------------------\n` +
-    `• Request Body :\n${JSON.stringify(safeBody, null, 2)}\n` +
-    (error.errors ? `----------------------------------------------------\n• Validation Errors:\n${JSON.stringify(error.errors, null, 2)}\n` : '') +
-    `----------------------------------------------------\n` +
-    `• Stack Trace:\n${error.stack}\n` +
-    `====================================================\n`;
-
-  logger.error(fullDebugText);
-  console.error(fullDebugText);
-
   const message = error.message || 'An error occurred';
-  const errors = error.errors || (process.env.NODE_ENV === 'development' ? { stack: error.stack } : null);
+  logger.error(message);
 
+  const errors = error.errors || (process.env.NODE_ENV === 'development' ? { stack: error.stack } : null);
   return sendError(res, message, errors, error.statusCode);
 };
 

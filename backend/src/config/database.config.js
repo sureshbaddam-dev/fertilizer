@@ -5,22 +5,18 @@ import { logger } from './logger.config.js';
 export const connectDatabase = async () => {
   try {
     mongoose.connection.on('connected', () => {
-      logger.info('MongoDB connection established successfully.');
+      logger.info('MongoDB connected');
     });
 
     mongoose.connection.on('error', (err) => {
-      logger.error({ err }, 'MongoDB connection error.');
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      logger.warn('MongoDB connection disconnected.');
+      logger.error(err, 'MongoDB connection failed');
     });
 
     await mongoose.connect(envConfig.mongo.uri, {
       autoIndex: envConfig.env !== 'production',
     });
   } catch (error) {
-    logger.error({ error }, 'Failed to connect to MongoDB.');
+    logger.error(error, 'Failed to connect to MongoDB');
     throw error;
   }
 };

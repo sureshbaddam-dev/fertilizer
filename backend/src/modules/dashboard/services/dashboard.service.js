@@ -136,110 +136,58 @@ export const dashboardService = {
 
   async getNotifications(userId) {
     if (!userId) throw new Error('userId is required');
-    const now = new Date();
-    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const notifications = [];
 
-    const lowStockProds = await Product.find({ userId, totalStock: { $lte: 10 }, isActive: true })
-      .limit(5)
-      .lean()
-      .exec();
+    // USER NOTIFICATION BELL SHOWS ONLY IMPORTANT ADMIN/SUPPORT COMMUNICATIONS
+    const { AdminNotification } = await import('../../admin/models/adminNotification.model.js');
+    const { SupportTicket } = await import('../../support/supportTicket.model.js');
 
-    lowStockProds.forEach((p) => {
-      notifications.push({
-        id: `lowstock-${p._id}`,
-        type: 'low_stock',
-        title: 'Low Stock Alert',
-        message: `${p.name} has only ${p.totalStock || 0} units remaining in inventory.`,
-        timestamp: 'Just now',
-        read: false,
-        category: 'Low Stock',
-        path: '/products',
-      });
-    });
-
-    const { ProductBatch } = await import('../../products/models/productBatch.model.js');
-    const expiringBatches = await ProductBatch.find({
-      userId,
-      currentStock: { $gt: 0 },
-      expiryDate: { $lte: in30Days },
+    // 1. Fetch Admin Announcements & Messages targeted to this user
+    const adminNotifs = await AdminNotification.find({
+      $or: [
+        { targetAudience: 'ALL_USERS' },
+        { targetUserIds: userId },
+      ],
     })
-      .populate('productId', 'name')
-      .limit(5)
-      .lean()
-      .exec();
-
-    expiringBatches.forEach((b) => {
-      const pName = b.productId?.name || 'Product';
-      const isExpired = new Date(b.expiryDate) < now;
-      notifications.push({
-        id: `expiry-${b._id}`,
-        type: 'expiry',
-        title: isExpired ? 'Product Expired' : 'Expiry Warning',
-        message: `${pName} (Batch ${b.batchNumber}) ${isExpired ? 'has expired' : 'expires soon'} on ${new Date(b.expiryDate).toLocaleDateString('en-IN')}.`,
-        timestamp: 'Today',
-        read: false,
-        category: 'Expiry Alerts',
-        path: '/inventory',
-      });
-    });
-
-    const dueCustomers = await Customer.find({ userId, outstandingBalance: { $gt: 0 }, isActive: true })
-      .sort({ outstandingBalance: -1 })
-      .limit(5)
-      .lean()
-      .exec();
-
-    dueCustomers.forEach((c) => {
-      notifications.push({
-        id: `customer-${c._id}`,
-        type: 'customer_due',
-        title: 'Customer Outstanding Due',
-        message: `₹ ${(c.outstandingBalance || 0).toLocaleString('en-IN')} pending from ${c.name}.`,
-        timestamp: 'Today',
-        read: false,
-        category: 'Customer Outstanding',
-        path: '/customers',
-      });
-    });
-
-    const { Supplier } = await import('../../suppliers/models/supplier.model.js');
-    const dueSuppliers = await Supplier.find({ userId, outstandingBalance: { $gt: 0 }, isActive: true })
-      .sort({ outstandingBalance: -1 })
-      .limit(5)
-      .lean()
-      .exec();
-
-    dueSuppliers.forEach((s) => {
-      notifications.push({
-        id: `supplier-${s._id}`,
-        type: 'supplier_due',
-        title: 'Supplier Payment Due',
-        message: `₹ ${(s.outstandingBalance || 0).toLocaleString('en-IN')} payable to ${s.name || s.companyName}.`,
-        timestamp: 'Today',
-        read: false,
-        category: 'Supplier Due',
-        path: '/suppliers',
-      });
-    });
-
-    const latestInvoice = await SalesInvoice.findOne({ userId })
       .sort({ createdAt: -1 })
-      .lean()
-      .exec();
+      .limit(10)
+      .lean();
 
-    if (latestInvoice) {
+    adminNotifs.forEach((an) => {
+      const isTicketMsg = an.title?.includes('Ticket') || an.message?.includes('TCK-');
       notifications.push({
-        id: `system-${latestInvoice._id}`,
-        type: 'system',
-        title: 'Recent System Alert',
-        message: `Invoice #${latestInvoice.invoiceNumber} generated for ₹ ${(latestInvoice.totalAmount || 0).toLocaleString('en-IN')}.`,
-        timestamp: 'Recently',
-        read: true,
-        category: 'System Alerts',
-        path: '/invoices',
+        id: `admin-${an._id}`,
+        type: 'admin_announcement',
+        title: an.title || 'System Announcement',
+        message: an.message,
+        timestamp: new Date(an.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        createdAt: an.createdAt,
+        read: false,
+        category: isTicketMsg ? 'Support Tickets' : 'Admin Announcements',
+        path: isTicketMsg ? '/support' : '/dashboard',
       });
-    }
+    });
+
+    // 2. Fetch Support Tickets for status change notifications
+    const userTickets = await SupportTicket.find({ userId }).sort({ updatedAt: -1 }).limit(5).lean();
+    userTickets.forEach((t) => {
+      const st = (t.status || 'PENDING').toUpperCase();
+      const statusLabel = st === 'COMPLETED' || st === 'RESOLVED' ? 'Resolved' : st === 'IN_PROGRESS' ? 'In Progress' : 'Pending';
+      notifications.push({
+        id: `ticket-${t._id}`,
+        type: 'support_ticket',
+        title: `Support Ticket ${statusLabel}`,
+        message: `Ticket ${t.ticketId} (${t.subject}): Status is ${statusLabel}.`,
+        timestamp: new Date(t.updatedAt || t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        createdAt: t.updatedAt || t.createdAt,
+        read: false,
+        category: 'Support Tickets',
+        path: '/support',
+      });
+    });
+
+    // Sort notifications by timestamp (newest first)
+    notifications.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     const unreadCount = notifications.filter((n) => !n.read).length;
 

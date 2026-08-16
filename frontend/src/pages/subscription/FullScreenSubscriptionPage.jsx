@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Check, ShieldCheck, Zap, Ticket, ArrowRight, Star, Sparkles, LogOut, HelpCircle, User, Info, ArrowLeft } from 'lucide-react';
+import { Check, Star, Sparkles, LogOut, HelpCircle, Info, ArrowLeft, Zap, Ticket, Clock, CheckCircle2 } from 'lucide-react';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';
 import BrandLogo from '../../components/common/BrandLogo';
@@ -19,25 +19,19 @@ export default function FullScreenSubscriptionPage() {
   const [appliedCheckoutCoupon, setAppliedCheckoutCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [featureModalPlan, setFeatureModalPlan] = useState(null);
 
-  // Guards for double-click & single Razorpay instance lifecycle
+  // Guards for payment lifecycle
   const isInitializingPaymentRef = useRef(false);
   const rzpInstanceRef = useRef(null);
 
-  // Fetch Subscription Plans API
-  const { data: plansRes, isLoading: isPlansLoading } = useQuery({
-    queryKey: ['subscription-plans'],
-    queryFn: subscriptionService.getPlans,
-  });
-
   // Fetch Current User Subscription API
-  const { data: subRes } = useQuery({
+  const { data: subRes, isLoading: isSubLoading } = useQuery({
     queryKey: ['my-subscription'],
     queryFn: subscriptionService.getMySubscription,
   });
 
-  const plans = plansRes?.data?.plans || plansRes?.plans || [];
   const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
@@ -47,13 +41,73 @@ export default function FullScreenSubscriptionPage() {
       await authService.logout();
     } catch (_e) {
       // Continue cleanup
-    } finally {
+    } fontally: {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       queryClient.clear();
       window.location.href = '/login';
     }
   };
+
+  // Demo Request Mutation
+  const demoRequestMutation = useMutation({
+    mutationFn: (requestedPlan) => subscriptionService.requestFreeDemo(requestedPlan),
+    onSuccess: (res) => {
+      setSuccessMessage('Your Free Demo Request has been submitted! Our admin team will approve it shortly.');
+      queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
+    },
+    onError: (err) => {
+      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to submit demo request.');
+    },
+  });
+
+  // Unified 3 Subscription Duration Options (Same Features)
+  const durationPlans = [
+    {
+      code: '1_MONTH',
+      planCode: 'STARTER',
+      durationLabel: '1 Month',
+      price: 199,
+      originalPrice: 299,
+      discountTokens: 5,
+      isPopular: false,
+      badgeText: 'STANDARD TRIAL',
+    },
+    {
+      code: '3_MONTHS',
+      planCode: 'PROFESSIONAL',
+      durationLabel: '3 Months',
+      price: 499,
+      originalPrice: 699,
+      discountTokens: 15,
+      isPopular: true,
+      badgeText: 'MOST POPULAR (SAVE 16%)',
+    },
+    {
+      code: '6_MONTHS',
+      planCode: 'PREMIUM',
+      durationLabel: '6 Months',
+      price: 899,
+      originalPrice: 1299,
+      discountTokens: 30,
+      isPopular: false,
+      badgeText: 'BEST VALUE (SAVE 25%)',
+    },
+  ];
+
+  // Shared VEDIXA ERP Feature List across all plan durations
+  const sharedFeatures = [
+    'Complete Fertilizer & Agri ERP Dashboard',
+    'Product Management (Urea, DAP, Pesticides, Seeds)',
+    'Batch-wise Stock & Multi-batch Billing',
+    'GST & Tax Compliance Reports (GSTR-1, GSTR-3B)',
+    'Supplier & Customer Financial Ledgers',
+    'Customer Billing & Invoice PDF Generation',
+    'WhatsApp Invoice Sharing & Print Support',
+    'Automated Stock Reorder Alerts',
+    'Admin & User Backup Isolation',
+    '24/7 Priority Support & Free Updates',
+  ];
 
   // Coupon Validation Mutation
   const couponMutation = useMutation({
@@ -68,7 +122,7 @@ export default function FullScreenSubscriptionPage() {
     },
   });
 
-  // Razorpay Order Creation & Payment Verification Mutations
+  // Razorpay Order Creation & Verification Mutations
   const createOrderMutation = useMutation({
     mutationFn: ({ planCode, couponCode }) => subscriptionService.createRazorpayOrder(planCode, couponCode),
     onSuccess: (res) => {
@@ -78,7 +132,6 @@ export default function FullScreenSubscriptionPage() {
 
       if (typeof window !== 'undefined' && window.Razorpay) {
         try {
-          // Close any previous open Razorpay instance
           if (rzpInstanceRef.current) {
             try { rzpInstanceRef.current.close(); } catch (_e) {}
             rzpInstanceRef.current = null;
@@ -89,7 +142,7 @@ export default function FullScreenSubscriptionPage() {
             amount: orderData.amount,
             currency: orderData.currency || 'INR',
             name: 'VEDIXA ERP',
-            description: `${orderData.planCode || checkoutPlan.name} Subscription`,
+            description: `${checkoutPlan.durationLabel} Subscription`,
             order_id: orderData.orderId,
             handler: async function (response) {
               isInitializingPaymentRef.current = false;
@@ -97,7 +150,7 @@ export default function FullScreenSubscriptionPage() {
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
-                planCode: checkoutPlan.code,
+                planCode: checkoutPlan.planCode,
                 couponCode: couponCodeToUse,
               });
             },
@@ -106,9 +159,7 @@ export default function FullScreenSubscriptionPage() {
               contact: currentUser.mobile || '',
               email: currentUser.email || '',
             },
-            theme: {
-              color: '#047857',
-            },
+            theme: { color: '#047857' },
             modal: {
               ondismiss: function () {
                 isInitializingPaymentRef.current = false;
@@ -122,16 +173,16 @@ export default function FullScreenSubscriptionPage() {
           rzp.open();
         } catch (_err) {
           isInitializingPaymentRef.current = false;
-          setErrorMessage('Could not open Razorpay checkout modal. Please try again.');
+          setErrorMessage('Could not open Razorpay checkout. Please try again.');
         }
       } else {
         isInitializingPaymentRef.current = false;
-        setErrorMessage('Razorpay SDK is loading. Please try again in a moment.');
+        setErrorMessage('Razorpay SDK is loading. Please try again.');
       }
     },
     onError: (err) => {
       isInitializingPaymentRef.current = false;
-      setErrorMessage(err?.message || 'Failed to initialize Razorpay checkout order.');
+      setErrorMessage(err?.message || 'Failed to initialize checkout.');
     },
   });
 
@@ -140,12 +191,11 @@ export default function FullScreenSubscriptionPage() {
     onSuccess: () => {
       isInitializingPaymentRef.current = false;
       queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
-      queryClient.invalidateQueries({ queryKey: ['shop-settings-global'] });
       window.location.href = '/dashboard';
     },
     onError: (err) => {
       isInitializingPaymentRef.current = false;
-      setErrorMessage(err?.message || 'Payment verification failed. Subscription not activated.');
+      setErrorMessage(err?.message || 'Payment verification failed.');
     },
   });
 
@@ -160,6 +210,7 @@ export default function FullScreenSubscriptionPage() {
     setAppliedCheckoutCoupon(null);
     setCouponError('');
     setErrorMessage('');
+    setSuccessMessage('');
     isInitializingPaymentRef.current = false;
   };
 
@@ -170,7 +221,7 @@ export default function FullScreenSubscriptionPage() {
     isInitializingPaymentRef.current = true;
     setErrorMessage('');
     createOrderMutation.mutate({
-      planCode: checkoutPlan.code,
+      planCode: checkoutPlan.planCode,
       couponCode: appliedCheckoutCoupon?.coupon?.code || checkoutCouponCode,
     });
   };
@@ -181,179 +232,191 @@ export default function FullScreenSubscriptionPage() {
   const finalPayableAmount = Math.max(0, originalPrice - discountAmount);
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 font-sans flex flex-col justify-between overflow-y-auto p-3 sm:p-5 lg:p-8">
+    <div className="min-h-screen w-full bg-slate-50 font-sans flex flex-col justify-between overflow-y-auto p-4 sm:p-6 lg:p-8 text-slate-800">
       
-      {/* ------------------------------------------------------------- */}
-      {/* TOP BRANDING ONLY (PROMINENT VEDIXA LOGO AT TOP-LEFT) */}
-      {/* ------------------------------------------------------------- */}
+      {/* HEADER LOGO */}
       <div className="pt-2 px-3 sm:px-6 lg:px-10 shrink-0 flex items-center justify-between">
         <BrandLogo textScale="lg" />
+        {hasActiveSub && (
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1.5"
+          >
+            <span>Open ERP Dashboard →</span>
+          </button>
+        )}
       </div>
 
-      {/* ------------------------------------------------------------- */}
       {/* MAIN CONTAINER */}
-      {/* ------------------------------------------------------------- */}
-      <main className="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-3 flex-1 flex flex-col justify-between overflow-visible">
+      <main className="max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-4 flex-1 flex flex-col justify-between">
         
-        {/* HERO SECTION (Z-Index Stacked) */}
-        <div className="relative z-20 text-center space-y-1.5 shrink-0 pt-1 mb-6 lg:mb-8">
-          <div className="relative z-30 inline-flex items-center gap-1.5 px-3.5 py-1 bg-emerald-100 text-[#047857] text-[10px] font-black rounded-full uppercase tracking-wider shadow-2xs">
-            <Sparkles className="w-3.5 h-3.5 text-[#047857]" /> CHOOSE THE RIGHT PLAN FOR YOUR BUSINESS
+        {/* HERO SECTION */}
+        <div className="text-center space-y-2 shrink-0 pt-2 mb-6 lg:mb-8">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-700" /> SELECT SUBSCRIPTION DURATION OR REQUEST A FREE DEMO
           </div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight leading-tight">
-            Power your Fertilizer &amp; Agri Retail Business with VEDIXA ERP.
+            Power your Fertilizer &amp; Agri Retail Business with VEDIXA ERP
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-xl mx-auto">
-            Start with the plan that fits your store. Upgrade anytime as your business grows.
+            Choose 1 Month, 3 Months, or 6 Months access. All plans include 100% full features.
           </p>
+
+          {/* ACTIVE DEMO / SUBSCRIPTION BANNER */}
+          {hasActiveSub && (
+            <div className="max-w-xl mx-auto mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-semibold flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>
+                  Active Access Granted! Expires on:{' '}
+                  <strong>
+                    {currentSub?.expiryDate ? new Date(currentSub.expiryDate).toLocaleDateString('en-IN') : 'N/A'}
+                  </strong>
+                </span>
+              </div>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl transition"
+              >
+                Go to ERP
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* ERROR MSG BANNER */}
+        {/* NOTIFICATIONS & ERRORS */}
+        {successMessage && (
+          <div className="max-w-xl mx-auto py-3 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-bold text-center mb-4 flex items-center justify-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{successMessage}</span>
+          </div>
+        )}
         {errorMessage && (
-          <div className="shrink-0 max-w-xl mx-auto py-2 px-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold text-center mb-4">
+          <div className="max-w-xl mx-auto py-3 px-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold text-center mb-4">
             {errorMessage}
           </div>
         )}
 
-        {/* 3 PRICING CARDS GRID (PREMIUM PROPORTIONS & SPACING) */}
-        {isPlansLoading ? (
-          <div className="text-center py-12 text-slate-400 text-xs italic">Loading SaaS pricing plans...</div>
-        ) : (
-          <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 items-stretch flex-1 my-2">
-            {plans.map((p) => {
-              const isPopular = p.isPopular || p.code === 'PROFESSIONAL';
-              const isCurrent = currentSub?.planCode === p.code && hasActiveSub;
-              const isSelected = (createOrderMutation.isPending || verifyMutation.isPending) && checkoutPlan?.code === p.code;
+        {/* 3 SUBSCRIPTION DURATION CARDS GRID */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch flex-1 my-2">
+          {durationPlans.map((plan) => {
+            const isPopular = plan.isPopular;
 
-              // Display top 5 features on card
-              const topFeatures = p.features?.slice(0, 5) || [];
-              const totalFeatureCount = p.features?.length || 0;
+            return (
+              <div
+                key={plan.code}
+                className={`relative rounded-3xl p-6 lg:p-7 transition-all duration-300 flex flex-col justify-between h-full bg-white border ${
+                  isPopular
+                    ? 'border-emerald-600 shadow-xl ring-4 ring-emerald-500/10'
+                    : 'border-slate-200 shadow-sm hover:border-emerald-300'
+                }`}
+              >
+                {/* BADGE */}
+                {isPopular && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-[10px] font-extrabold uppercase px-4 py-0.5 rounded-full shadow-xs tracking-wider flex items-center gap-1">
+                    <Star className="w-3 h-3 fill-amber-300 text-amber-300" /> {plan.badgeText}
+                  </div>
+                )}
 
-              return (
-                <div
-                  key={p.code}
-                  className={`relative rounded-3xl p-6 lg:p-7 transition-all duration-300 flex flex-col justify-between h-full ${
-                    isPopular
-                      ? 'bg-white border-2 border-[#047857] shadow-xl ring-4 ring-emerald-500/10'
-                      : 'bg-white border border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md'
-                  }`}
-                >
-                  {/* ⭐ MOST POPULAR BADGE */}
-                  {isPopular && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#047857] text-white text-[11px] font-extrabold uppercase px-4 py-0.5 rounded-full shadow-md tracking-wider flex items-center gap-1.5">
-                      <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" /> ⭐ MOST POPULAR
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="space-y-1 text-center sm:text-left">
-                      <h3 className="text-lg lg:text-xl font-black text-slate-900 tracking-tight uppercase">{p.name}</h3>
-                      <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                        {p.code === 'STARTER' && 'Suitable for small fertilizer & agri retail stores.'}
-                        {p.code === 'PROFESSIONAL' && 'Suitable for growing fertilizer & agri businesses.'}
-                        {p.code === 'PREMIUM' && 'Complete VEDIXA ERP with advanced controls.'}
-                      </p>
-                    </div>
-
-                    {/* Price Display */}
-                    <div className="border-y border-slate-100 py-3 space-y-1 text-center sm:text-left">
-                      <div className="flex items-baseline justify-center sm:justify-start gap-2">
-                        {p.originalPrice && (
-                          <span className="text-sm font-semibold text-slate-400 line-through">
-                            ₹{p.originalPrice}
-                          </span>
-                        )}
-                        <span className="text-3xl lg:text-4xl font-black text-[#047857] font-mono">
-                          ₹{p.price}
-                        </span>
-                        <span className="text-xs text-slate-500 font-bold">/ month</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-100 inline-block">
-                        Includes {p.discountTokens} Discount Tokens
-                      </span>
-                    </div>
-
-                    {/* Included Features List (Top 5) */}
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
-                        Included Features:
-                      </span>
-                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                        {topFeatures.map((feat, idx) => (
-                          <li key={idx} className="flex items-start gap-2 leading-tight">
-                            <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5 stroke-[2.5]" />
-                            <span className="leading-tight">{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {totalFeatureCount > 5 && (
-                        <button
-                          type="button"
-                          onClick={() => setFeatureModalPlan(p)}
-                          className="text-[11px] font-bold text-[#047857] hover:underline inline-flex items-center gap-1 pt-1 cursor-pointer"
-                        >
-                          <Info className="w-3.5 h-3.5" /> View all {totalFeatureCount} features
-                        </button>
-                      )}
-                    </div>
+                <div className="space-y-4">
+                  {/* Header */}
+                  <div className="space-y-1 text-center sm:text-left">
+                    <h3 className="text-lg lg:text-xl font-black text-slate-900 tracking-tight">{plan.durationLabel} Plan</h3>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      Complete VEDIXA ERP feature access for {plan.durationLabel}.
+                    </p>
                   </div>
 
-                  {/* CTA Button (Aligned cleanly at bottom) */}
-                  <div className="mt-auto pt-6">
-                    <Button
-                      onClick={() => handleOpenCheckout(p)}
-                      disabled={isSelected || isCurrent}
-                      className={`w-full py-3 text-xs font-black uppercase tracking-wider rounded-2xl transition-all cursor-pointer ${
-                        isCurrent
-                          ? 'bg-slate-100 text-slate-400 cursor-default border border-slate-200'
-                          : isPopular
-                          ? 'bg-[#047857] hover:bg-[#036046] text-white shadow-lg active:scale-98'
-                          : 'btn-agri-primary shadow-sm active:scale-98'
-                      }`}
+                  {/* Price Display */}
+                  <div className="border-y border-slate-100 py-3 space-y-1 text-center sm:text-left">
+                    <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                      {plan.originalPrice && (
+                        <span className="text-sm font-semibold text-slate-400 line-through">
+                          ₹{plan.originalPrice}
+                        </span>
+                      )}
+                      <span className="text-3xl lg:text-4xl font-black text-emerald-700 font-mono">
+                        ₹{plan.price}
+                      </span>
+                      <span className="text-xs text-slate-500 font-bold">/ {plan.durationLabel}</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 inline-block">
+                      Includes {plan.discountTokens} Discount Tokens
+                    </span>
+                  </div>
+
+                  {/* Included Features List (Shared Across All 3 Durations) */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
+                      Included Features (All Plans):
+                    </span>
+                    <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                      {sharedFeatures.slice(0, 5).map((feat, idx) => (
+                        <li key={idx} className="flex items-start gap-2 leading-tight">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 stroke-[2.5]" />
+                          <span className="leading-tight">{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => setFeatureModalPlan(plan)}
+                      className="text-[11px] font-bold text-emerald-700 hover:underline inline-flex items-center gap-1 pt-1 cursor-pointer"
                     >
-                      {isSelected
-                        ? 'Activating Plan...'
-                        : isCurrent
-                        ? 'Current Active Plan'
-                        : p.code === 'STARTER'
-                        ? 'CHOOSE STARTER'
-                        : p.code === 'PROFESSIONAL'
-                        ? 'CHOOSE PROFESSIONAL'
-                        : 'CHOOSE PREMIUM'}
-                    </Button>
+                      <Info className="w-3.5 h-3.5" /> View all {sharedFeatures.length} features
+                    </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {/* DUAL CTA BUTTONS: FREE DEMO REQUEST & SUBSCRIBE */}
+                <div className="mt-auto pt-6 space-y-2.5">
+                  <button
+                    onClick={() => demoRequestMutation.mutate(plan.code)}
+                    disabled={demoRequestMutation.isPending || hasActiveSub}
+                    className="w-full py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-2xl border border-amber-200 transition flex items-center justify-center space-x-1.5 disabled:opacity-50"
+                  >
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    <span>{demoRequestMutation.isPending ? 'Submitting...' : 'Free Demo Request'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenCheckout(plan)}
+                    disabled={hasActiveSub}
+                    className={`w-full py-3 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all cursor-pointer ${
+                      isPopular
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                        : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'
+                    } disabled:opacity-50`}
+                  >
+                    Subscribe & Pay Now
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </main>
 
-      {/* ------------------------------------------------------------- */}
-      {/* BOTTOM FOOTER & SUBTLE HELP | LOGOUT BUTTONS */}
-      {/* ------------------------------------------------------------- */}
-      <footer className="bg-white border-t border-slate-200 py-2 px-6 lg:px-10 flex items-center justify-between text-xs text-slate-500 font-medium shrink-0">
+      {/* FOOTER */}
+      <footer className="bg-white border-t border-slate-200 py-3 px-6 lg:px-10 flex items-center justify-between text-xs text-slate-500 font-medium shrink-0">
         <span className="text-[10px] text-slate-400">
           VEDIXA Agri-Business ERP © {new Date().getFullYear()} – Secure 256-bit Encrypted SaaS Platform.
         </span>
 
-        {/* BOTTOM-RIGHT HELP & LOGOUT */}
         <div className="flex items-center gap-4 text-xs font-bold text-slate-600">
           <button
             type="button"
             onClick={() => navigate('/support')}
             className="flex items-center gap-1 hover:text-slate-900 transition-colors cursor-pointer"
           >
-            <HelpCircle className="w-3.5 h-3.5 text-[#047857]" />
+            <HelpCircle className="w-3.5 h-3.5 text-emerald-600" />
             <span>Help</span>
           </button>
           <span className="text-slate-300">|</span>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex items-center gap-1 text-rose-600 hover:text-rose-700 transition-colors cursor-pointer font-bold"
+            className="flex items-center gap-1 text-red-600 hover:text-red-700 transition-colors cursor-pointer font-bold"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Logout</span>
@@ -361,9 +424,7 @@ export default function FullScreenSubscriptionPage() {
         </div>
       </footer>
 
-      {/* ------------------------------------------------------------- */}
-      {/* CHECKOUT / PLAN CONFIRMATION STEP MODAL */}
-      {/* ------------------------------------------------------------- */}
+      {/* CHECKOUT MODAL */}
       {checkoutPlan && (
         <Modal
           isOpen={!!checkoutPlan}
@@ -371,45 +432,28 @@ export default function FullScreenSubscriptionPage() {
           title="PLAN CONFIRMATION & CHECKOUT"
         >
           <div className="space-y-5 pt-2 font-sans text-xs">
-            {/* Selected Plan Summary Banner */}
-            <div className="p-4 bg-gradient-to-r from-[#047857] to-emerald-800 text-white rounded-2xl space-y-2 shadow-sm">
+            <div className="p-4 bg-emerald-600 text-white rounded-2xl space-y-2 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase text-emerald-200 tracking-wider">YOUR SELECTED PLAN</span>
-                <span className="text-[10px] font-extrabold bg-emerald-400/20 text-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
+                <span className="text-[10px] font-bold uppercase text-emerald-100 tracking-wider">YOUR SELECTED DURATION</span>
+                <span className="text-[10px] font-bold bg-emerald-700 text-emerald-100 px-2.5 py-0.5 rounded-full">
                   Includes {checkoutPlan.discountTokens} Discount Tokens
                 </span>
               </div>
-              <div className="flex items-baseline justify-between border-t border-emerald-700/60 pt-2">
-                <h3 className="text-lg font-black tracking-tight">{checkoutPlan.name} PLAN</h3>
+              <div className="flex items-baseline justify-between border-t border-emerald-500/60 pt-2">
+                <h3 className="text-lg font-bold tracking-tight">{checkoutPlan.durationLabel} Plan</h3>
                 <div className="flex items-baseline gap-1.5 font-mono">
                   {checkoutPlan.originalPrice && (
-                    <span className="text-xs text-emerald-300/70 line-through">₹{checkoutPlan.originalPrice}</span>
+                    <span className="text-xs text-emerald-200 line-through">₹{checkoutPlan.originalPrice}</span>
                   )}
                   <span className="text-xl font-extrabold text-white">₹{checkoutPlan.price}</span>
-                  <span className="text-[10px] text-emerald-200">/ month</span>
                 </div>
               </div>
             </div>
 
-            {/* Feature Entitlement Checklist */}
-            <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-              <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider block">
-                Plan Entitlements:
-              </span>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 font-medium">
-                {checkoutPlan.features?.slice(0, 6).map((feat, idx) => (
-                  <li key={idx} className="flex items-start gap-1.5 leading-tight text-[11px]">
-                    <Check className="w-3.5 h-3.5 text-[#047857] shrink-0 mt-0.5 stroke-[2.5]" />
-                    <span>{feat}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* OPTIONAL OFFER / COUPON INPUT */}
-            <div className="space-y-2 p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
+            {/* COUPON INPUT */}
+            <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
               <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Ticket className="w-4 h-4 text-[#047857]" /> Have an offer code? <span className="text-slate-400 font-normal">(Optional)</span>
+                <Ticket className="w-4 h-4 text-emerald-600" /> Have an offer code? <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <div className="flex gap-2">
                 <Input
@@ -427,33 +471,33 @@ export default function FullScreenSubscriptionPage() {
                   {couponMutation.isPending ? 'Applying...' : 'Apply'}
                 </Button>
               </div>
-              {couponError && <p className="text-[11px] text-rose-600 font-semibold">{couponError}</p>}
+              {couponError && <p className="text-[11px] text-red-600 font-semibold">{couponError}</p>}
               {appliedCheckoutCoupon && (
-                <p className="text-[11px] text-emerald-700 font-extrabold">
+                <p className="text-[11px] text-emerald-700 font-bold">
                   ✓ Offer applied successfully! ₹{appliedCheckoutCoupon.discountAmount} discount calculated.
                 </p>
               )}
             </div>
 
-            {/* Payment Summary */}
+            {/* PAYMENT SUMMARY */}
             <div className="space-y-1.5 border-t border-slate-200 pt-3">
               <div className="flex justify-between text-slate-600 font-medium">
                 <span>Original Plan Price:</span>
                 <span className="font-mono">₹{originalPrice}</span>
               </div>
               {discountAmount > 0 && (
-                <div className="flex justify-between text-emerald-700 font-extrabold">
+                <div className="flex justify-between text-emerald-700 font-bold">
                   <span>Coupon Discount:</span>
                   <span className="font-mono">-₹{discountAmount}</span>
                 </div>
               )}
-              <div className="flex justify-between text-slate-900 font-black text-sm pt-1 border-t border-slate-100">
+              <div className="flex justify-between text-slate-900 font-bold text-sm pt-1 border-t border-slate-100">
                 <span>Payable Amount:</span>
-                <span className="font-mono text-[#047857] text-base">₹{finalPayableAmount}</span>
+                <span className="font-mono text-emerald-700 text-base">₹{finalPayableAmount}</span>
               </div>
             </div>
 
-            {/* Modal Actions */}
+            {/* ACTIONS */}
             <div className="flex justify-between items-center gap-3 pt-2">
               <button
                 type="button"
@@ -461,13 +505,13 @@ export default function FullScreenSubscriptionPage() {
                 className="inline-flex items-center gap-1 px-3 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl font-bold text-xs transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Plans</span>
+                <span>Back</span>
               </button>
 
               <Button
                 onClick={handleConfirmPayment}
                 disabled={createOrderMutation.isPending || verifyMutation.isPending || isInitializingPaymentRef.current}
-                className="btn-agri-primary text-xs font-black uppercase py-2.5 px-5 rounded-xl shadow-md flex items-center gap-1.5"
+                className="btn-agri-primary text-xs font-bold uppercase py-2.5 px-5 rounded-xl shadow-xs flex items-center gap-1.5"
               >
                 <Zap className="w-4 h-4 fill-white" />
                 <span>
@@ -488,13 +532,13 @@ export default function FullScreenSubscriptionPage() {
         <Modal
           isOpen={!!featureModalPlan}
           onClose={() => setFeatureModalPlan(null)}
-          title={`${featureModalPlan.name} Plan - Full Feature List`}
+          title={`${featureModalPlan.durationLabel} Plan - Full Feature Checklist`}
         >
           <div className="space-y-4 pt-2 font-sans text-xs">
-            <div className="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
               <div>
-                <h4 className="font-black text-slate-900 text-sm">{featureModalPlan.name} Plan</h4>
-                <p className="text-xs text-[#047857] font-extrabold font-mono">₹{featureModalPlan.price} / month</p>
+                <h4 className="font-bold text-slate-900 text-sm">{featureModalPlan.durationLabel} Plan</h4>
+                <p className="text-xs text-emerald-700 font-bold font-mono">₹{featureModalPlan.price} / {featureModalPlan.durationLabel}</p>
               </div>
               <span className="text-xs font-bold text-purple-700 bg-purple-100 px-3 py-1 rounded-full">
                 {featureModalPlan.discountTokens} Discount Tokens
@@ -502,28 +546,15 @@ export default function FullScreenSubscriptionPage() {
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-700 block">Complete Feature Checklist:</span>
+              <span className="text-xs font-bold text-slate-700 block">All Features (Identical Across All Durations):</span>
               <ul className="space-y-2 text-xs text-slate-800 font-medium max-h-64 overflow-y-auto pr-1">
-                {featureModalPlan.features?.map((feat, idx) => (
+                {sharedFeatures.map((feat, idx) => (
                   <li key={idx} className="flex items-start gap-2.5 p-1.5 rounded-lg hover:bg-slate-50">
-                    <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5 stroke-[2.5]" />
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 stroke-[2.5]" />
                     <span>{feat}</span>
                   </li>
                 ))}
               </ul>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-slate-100">
-              <Button
-                onClick={() => {
-                  const plan = featureModalPlan;
-                  setFeatureModalPlan(null);
-                  handleOpenCheckout(plan);
-                }}
-                className="btn-agri-primary text-xs"
-              >
-                Choose {featureModalPlan.name} Plan
-              </Button>
             </div>
           </div>
         </Modal>

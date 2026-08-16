@@ -38,15 +38,15 @@ app.use(
   })
 );
 
-// Pino HTTP logger
-app.use(
-  pinoHttp({
-    logger,
-    autoLogging: {
-      ignore: (req) => req.url === `${envConfig.apiPrefix}/health`,
-    },
-  })
-);
+// Pino HTTP logger (disabled by default in normal mode to keep console silent)
+if (process.env.DEBUG_LOGS === 'true') {
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: true,
+    })
+  );
+}
 
 import cookieParser from 'cookie-parser';
 
@@ -99,12 +99,37 @@ app.use(`${envConfig.apiPrefix}/reports`, reportsRoutes);
 
 import supportRoutes from './modules/support/support.routes.js';
 import subscriptionRoutes from './modules/subscription/subscription.routes.js';
+import adminRoutes from './modules/admin/admin.routes.js';
+import backupRoutes from './modules/admin/backup.routes.js';
+import { trackWebsiteVisitor, recordVisitorHit } from './modules/admin/middlewares/visitorTracking.middleware.js';
+
+// Public Visitor Ping Endpoint for live tracking
+app.post(`${envConfig.apiPrefix}/analytics/ping`, async (req, res) => {
+  try {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+    const { path: pagePath, visitorId } = req.body || {};
+    const userAgent = req.headers['user-agent'] || '';
+    await recordVisitorHit({ ip, path: pagePath || '/', userAgent, visitorId });
+    return sendSuccess(res, 'Visitor activity recorded');
+  } catch (_e) {
+    return sendSuccess(res, 'Visitor activity recorded');
+  }
+});
+
+// Visitor Analytics Tracking Middleware for Public Routes
+app.use(trackWebsiteVisitor);
 
 // Support & Ticket Routes
 app.use(`${envConfig.apiPrefix}/support`, supportRoutes);
 
 // SaaS Subscription Routes
 app.use(`${envConfig.apiPrefix}/subscriptions`, subscriptionRoutes);
+
+// Admin Control Panel Routes
+app.use(`${envConfig.apiPrefix}/admin`, adminRoutes);
+
+// User Profile Backup Download Routes
+app.use(`${envConfig.apiPrefix}/backups`, backupRoutes);
 
 // 404 Not Found Handler
 app.use(notFoundHandler);

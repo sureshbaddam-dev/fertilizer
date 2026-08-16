@@ -1,0 +1,13 @@
+{
+  "name": "fertilizer-erp-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VEDIXA Fertilizer ERP SaaS & Admin Control Center",
+  "scripts": {
+    "dev:user": "npm --prefix frontend run dev",
+    "dev:admin": "npm --prefix admin-panel run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build:user": "npm --prefix frontend run build",
+    "build:admin": "npm --prefix admin-panel run build"
+  }
+}

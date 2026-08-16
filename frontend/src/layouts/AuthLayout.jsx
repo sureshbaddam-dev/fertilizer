@@ -3,10 +3,12 @@ import { Outlet } from 'react-router-dom';
 import { CheckCircle2, Shield, ShieldCheck, Smile, Heart, Sun, ChevronDown } from 'lucide-react';
 import BrandLogo from '../components/common/BrandLogo';
 import loginProductsImg from '../assets/login_products.png';
+import PageTracker from '../components/PageTracker';
 
 export default function AuthLayout() {
   return (
     <div className="min-h-screen lg:h-screen w-full bg-slate-100 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6 font-sans overflow-y-auto lg:overflow-hidden">
+      <PageTracker />
       {/* Main Container Card */}
       <div className="w-full max-w-5xl xl:max-w-6xl bg-white md:bg-emerald-50/40 rounded-2xl md:rounded-3xl border border-emerald-100/80 shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-12 max-h-full lg:max-h-[92vh] my-auto">
         

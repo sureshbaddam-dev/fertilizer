@@ -31,7 +31,7 @@ const supportTicketSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['PENDING', 'RESOLVED'],
+      enum: ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'COMPLETED'],
       default: 'PENDING',
       index: true,
     },
@@ -47,6 +47,19 @@ const supportTicketSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    completedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    isReadByAdmin: {
+      type: Boolean,
+      default: false,
     },
   },
   {

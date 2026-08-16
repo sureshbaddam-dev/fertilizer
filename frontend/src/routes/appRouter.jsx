@@ -35,7 +35,6 @@ import ReportsPage from '../pages/reports/ReportsPage';
 import ArchivedPurchasesPage from '../pages/settings/ArchivedPurchasesPage';
 import SupportPage from '../pages/support/SupportPage';
 import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
-import AdminSubscriptionsPage from '../pages/admin/AdminSubscriptionsPage';
 import FullScreenSubscriptionPage from '../pages/subscription/FullScreenSubscriptionPage';
 
 export const appRouter = createBrowserRouter([
@@ -119,8 +118,6 @@ export const appRouter = createBrowserRouter([
       { path: 'invoices/:invoiceId/edit', element: <EditInvoicePage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'support', element: <SupportPage /> },
-      { path: 'admin/tickets', element: <AdminTicketsPage /> },
-      { path: 'admin/subscriptions', element: <AdminSubscriptionsPage /> },
       { path: 'subscription', element: <FullScreenSubscriptionPage /> },
 
       // Redirect legacy /masters to unified /settings/master-data

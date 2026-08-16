@@ -6,6 +6,9 @@ import {
   getTicketById,
   getAllTicketsAdmin,
   resolveTicketAdmin,
+  updateTicketStatusAdmin,
+  getUnreadNotificationsAdmin,
+  markNotificationReadAdmin,
 } from './support.controller.js';
 
 const router = Router();
@@ -20,5 +23,8 @@ router.get('/tickets/:id', getTicketById);
 // Admin endpoints
 router.get('/admin/tickets', getAllTicketsAdmin);
 router.post('/admin/tickets/:id/resolve', resolveTicketAdmin);
+router.patch('/admin/tickets/:id/status', updateTicketStatusAdmin);
+router.get('/admin/notifications/unread', getUnreadNotificationsAdmin);
+router.patch('/admin/notifications/:id/read', markNotificationReadAdmin);
 
 export default router;

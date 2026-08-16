@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import PageLayout from '../components/layout/PageLayout';
+import PageTracker from '../components/PageTracker';
 
 import { subscriptionService } from '../services/subscriptionService';
 
@@ -89,6 +90,7 @@ export default function MainLayout() {
       onQuickAddProduct={handleQuickAddProduct}
       quickAddedProduct={quickAddedProduct}
     >
+      <PageTracker />
       <Outlet context={{ onOpenNewBill: handleOpenNewBill, onQuickAddProduct: handleQuickAddProduct, isBillingOpen }} />
     </PageLayout>
   );

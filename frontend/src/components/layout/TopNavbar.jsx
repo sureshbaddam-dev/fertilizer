@@ -1,19 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronDown, CheckCheck, Menu, Plus, Search, Store, AlertTriangle, Clock, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Bell, CheckCheck, Menu, Plus, Search, Store, Clock, CheckCircle2, MessageSquare, Megaphone } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
 import { dashboardService } from '../../services/dashboardService';
 import { useSettings } from '../../contexts/SettingsContext';
 
-const NOTIF_CATEGORIES = ['All', 'Low Stock', 'Expiry Alerts', 'Customer Outstanding', 'Supplier Due', 'System Alerts'];
+const NOTIF_CATEGORIES = ['All', 'Support Tickets', 'Admin Announcements'];
 
 export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddProduct }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useSettings();
+
+  const userId = settings?.userId || settings?._id || 'user_default';
+  const soundStorageKey = `vedixa_notif_sound_${userId}`;
 
   const currentPath = location.pathname;
   const showMobileSearch =
@@ -39,6 +42,34 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const mobileSearchRef = useRef(null);
   const notifRef = useRef(null);
   const topbarInputRef = useRef(null);
+  const prevUnreadCountRef = useRef(0);
+
+  // Web Audio Chime Helper (Plays only when Notification Sound = ON)
+  const playNotifSound = () => {
+    try {
+      const soundPref = localStorage.getItem(soundStorageKey) || 'ON';
+      if (soundPref !== 'ON') return;
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+      // Browser autoplay restriction handled gracefully
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 250);
@@ -61,7 +92,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Product Search Query: Fetch Top Selling Products dynamically from MongoDB
+  // Product Search Query
   const { data: searchData, isLoading: isSearchLoading } = useQuery({
     queryKey: ['topbar-top-selling-products', debouncedSearch],
     queryFn: () => productService.getTopSellingProducts({ search: debouncedSearch }),
@@ -72,18 +103,18 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const searchResults = searchData?.data?.products || searchData?.products || [];
 
-  // Live Dynamic Notifications Query from Backend
+  // Live System & Support Notifications Query from Backend (Polled every 15 seconds)
   const { data: notifData } = useQuery({
     queryKey: ['dashboard-notifications'],
     queryFn: () => dashboardService.getNotifications(),
-    staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
   });
 
-  const rawNotifications = notifData?.data?.data?.notifications || [];
+  // Extract notifications array accurately from API response data
+  const rawNotifications = notifData?.data?.notifications || notifData?.notifications || [];
 
-  // Filter unread notifications dynamically
   const notificationsList = rawNotifications.map((n) => ({
     ...n,
     read: n.read || readNotifIds.includes(n.id),
@@ -91,9 +122,25 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const unreadNotifCount = notificationsList.filter((n) => !n.read).length;
 
+  // Play sound when unread count increases
+  useEffect(() => {
+    if (unreadNotifCount > prevUnreadCountRef.current && prevUnreadCountRef.current !== 0) {
+      playNotifSound();
+    }
+    prevUnreadCountRef.current = unreadNotifCount;
+  }, [unreadNotifCount]);
+
   const filteredNotifications = selectedNotifCat === 'All'
     ? notificationsList
-    : notificationsList.filter((n) => n.category === selectedNotifCat);
+    : notificationsList.filter((n) => {
+        if (selectedNotifCat === 'Support Tickets') {
+          return n.category === 'Support Tickets' || n.type === 'support_ticket';
+        }
+        if (selectedNotifCat === 'Admin Announcements') {
+          return n.category === 'Admin Announcements' || n.type === 'admin_announcement';
+        }
+        return n.category === selectedNotifCat;
+      });
 
   const isSelectingRef = useRef(false);
 
@@ -153,13 +200,12 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               <Menu className="h-4 w-4" />
             </button>
 
-            {/* Vertically Centered Large VEDIXA Logo Image (95-100% Navbar Height) */}
             <div className="flex items-center h-full my-auto py-1">
               <BrandLogo className="h-full w-auto object-contain my-auto max-h-none max-w-none" />
             </div>
           </div>
 
-          {/* CENTER: Pill Search Bar */}
+          {/* CENTER: Search Bar */}
           <div className="hidden min-w-0 flex-1 px-2 md:flex lg:px-6">
             <div ref={searchRef} className="relative mx-auto w-full max-w-xl">
               <div className="relative flex items-center">
@@ -258,6 +304,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               <span className="hidden sm:inline text-[10px] opacity-80">(F2)</span>
             </button>
 
+            {/* NOTIFICATION BELL (ALWAYS ENABLED - STRICTLY ADMIN & SUPPORT COMMUNICATIONS) */}
             <div className="relative" ref={notifRef}>
               <button
                 type="button"
@@ -323,14 +370,10 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                             }`}
                           >
                             <div className="mt-0.5 shrink-0">
-                              {notif.type === 'OUT_OF_STOCK' ? (
-                                <ShieldAlert className="w-4 h-4 text-rose-600" />
-                              ) : notif.type === 'LOW_STOCK' ? (
-                                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                              ) : notif.type === 'CUSTOMER_DUE' ? (
-                                <Clock className="w-4 h-4 text-purple-600" />
+                              {notif.type === 'admin_announcement' ? (
+                                <Megaphone className="w-4 h-4 text-emerald-700" />
                               ) : (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                <MessageSquare className="w-4 h-4 text-[#047857]" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -339,7 +382,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                                   {notif.title}
                                 </span>
                                 <span className="text-[9px] font-mono text-slate-400 shrink-0">
-                                  {notif.time}
+                                  {notif.timestamp}
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-600 leading-tight mt-0.5 font-medium">

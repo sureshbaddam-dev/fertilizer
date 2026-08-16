@@ -412,4 +412,104 @@ export const subscriptionService = {
   async getAllCoupons() {
     return await Coupon.find().sort({ createdAt: -1 });
   },
+
+  // Free Demo Request Flow
+  async requestFreeDemo(userId, { requestedPlan = '1_MONTH' }) {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const { DemoRequest } = await import('./demoRequest.model.js');
+    const { SupportNotification } = await import('../admin/models/supportNotification.model.js');
+
+    const validPlans = ['1_MONTH', '3_MONTHS', '6_MONTHS'];
+    const normPlan = validPlans.includes(requestedPlan) ? requestedPlan : '1_MONTH';
+
+    // Prevent duplicate PENDING request for same user
+    let existingPending = await DemoRequest.findOne({ userId, status: 'PENDING' });
+    if (existingPending) {
+      return existingPending;
+    }
+
+    const demoReq = await DemoRequest.create({
+      userId: user._id,
+      userName: user.ownerName,
+      userMobile: user.mobile,
+      requestedPlan: normPlan,
+      status: 'PENDING',
+    });
+
+
+
+    // Trigger Admin Unread Bell Notification
+    try {
+      await SupportNotification.create({
+        ticketId: `DEMO-${demoReq._id.toString().slice(-6)}`,
+        userId: user._id,
+        userName: user.ownerName,
+        userMobile: user.mobile,
+        subject: `New Free Demo Request (${normPlan.replace('_', ' ')})`,
+        isReadByAdmin: false,
+      });
+    } catch (_notifErr) {
+      // Ignore non-fatal notification errors
+    }
+
+    return demoReq;
+  },
+
+  async getDemoRequests(statusFilter) {
+    const { DemoRequest } = await import('./demoRequest.model.js');
+    const query = statusFilter ? { status: statusFilter } : {};
+    return await DemoRequest.find(query).sort({ createdAt: -1 });
+  },
+
+  async approveDemoRequest(adminUser, requestId, { adminNotes = '' }) {
+    const { DemoRequest } = await import('./demoRequest.model.js');
+    const { adminService } = await import('../admin/services/admin.service.js');
+
+    const demoReq = await DemoRequest.findById(requestId);
+    if (!demoReq) {
+      throw new AppError('Demo request not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (demoReq.status !== 'PENDING') {
+      throw new AppError(`Demo request is already ${demoReq.status}`, HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Determine trial duration (e.g. 7 days)
+    const demoDays = 7;
+    await adminService.grantCustomDemoSubscription({
+      userId: demoReq.userId,
+      demoDays,
+      reason: `Approved Free Demo Request (${demoReq.requestedPlan})`,
+      adminUser,
+    });
+
+    demoReq.status = 'APPROVED';
+    demoReq.grantedByAdminId = adminUser.id || adminUser._id;
+    demoReq.grantedByAdminName = adminUser.ownerName || 'Admin';
+    demoReq.grantedAt = new Date();
+    demoReq.adminNotes = adminNotes;
+    await demoReq.save();
+
+    return demoReq;
+  },
+
+  async rejectDemoRequest(adminUser, requestId, { adminNotes = '' }) {
+    const { DemoRequest } = await import('./demoRequest.model.js');
+    const demoReq = await DemoRequest.findById(requestId);
+    if (!demoReq) {
+      throw new AppError('Demo request not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    demoReq.status = 'REJECTED';
+    demoReq.grantedByAdminId = adminUser.id || adminUser._id;
+    demoReq.grantedByAdminName = adminUser.ownerName || 'Admin';
+    demoReq.adminNotes = adminNotes;
+    await demoReq.save();
+
+    return demoReq;
+  },
 };

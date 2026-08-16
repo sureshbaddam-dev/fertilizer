@@ -133,52 +133,69 @@ export default function SupportPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tickets.map((t) => (
-                  <div key={t._id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-gray-500">{t.ticketId}</span>
-                      {t.status === 'PENDING' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> PENDING
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> RESOLVED
-                        </span>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-sm">{t.subject}</h4>
-                      <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600">
-                        Category: {t.category}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                      {t.description}
-                    </p>
-
-                    {/* Admin Resolution Section */}
-                    {t.status === 'RESOLVED' && (
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Admin Resolution
-                        </span>
-                        <p className="text-xs font-medium text-emerald-950">{t.adminReply}</p>
-                        {t.resolvedAt && (
-                          <span className="text-[9px] text-emerald-700 block text-right font-mono">
-                            Resolved on {new Date(t.resolvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                {tickets.map((t) => {
+                  const st = (t.status || 'PENDING').toUpperCase();
+                  return (
+                    <div key={t._id} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-gray-500">{t.ticketId}</span>
+                        {st === 'COMPLETED' || st === 'RESOLVED' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> RESOLVED
+                          </span>
+                        ) : st === 'IN_PROGRESS' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-blue-600" /> IN PROGRESS
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-amber-600" /> PENDING
                           </span>
                         )}
                       </div>
-                    )}
 
-                    <div className="text-[10px] text-gray-400 text-right font-mono pt-1">
-                      Submitted on {new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-sm">{t.subject}</h4>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600">
+                          Category: {t.category}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                        {t.description}
+                      </p>
+
+                      {/* Admin Note Section for In Progress */}
+                      {st === 'IN_PROGRESS' && t.adminReply && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-blue-600" /> Admin Note
+                          </span>
+                          <p className="text-xs font-medium text-blue-950">{t.adminReply}</p>
+                        </div>
+                      )}
+
+                      {/* Admin Resolution Section for Completed */}
+                      {(st === 'COMPLETED' || st === 'RESOLVED') && (
+                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Admin Resolution
+                          </span>
+                          <p className="text-xs font-medium text-emerald-950">{t.adminReply || 'Issue marked as resolved.'}</p>
+                          {(t.completedAt || t.resolvedAt) && (
+                            <span className="text-[9px] text-emerald-700 block text-right font-mono font-bold">
+                              Resolved on {new Date(t.completedAt || t.resolvedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="text-[10px] text-gray-400 text-right font-mono pt-1">
+                        Submitted on {new Date(t.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -222,9 +239,9 @@ export default function SupportPage() {
               className="w-full text-xs"
             >
               <option value="General">General Query</option>
-              <option value="Billing">Billing & Sales Invoices</option>
-              <option value="Inventory">Inventory & FIFO Batches</option>
-              <option value="Supplier">Supplier & Purchases</option>
+              <option value="Billing">Billing &amp; Sales Invoices</option>
+              <option value="Inventory">Inventory &amp; FIFO Batches</option>
+              <option value="Supplier">Supplier &amp; Purchases</option>
               <option value="Customer">Customer Ledgers</option>
             </Select>
           </div>
