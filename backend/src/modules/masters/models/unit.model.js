@@ -3,10 +3,15 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const unitSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Unit name is required'],
-      unique: true,
       trim: true,
       index: true,
     },
@@ -31,6 +36,7 @@ const unitSchema = new mongoose.Schema(
 );
 
 unitSchema.plugin(softDeletePlugin);
+unitSchema.index({ userId: 1, name: 1 });
 unitSchema.index({ name: 'text', shortName: 'text' });
 
 export const Unit = mongoose.model('Unit', unitSchema);

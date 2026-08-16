@@ -3,10 +3,15 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const companySchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Company name is required'],
-      unique: true,
       trim: true,
       index: true,
     },
@@ -52,7 +57,7 @@ const companySchema = new mongoose.Schema(
 );
 
 companySchema.plugin(softDeletePlugin);
+companySchema.index({ userId: 1, name: 1 });
 companySchema.index({ name: 'text', shortName: 'text' });
 
 export const Company = mongoose.models.Company || mongoose.model('Company', companySchema);
-export const Brand = mongoose.models.Brand || mongoose.model('Brand', companySchema);

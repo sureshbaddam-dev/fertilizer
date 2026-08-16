@@ -8,9 +8,11 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
   const [paymentMode, setPaymentMode] = useState('Cash');
 
   // Calculations
+  const numDiscount = Number(discountValue) || 0;
+  const numPayment = Number(paymentReceived) || 0;
   const gstAmount = 114;
-  const totalAmount = Math.max(0, subtotal - discountValue + gstAmount);
-  const dueAmount = Math.max(0, totalAmount - paymentReceived);
+  const totalAmount = Math.max(0, subtotal - numDiscount + gstAmount);
+  const dueAmount = Math.max(0, totalAmount - numPayment);
   const totalDueAfterBill = oldDue + dueAmount;
 
   const quickCashPills = [100, 500, 1000, 2000, 5000];
@@ -32,12 +34,14 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
             </select>
             <input
               type="number"
-              value={discountValue}
-              onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+              onFocus={(e) => e.target.select()}
+              value={discountValue === 0 || discountValue === '0' || !discountValue ? '' : discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              placeholder="0"
               className="w-full px-3 py-1.5 text-xs font-bold text-gray-800 focus:outline-none bg-white"
             />
-            {discountValue > 0 && (
-              <button onClick={() => setDiscountValue(0)} className="px-2 text-red-500 hover:text-red-700">
+            {numDiscount > 0 && (
+              <button onClick={() => setDiscountValue('')} className="px-2 text-red-500 hover:text-red-700">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -58,7 +62,7 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
         </div>
         <div className="flex justify-between text-gray-600 font-medium text-xs">
           <span>Discount</span>
-          <span className="font-bold text-red-600">- ₹ {discountValue.toFixed(2)}</span>
+          <span className="font-bold text-red-600">- ₹ {numDiscount.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-gray-600 font-medium text-xs">
           <span>GST (12%)</span>
@@ -83,8 +87,10 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
             <label className="text-[10px] font-semibold text-gray-600 block">Payment Received</label>
             <input
               type="number"
-              value={paymentReceived}
-              onChange={(e) => setPaymentReceived(Number(e.target.value) || 0)}
+              onFocus={(e) => e.target.select()}
+              value={paymentReceived === 0 || paymentReceived === '0' || !paymentReceived ? '' : paymentReceived}
+              onChange={(e) => setPaymentReceived(e.target.value)}
+              placeholder="0.00"
               className="w-full px-3 py-1.5 text-xs font-bold bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             />
           </div>

@@ -5,7 +5,8 @@ import { catchAsync } from '../../../utils/catchAsync.js';
 
 export const reportsController = {
   getBIAnalytics: catchAsync(async (req, res) => {
-    const analytics = await reportsService.getBIAnalytics(req.query);
+    const userId = req.user._id;
+    const analytics = await reportsService.getBIAnalytics(req.query, userId);
     return sendSuccess(res, 'BI Analytics data retrieved successfully', analytics, HTTP_STATUS.OK);
   }),
 };

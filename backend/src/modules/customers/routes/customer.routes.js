@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { customerController } from '../controllers/customer.controller.js';
 
+import { protect } from '../../../middlewares/auth.middleware.js';
+
 const router = Router();
+
+router.use(protect);
 
 router.get('/', customerController.getCustomers);
 router.get('/general', customerController.getGeneralCustomers);

@@ -3,14 +3,19 @@ import { purchaseRepository } from '../repositories/purchase.repository.js';
 import { productRepository } from '../../products/repositories/product.repository.js';
 import { supplierRepository } from '../../suppliers/repositories/supplier.repository.js';
 import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
+import { Supplier } from '../../suppliers/models/supplier.model.js';
+import { Product } from '../../products/models/product.model.js';
 import { ProductBatch } from '../../products/models/productBatch.model.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
+import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { generateNextBatchNumber } from '../../products/services/product.service.js';
 
 export const purchaseService = {
-  async getAllPurchases(query = {}) {
-    const filter = {};
+  async getAllPurchases(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
+    const filter = { userId };
     if (query.search) {
       filter.$or = [
         { purchaseNumber: { $regex: query.search, $options: 'i' } },
@@ -26,15 +31,17 @@ export const purchaseService = {
     return { purchases, total };
   },
 
-  async getPurchaseById(id) {
-    const data = await purchaseRepository.findByIdPopulated(id);
+  async getPurchaseById(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const data = await purchaseRepository.findByIdPopulated(id, userId);
     if (!data) {
       throw new AppError('Purchase record not found', HTTP_STATUS.NOT_FOUND);
     }
     return data;
   },
 
-  async createPurchase(data) {
+  async createPurchase(data, userId) {
+    if (!userId) throw new Error('userId is required');
     const {
       supplierId,
       supplierInvoiceNumber,
@@ -49,56 +56,66 @@ export const purchaseService = {
     if (!supplierId) {
       throw new AppError('Supplier is required', HTTP_STATUS.BAD_REQUEST);
     }
+    const supplierDoc = await Supplier.findOne({ _id: supplierId, userId });
+    if (!supplierDoc) {
+      throw new AppError('Selected Supplier not found or access denied', HTTP_STATUS.BAD_REQUEST);
+    }
 
     if (!items || items.length === 0) {
       throw new AppError('Purchase must contain at least one product item', HTTP_STATUS.BAD_REQUEST);
     }
 
-    // Auto-generate Unique Purchase Header Number (guaranteed non-colliding)
-    const { Purchase } = await import('../models/purchase.model.js');
-    let totalDocsCount = await Purchase.countDocuments({}).exec();
-    let countNum = totalDocsCount + 1;
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    let autoPurchaseNumber = `PUR-${dateStr}-${String(countNum).padStart(5, '0')}`;
-
-    while (await Purchase.findOne({ purchaseNumber: autoPurchaseNumber }).exec()) {
-      countNum += 1;
-      autoPurchaseNumber = `PUR-${dateStr}-${String(countNum).padStart(5, '0')}`;
+    for (const item of items) {
+      if (item.productId) {
+        const prodDoc = await Product.findOne({ _id: item.productId, userId });
+        if (!prodDoc) {
+          throw new AppError(`Product not found or access denied: '${item.productName || item.productId}'`, HTTP_STATUS.BAD_REQUEST);
+        }
+      }
     }
 
-    const purchaseNumber = autoPurchaseNumber;
-    const effectiveInvoiceNumber = supplierInvoiceNumber || purchaseNumber;
+    const { Purchase } = await import('../models/purchase.model.js');
 
-    // Helper to perform purchase save
     const executeSave = async (session = null) => {
-      // 1. Calculate Totals
+      let totalDocsCount = await Purchase.countDocuments({ userId }, session ? { session } : {}).exec();
+      let countNum = totalDocsCount + 1;
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      let autoPurchaseNumber = `PUR-${dateStr}-${String(countNum).padStart(5, '0')}`;
+
+      while (await Purchase.findOne({ userId, purchaseNumber: autoPurchaseNumber }, null, session ? { session } : {}).exec()) {
+        countNum += 1;
+        autoPurchaseNumber = `PUR-${dateStr}-${String(countNum).padStart(5, '0')}`;
+      }
+
+      const purchaseNumber = autoPurchaseNumber;
+      const effectiveInvoiceNumber = supplierInvoiceNumber || purchaseNumber;
+
       let subtotal = 0;
       let totalTaxAmount = 0;
 
       items.forEach((item) => {
         const itemQty = Number(item.quantity) || 1;
-        const itemRate = Number(item.purchaseRate) || 0;
+        const itemRate = normalizeMoney(item.purchaseRate || 0);
         const lineTotal = itemQty * itemRate;
         subtotal += lineTotal;
 
-        const tax = Number(item.taxAmount) || 0;
+        const tax = normalizeMoney(item.taxAmount || 0);
         totalTaxAmount += tax;
       });
 
-      const totalInvoiceAmount = subtotal + totalTaxAmount;
-      const actualPaidAmount = Number(paidAmount) || 0;
-      const dueAmount = totalInvoiceAmount - actualPaidAmount;
+      const totalInvoiceAmount = normalizeMoney(subtotal + totalTaxAmount);
+      const actualPaidAmount = normalizeMoney(paidAmount || 0);
+      const dueAmount = normalizeMoney(totalInvoiceAmount - actualPaidAmount);
 
-      // 2. Create Purchase Header Record
       const purchaseData = {
+        userId,
         purchaseNumber,
         supplierId,
         supplierInvoiceNumber: effectiveInvoiceNumber,
         purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         dueDate: dueDate ? new Date(dueDate) : undefined,
-        subtotal,
-        taxAmount: totalTaxAmount,
-        discountAmount: 0,
+        subtotal: normalizeMoney(subtotal),
+        taxAmount: normalizeMoney(totalTaxAmount),
         totalInvoiceAmount,
         paidAmount: actualPaidAmount,
         dueAmount,
@@ -106,195 +123,182 @@ export const purchaseService = {
         createdBy,
       };
 
-      const purchase = await purchaseRepository.createPurchase(purchaseData, session);
-      logger.info(`✅ Created Purchase Header ID: ${purchase._id}`);
+      const newPurchase = await purchaseRepository.createPurchase(purchaseData, session);
 
-      // 3. Process Each Purchase Item & Update Stock & Product Master Rates
-      let itemIndex = 0;
+      const createdItems = [];
+      const assignedInCurrentPurchase = new Set();
+
       for (const item of items) {
-        itemIndex += 1;
-        const product = await productRepository.findById(item.productId);
-        if (!product) {
-          throw new AppError(`Product ID '${item.productId}' not found`, HTTP_STATUS.BAD_REQUEST);
+        const itemQty = Number(item.quantity) || 1;
+        const itemRate = normalizeMoney(item.purchaseRate || 0);
+        const itemMrp = normalizeMoney(item.mrp || 0);
+        const itemSellingPrice = normalizeMoney(item.sellingPrice || 0);
+
+        let batchNumber = (item.batchNumber || '').trim();
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const datePrefix = `BATCH-${dateStr}-`;
+
+        // Authoritative backend batch sequence [SHOP_LETTER]B[YY][MM][SERIAL]:
+        if (!batchNumber || batchNumber.toUpperCase().startsWith('BATCH-') || batchNumber.toUpperCase().startsWith('AUTO')) {
+          batchNumber = await generateNextBatchNumber(userId, session);
         }
 
-        const qty = Number(item.quantity) || 1;
-        const rate = Number(item.purchaseRate) || 0;
-        const mrpVal = Number(item.mrp) || rate * 1.2;
-        const sellingVal = Number(item.sellingPrice) || product.defaultSellingPrice || mrpVal;
+        assignedInCurrentPurchase.add(batchNumber);
 
-        // Update Product master default fallback rates ONLY if not set
-        const productUpdates = {};
-        if (rate > 0 && (!product.defaultPurchaseRate || product.defaultPurchaseRate === 0)) {
-          productUpdates.defaultPurchaseRate = rate;
-        }
-        if (sellingVal > 0 && (!product.defaultSellingPrice || product.defaultSellingPrice === 0)) {
-          productUpdates.defaultSellingPrice = sellingVal;
-        }
-        if (Object.keys(productUpdates).length > 0) {
-          await productRepository.update(item.productId, productUpdates, session);
-          logger.info(`⭐ Initialized Product Master Fallback Rates for '${product.name}' -> Purchase: ₹${rate}, Selling: ₹${sellingVal}`);
-        }
+        // Always create a new, distinct ProductBatch for each purchase item line
+        const [batchRecord] = await ProductBatch.create(
+          [
+            {
+              userId,
+              productId: item.productId,
+              purchaseId: newPurchase._id,
+              supplierId: newPurchase.supplierId,
+              batchNumber,
+              mfgDate: item.mfgDate ? new Date(item.mfgDate) : undefined,
+              expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
+              purchaseRate: itemRate,
+              mrp: itemMrp,
+              sellingPrice: itemSellingPrice,
+              initialQuantity: itemQty,
+              currentStock: itemQty,
+              isActive: true,
+              isDeleted: false,
+            },
+          ],
+          session ? { session } : {}
+        );
 
-        // CREATE BATCH RECORD FOR INVENTORY COST-LAYER TRACKING
-        let batchId = null;
-        let batchCodeVal = null;
-        const rawUserBatch = (item.batchNumber || '').toString().trim();
+        const batchId = batchRecord._id;
+        batchNumber = batchRecord.batchNumber;
 
-        const effectiveBatchNumber =
-          rawUserBatch.length > 0 &&
-          !rawUserBatch.toUpperCase().startsWith('BATCH-') &&
-          !rawUserBatch.toUpperCase().startsWith('AUTO')
-            ? rawUserBatch
-            : `LOT-${Date.now().toString().slice(-6)}-${String(itemIndex).padStart(2, '0')}`;
-
-        // Create a new distinct ProductBatch stock layer preserving purchaseRate and sellingPrice permanently
-        const batchDoc = new ProductBatch({
+        const purchaseItemData = {
+          userId,
+          purchaseId: newPurchase._id,
           productId: item.productId,
-          purchaseId: purchase._id,
-          supplierId,
-          batchNumber: effectiveBatchNumber,
+          productCode: item.productCode || '',
+          productName: item.productName || '',
+          brandName: item.brandName || '',
+          categoryName: item.categoryName || '',
+          unitName: item.unitName || 'Unit',
+          hsnCode: item.hsnCode || '',
+          batchId,
+          batchNumber,
           mfgDate: item.mfgDate ? new Date(item.mfgDate) : undefined,
           expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
-          purchaseRate: rate,
-          mrp: mrpVal,
-          sellingPrice: sellingVal,
-          initialQuantity: qty,
-          currentStock: qty,
-          isActive: true,
-        });
-
-        const savedBatch = session ? await batchDoc.save({ session }) : await batchDoc.save();
-        batchId = savedBatch._id;
-        batchCodeVal = savedBatch.batchNumber;
-        logger.info(`✅ Created Product Batch '${savedBatch.batchNumber}' -> Purchase Rate: ₹${rate}, Selling Price: ₹${sellingVal}, Stock: ${qty}`);
-
-        // AUTOMATICALLY INCREMENT PRODUCT MASTER TOTAL STOCK
-        const prevProductStock = product.totalStock || 0;
-        await productRepository.incrementStock(item.productId, qty, session);
-        logger.info(`✅ Incremented Product Master Stock (${product.name}): ${prevProductStock} -> ${prevProductStock + qty}`);
-
-        // Populate complete purchase item snapshot details
-        const discountPct = Number(item.discountPercent || 0);
-        const grossRateVal = qty * rate;
-        const discountAmt = Number(item.discountAmount || (grossRateVal * discountPct) / 100);
-        const taxableVal = Math.max(0, grossRateVal - discountAmt);
-        const gstPct = Number(item.gstPercent || product.gstRate || 18);
-        const taxAmt = Number(item.taxAmount || (taxableVal * gstPct) / 100);
-        const lineTot = Number(item.totalAmount || (taxableVal + taxAmt));
-
-        const lineItemData = {
-          purchaseId: purchase._id,
-          productId: item.productId,
-          productCode: product.code || '',
-          productName: product.name || 'Agri Product',
-          brandName: product.brandId?.name || product.company || '',
-          categoryName: product.categoryId?.name || 'General',
-          unitName: product.defaultUnitId?.shortName || 'Unit',
-          hsnCode: product.hsnCode || '',
-          batchId: batchId || null,
-          batchNumber: batchCodeVal || null,
-          mfgDate: item.mfgDate ? new Date(item.mfgDate) : undefined,
-          expiryDate: item.expiryDate ? new Date(item.expiryDate) : undefined,
-          quantity: qty,
-          purchaseRate: rate,
-          mrp: mrpVal,
-          sellingPrice: sellingVal,
-          discountPercent: discountPct,
-          discountAmount: discountAmt,
-          gstPercent: gstPct,
-          taxAmount: taxAmt,
-          taxableAmount: taxableVal,
-          lineTotal: lineTot,
-          totalAmount: lineTot,
+          quantity: itemQty,
+          purchaseRate: itemRate,
+          mrp: itemMrp,
+          sellingPrice: itemSellingPrice,
+          discountPercent: Number(item.discountPercent) || 0,
+          discountAmount: normalizeMoney(item.discountAmount || 0),
+          gstPercent: Number(item.gstPercent) || 18,
+          taxAmount: normalizeMoney(item.taxAmount || 0),
+          taxableAmount: normalizeMoney(item.taxableAmount || 0),
+          lineTotal: normalizeMoney(itemQty * itemRate),
+          totalAmount: normalizeMoney((itemQty * itemRate) + (Number(item.taxAmount) || 0)),
+          isDeleted: false,
         };
 
-        await purchaseRepository.createPurchaseItem(lineItemData, session);
+        const createdItem = await purchaseRepository.createPurchaseItem(purchaseItemData, session);
+        createdItems.push(createdItem);
 
-        // Insert Stock Ledger Entry (Audit Trail)
-        const ledgerData = {
+        const currentProduct = await productRepository.findById(item.productId, userId);
+        const previousStock = currentProduct ? currentProduct.totalStock : 0;
+        const updatedProduct = await productRepository.incrementStock(item.productId, itemQty, session, userId);
+        const currentStock = updatedProduct ? updatedProduct.totalStock : previousStock + itemQty;
+
+        const stockLedgerData = {
+          userId,
           transactionType: 'PURCHASE',
-          referenceId: purchase._id,
-          referenceNumber: effectiveInvoiceNumber,
+          referenceId: newPurchase._id,
+          referenceNumber: newPurchase.purchaseNumber,
           productId: item.productId,
-          batchId: batchId || null,
-          batchNumber: batchCodeVal || '',
-          quantity: qty,
-          purchaseRate: rate,
-          sellingPrice: sellingVal,
-          previousStock: prevProductStock,
-          currentStock: prevProductStock + qty,
+          batchId,
+          batchNumber,
+          quantity: itemQty,
+          purchaseRate: itemRate,
+          sellingPrice: itemSellingPrice,
+          previousStock,
+          currentStock,
           createdBy,
-          timestamp: purchaseDate ? new Date(purchaseDate) : new Date(),
+          timestamp: newPurchase.purchaseDate,
+          isDeleted: false,
         };
 
-        await purchaseRepository.createStockLedger(ledgerData, session);
-        logger.info(`✅ Inserted Stock Ledger Audit Entry for '${product.name}'`);
+        await purchaseRepository.createStockLedger(stockLedgerData, session);
       }
 
-      // 4. Update Supplier Balance & Record Single Purchase Ledger Entry
-      const supplier = await supplierRepository.findById(supplierId);
-      const prevBalance = Number(supplier?.outstandingBalance || 0);
+      const { Supplier } = await import('../../suppliers/models/supplier.model.js');
+      const supplier = await Supplier.findOne({ _id: supplierId, userId }).exec();
+      const prevSupplierBalance = supplier ? normalizeMoney(supplier.outstandingBalance || 0) : 0;
+      const newSupplierBalance = normalizeMoney(prevSupplierBalance + dueAmount);
 
-      const netBalanceImpact = totalInvoiceAmount - actualPaidAmount;
-      const finalBalance = prevBalance + netBalanceImpact;
-
+      const ledgerEntries = [];
       const purchaseLedgerData = {
+        userId,
         supplierId,
-        purchaseId: purchase._id,
+        purchaseId: newPurchase._id,
         transactionType: 'PURCHASE',
         purchaseAmount: totalInvoiceAmount,
         paidAmount: actualPaidAmount,
-        dueAmount: dueAmount,
-        runningBalance: finalBalance,
-        referenceNumber: effectiveInvoiceNumber,
-        notes: notes ? `Purchase Invoice ${effectiveInvoiceNumber}: ${notes}` : `Purchase Invoice ${effectiveInvoiceNumber}`,
-        date: purchaseDate ? new Date(purchaseDate) : new Date(),
+        dueAmount,
+        runningBalance: newSupplierBalance,
+        referenceNumber: newPurchase.purchaseNumber,
+        notes: `Purchase Invoice #${effectiveInvoiceNumber}`,
+        date: newPurchase.purchaseDate,
+        isDeleted: false,
       };
 
-      await SupplierLedger.create([purchaseLedgerData], session ? { session } : {});
-      logger.info(`✅ Recorded Purchase Ledger Entry (Net: +₹${netBalanceImpact}) -> Running Balance: ₹${finalBalance}`);
+      const purchaseLedgerEntry = session
+        ? (await SupplierLedger.create([purchaseLedgerData], { session }))[0]
+        : await SupplierLedger.create(purchaseLedgerData);
+      ledgerEntries.push(purchaseLedgerEntry);
 
-      // Update Supplier Master Outstanding Balance to finalBalance
-      await supplierRepository.update(supplierId, { outstandingBalance: finalBalance }, session ? { session } : {});
-      logger.info(`✅ Updated Supplier Outstanding Balance from ₹${prevBalance} to ₹${finalBalance}`);
+      if (supplier) {
+        if (session) {
+          await Supplier.findOneAndUpdate({ _id: supplierId, userId }, { outstandingBalance: newSupplierBalance }, { session });
+        } else {
+          await Supplier.findOneAndUpdate({ _id: supplierId, userId }, { outstandingBalance: newSupplierBalance });
+        }
+      }
 
-      return purchase;
+      return {
+        purchase: newPurchase,
+        items: createdItems,
+        ledgerEntries,
+      };
     };
 
     try {
       const session = await mongoose.startSession();
       session.startTransaction();
       try {
-        const purchase = await executeSave(session);
+        const result = await executeSave(session);
         await session.commitTransaction();
         session.endSession();
-        return await purchaseRepository.findByIdPopulated(purchase._id);
+        return result;
       } catch (txnError) {
         await session.abortTransaction();
         session.endSession();
-        if (txnError.message?.includes('replica set member')) {
-          logger.info('ℹ️ Standalone MongoDB detected. Executing purchase save without transaction session...');
-          const purchase = await executeSave(null);
-          return await purchaseRepository.findByIdPopulated(purchase._id);
-        }
         throw txnError;
       }
     } catch (err) {
-      if (err.message?.includes('replica set member')) {
-        const purchase = await executeSave(null);
-        return await purchaseRepository.findByIdPopulated(purchase._id);
-      }
-      throw err;
+      logger.warn({ err }, 'MongoDB Standalone Mode detected: Fallback execution without Session Transaction');
+      return await executeSave(null);
     }
   },
 
-  // Soft-Delete Purchase Invoice with 90-Day Retention & Stock/Financial Safety
-  async softDeletePurchase(id, userContext = {}, confirmation = '') {
+  async deletePurchase(id, userId, confirmation = 'DELETE') {
+    return await this.softDeletePurchase(id, userId, confirmation);
+  },
+
+  async softDeletePurchase(id, userId, confirmation = '') {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Purchase ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    if ((confirmation || '').toString().trim() !== 'DELETE') {
+    const reqConfirmation = (confirmation || 'DELETE').toString().trim();
+    if (reqConfirmation !== 'DELETE') {
       throw new AppError('Invalid confirmation text. Must type DELETE exactly.', HTTP_STATUS.BAD_REQUEST);
     }
 
@@ -303,55 +307,108 @@ export const purchaseService = {
     const { ProductBatch } = await import('../../products/models/productBatch.model.js');
     const { Product } = await import('../../products/models/product.model.js');
     const { SupplierLedger } = await import('../../suppliers/models/supplierLedger.model.js');
+    const { StockLedger } = await import('../models/stockLedger.model.js');
+    const { SalesInvoice } = await import('../../sales/models/salesInvoice.model.js');
     const { supplierService } = await import('../../suppliers/services/supplier.service.js');
+    const { productService } = await import('../../products/services/product.service.js');
 
-    const purchase = await Purchase.findOne({ _id: id, isDeleted: { $ne: true } }).exec();
+    const purchase = await Purchase.findOne({ _id: id, userId, isDeleted: { $ne: true } }).exec();
     if (!purchase) {
       throw new AppError('Purchase record not found or already deleted', HTTP_STATUS.NOT_FOUND);
     }
 
-    const items = await PurchaseItem.find({ purchaseId: purchase._id }).exec();
+    // 1. SAFETY CHECK FOR SALES CONSUMPTION (Requirement 6)
+    const batchesForPurchase = await ProductBatch.find({ userId, purchaseId: purchase._id, isDeleted: { $ne: true } }).exec();
 
-    // 1. Soft delete associated ProductBatch stock layers & reduce unconsumed stock from Product.totalStock
-    for (const item of items) {
-      if (item.batchId) {
-        const batch = await ProductBatch.findById(item.batchId).exec();
-        if (batch) {
-          batch.isActive = false;
-          batch.isDeleted = true;
-          batch.deletedAt = new Date();
-          await batch.save();
+    for (const batch of batchesForPurchase) {
+      const initQty = Number(batch.initialQuantity || 0);
+      const currStock = Number(batch.currentStock || 0);
 
-          const unconsumedStock = Math.max(0, Number(batch.currentStock || 0));
-          if (unconsumedStock > 0 && item.productId) {
-            const product = await Product.findById(item.productId).exec();
-            if (product) {
-              const currentTotal = Number(product.totalStock || 0);
-              product.totalStock = Math.max(0, currentTotal - unconsumedStock);
-              await product.save();
-              logger.info(`📦 Reduced Product Master Stock for '${product.name}' by ${unconsumedStock} (Unconsumed stock of soft-deleted batch ${batch.batchNumber})`);
-            }
-          }
-        }
+      if (currStock < initQty) {
+        throw new AppError(
+          `Cannot delete purchase invoice. Product batch '${batch.batchNumber}' created by this purchase has already participated in sales/consumption (${initQty - currStock} units sold). Reverse sales invoices first.`,
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+
+      const salesWithBatch = await SalesInvoice.findOne({
+        userId,
+        'items.batchAllocations.batchId': batch._id,
+      }).lean().exec();
+
+      if (salesWithBatch) {
+        throw new AppError(
+          `Cannot delete purchase invoice. Product batch '${batch.batchNumber}' is referenced in Sales Invoice #${salesWithBatch.invoiceNumber}. Reverse sales invoices first.`,
+          HTTP_STATUS.BAD_REQUEST
+        );
       }
     }
 
-    // 2. Mark Purchase header as soft-deleted
+    // 2. FULL CASCADE REVERSAL (Requirement 5)
     purchase.isDeleted = true;
     purchase.isActive = false;
     purchase.deletedAt = new Date();
-    purchase.deletedBy = userContext.name || userContext.userName || 'Admin';
+    purchase.deletedBy = userId;
     await purchase.save();
 
-    // 3. Mark SupplierLedger entries (PURCHASE and PAYMENT) linked to this purchase as soft-deleted
-    await SupplierLedger.updateMany(
-      { purchaseId: purchase._id },
+    await PurchaseItem.updateMany(
+      { userId, purchaseId: purchase._id },
       { $set: { isDeleted: true, deletedAt: new Date() } }
     ).exec();
 
-    // 4. Recalculate Supplier Balance
+    const items = await PurchaseItem.find({ userId, purchaseId: purchase._id }).lean().exec();
+    const affectedProductIds = new Set(items.map((i) => i.productId?.toString()).filter(Boolean));
+
+    const batchIds = [];
+    for (const batch of batchesForPurchase) {
+      batchIds.push(batch._id);
+      batch.isActive = false;
+      batch.isDeleted = true;
+      batch.currentStock = 0;
+      batch.deletedAt = new Date();
+      await batch.save();
+    }
+
+    await StockLedger.updateMany(
+      { userId, referenceId: purchase._id },
+      { $set: { isDeleted: true, deletedAt: new Date() } }
+    ).exec();
+    if (batchIds.length > 0) {
+      await StockLedger.updateMany(
+        { userId, batchId: { $in: batchIds } },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      ).exec();
+    }
+
+    await SupplierLedger.updateMany(
+      { userId, purchaseId: purchase._id },
+      { $set: { isDeleted: true, deletedAt: new Date() } }
+    ).exec();
+
     if (purchase.supplierId) {
-      await supplierService.calculateSupplierBalance(purchase.supplierId);
+      await supplierService.calculateSupplierBalance(purchase.supplierId, userId);
+    }
+
+    for (const prodIdStr of affectedProductIds) {
+      const prodObjId = new mongoose.Types.ObjectId(prodIdStr);
+      const remainingActiveBatches = await ProductBatch.find({
+        userId,
+        productId: prodObjId,
+        isDeleted: { $ne: true },
+        isActive: true,
+      }).lean().exec();
+
+      const newTotalStock = remainingActiveBatches.reduce(
+        (sum, b) => sum + Math.max(0, Number(b.currentStock || 0)),
+        0
+      );
+
+      await Product.findOneAndUpdate(
+        { _id: prodObjId, userId },
+        { totalStock: newTotalStock }
+      ).exec();
+
+      await productService.reconcileProductBatches(prodObjId, userId);
     }
 
     logger.info(`🔒 Soft-deleted Purchase Invoice #${purchase.purchaseNumber || purchase.supplierInvoiceNumber} [${id}]`);
@@ -363,8 +420,8 @@ export const purchaseService = {
     };
   },
 
-  // Admin Restore Soft-Deleted Purchase Invoice
-  async restorePurchase(id, userContext = {}) {
+  async restorePurchase(id, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Purchase ID format', HTTP_STATUS.BAD_REQUEST);
     }
@@ -376,17 +433,16 @@ export const purchaseService = {
     const { SupplierLedger } = await import('../../suppliers/models/supplierLedger.model.js');
     const { supplierService } = await import('../../suppliers/services/supplier.service.js');
 
-    const purchase = await Purchase.findOne({ _id: id, isDeleted: true }).exec();
+    const purchase = await Purchase.findOne({ _id: id, userId, isDeleted: true }).exec();
     if (!purchase) {
       throw new AppError('Soft-deleted purchase invoice not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    const items = await PurchaseItem.find({ purchaseId: purchase._id }).exec();
+    const items = await PurchaseItem.find({ userId, purchaseId: purchase._id }).exec();
 
-    // 1. Restore associated ProductBatch records & add unconsumed stock back to Product.totalStock
     for (const item of items) {
       if (item.batchId) {
-        const batch = await ProductBatch.findById(item.batchId).exec();
+        const batch = await ProductBatch.findOne({ _id: item.batchId, userId }).exec();
         if (batch) {
           batch.isActive = true;
           batch.isDeleted = false;
@@ -395,39 +451,33 @@ export const purchaseService = {
 
           const unconsumedStock = Math.max(0, Number(batch.currentStock || 0));
           if (unconsumedStock > 0 && item.productId) {
-            const product = await Product.findById(item.productId).exec();
+            const product = await Product.findOne({ _id: item.productId, userId }).exec();
             if (product) {
               const currentTotal = Number(product.totalStock || 0);
               product.totalStock = currentTotal + unconsumedStock;
               await product.save();
-              logger.info(`📦 Restored Product Master Stock for '${product.name}' by +${unconsumedStock} (Restored batch ${batch.batchNumber})`);
             }
           }
         }
       }
     }
 
-    // 2. Restore Purchase header
     purchase.isDeleted = false;
     purchase.isActive = true;
     purchase.deletedAt = null;
     purchase.deletedBy = null;
     purchase.restoredAt = new Date();
-    purchase.restoredBy = userContext.name || userContext.userName || 'Admin';
+    purchase.restoredBy = userId;
     await purchase.save();
 
-    // 3. Restore SupplierLedger entries (PURCHASE and PAYMENT) linked to this purchase
     await SupplierLedger.updateMany(
-      { purchaseId: purchase._id },
+      { userId, purchaseId: purchase._id },
       { $set: { isDeleted: false, deletedAt: null } }
     ).exec();
 
-    // 4. Recalculate Supplier Balance
     if (purchase.supplierId) {
-      await supplierService.calculateSupplierBalance(purchase.supplierId);
+      await supplierService.calculateSupplierBalance(purchase.supplierId, userId);
     }
-
-    logger.info(`🔓 Restored Purchase Invoice #${purchase.purchaseNumber || purchase.supplierInvoiceNumber} [${id}]`);
 
     return {
       success: true,
@@ -436,10 +486,10 @@ export const purchaseService = {
     };
   },
 
-  // Get Soft-Deleted Purchases for Admin Panel
-  async getDeletedPurchases(query = {}) {
+  async getDeletedPurchases(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
     const { Purchase } = await import('../models/purchase.model.js');
-    const filter = { isDeleted: true };
+    const filter = { userId, isDeleted: true };
 
     if (query.search) {
       filter.$or = [

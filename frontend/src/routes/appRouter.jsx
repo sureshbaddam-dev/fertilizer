@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { ProtectedRoute, PublicOnlyRoute } from './ProtectedRoute';
 import AuthLayout from '../layouts/AuthLayout';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../pages/auth/LoginPage';
@@ -10,6 +11,7 @@ import HomePage from '../pages/dashboard/HomePage';
 import SettingsHubLayout from '../pages/settings/SettingsHubLayout';
 import ShopDiscountPage from '../pages/settings/ShopDiscountPage';
 import ShopProfilePage from '../pages/settings/ShopProfilePage';
+import UserProfilePage from '../pages/settings/UserProfilePage';
 import MasterDataHubPage from '../pages/settings/MasterDataHubPage';
 import UsersRolesPage from '../pages/settings/UsersRolesPage';
 import TaxesGstPage from '../pages/settings/TaxesGstPage';
@@ -31,14 +33,48 @@ import GeneralCustomersPage from '../pages/customers/GeneralCustomersPage';
 import InventoryPage from '../pages/inventory/InventoryPage';
 import ReportsPage from '../pages/reports/ReportsPage';
 import ArchivedPurchasesPage from '../pages/settings/ArchivedPurchasesPage';
+import SupportPage from '../pages/support/SupportPage';
+import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
+import AdminSubscriptionsPage from '../pages/admin/AdminSubscriptionsPage';
+import FullScreenSubscriptionPage from '../pages/subscription/FullScreenSubscriptionPage';
 
 export const appRouter = createBrowserRouter([
+  {
+    path: '/subscription/plans',
+    element: (
+      <ProtectedRoute>
+        <FullScreenSubscriptionPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/subscription',
+    element: (
+      <ProtectedRoute>
+        <FullScreenSubscriptionPage />
+      </ProtectedRoute>
+    ),
+  },
   {
     path: '/',
     element: <AuthLayout />,
     children: [
-      { path: 'login', element: <LoginPage /> },
-      { path: 'signup', element: <SignUpPage /> },
+      {
+        path: 'login',
+        element: (
+          <PublicOnlyRoute>
+            <LoginPage />
+          </PublicOnlyRoute>
+        ),
+      },
+      {
+        path: 'signup',
+        element: (
+          <PublicOnlyRoute>
+            <SignUpPage />
+          </PublicOnlyRoute>
+        ),
+      },
       { path: 'verify-otp', element: <OtpVerificationPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
@@ -46,7 +82,11 @@ export const appRouter = createBrowserRouter([
   },
   {
     path: '/',
-    element: <MainLayout />,
+    element: (
+      <ProtectedRoute>
+        <MainLayout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, element: <HomePage /> },
       { path: 'dashboard', element: <HomePage /> },
@@ -56,6 +96,8 @@ export const appRouter = createBrowserRouter([
       
       // Customers Module Routes
       { path: 'customers', element: <CustomerListPage /> },
+      { path: 'general-customers', element: <GeneralCustomersPage /> },
+      { path: 'customers/general', element: <GeneralCustomersPage /> },
       { path: 'customers/ledger', element: <CustomerLedgerPage /> },
       { path: 'customers/:customerId/ledger', element: <CustomerLedgerPage /> },
 
@@ -76,7 +118,10 @@ export const appRouter = createBrowserRouter([
       { path: 'invoices/:invoiceId', element: <InvoiceDetailsPage /> },
       { path: 'invoices/:invoiceId/edit', element: <EditInvoicePage /> },
       { path: 'reports', element: <ReportsPage /> },
-      { path: 'general-customers', element: <GeneralCustomersPage /> },
+      { path: 'support', element: <SupportPage /> },
+      { path: 'admin/tickets', element: <AdminTicketsPage /> },
+      { path: 'admin/subscriptions', element: <AdminSubscriptionsPage /> },
+      { path: 'subscription', element: <FullScreenSubscriptionPage /> },
 
       // Redirect legacy /masters to unified /settings/master-data
       { path: 'masters/*', element: <Navigate to="/settings/master-data" replace /> },
@@ -86,6 +131,7 @@ export const appRouter = createBrowserRouter([
         path: 'settings',
         element: <SettingsHubLayout />,
         children: [
+          { path: 'user-profile', element: <UserProfilePage /> },
           { path: 'shop-discount', element: <ShopDiscountPage /> },
           { path: 'shop', element: <ShopProfilePage /> },
           { path: 'shop-profile', element: <Navigate to="/settings/shop" replace /> },
@@ -97,7 +143,6 @@ export const appRouter = createBrowserRouter([
           { path: 'backup', element: <Navigate to="/settings" replace /> },
           { path: 'security', element: <SecurityPage /> },
           { path: 'preferences', element: <PreferencesPage /> },
-          { path: 'deleted-purchases', element: <ArchivedPurchasesPage /> },
         ],
       },
     ],

@@ -3,6 +3,12 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const productBatchSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
@@ -45,6 +51,19 @@ const productBatchSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    discount: {
+      type: Number,
+      default: 0,
+    },
+    discountType: {
+      type: String,
+      enum: ['Percentage', 'Amount'],
+      default: 'Percentage',
+    },
+    gstRate: {
+      type: Number,
+      default: 0,
+    },
     initialQuantity: {
       type: Number,
       default: 0,
@@ -57,6 +76,15 @@ const productBatchSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
       index: true,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -79,7 +107,8 @@ productBatchSchema.virtual('purchaseDate').get(function () {
 });
 
 productBatchSchema.plugin(softDeletePlugin);
-productBatchSchema.index({ productId: 1, batchNumber: 1 });
-productBatchSchema.index({ productId: 1, isActive: 1, currentStock: 1, createdAt: 1 });
+productBatchSchema.index({ userId: 1, productId: 1, batchNumber: 1 });
+productBatchSchema.index({ userId: 1, productId: 1, isDeleted: 1, isActive: 1, currentStock: 1, createdAt: 1 });
+productBatchSchema.index({ userId: 1, purchaseId: 1, isDeleted: 1 });
 
 export const ProductBatch = mongoose.model('ProductBatch', productBatchSchema);

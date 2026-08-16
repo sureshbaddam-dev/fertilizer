@@ -800,7 +800,8 @@ export default function SupplierLedgerPage() {
                   type="number"
                   step="0.01"
                   required
-                  value={paymentAmount}
+                  onFocus={(e) => e.target.select()}
+                  value={paymentAmount === 0 || paymentAmount === '0' || !paymentAmount ? '' : paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder="0.00"
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg font-mono font-bold text-gray-900 text-sm focus:outline-none focus:border-[#00783C]"

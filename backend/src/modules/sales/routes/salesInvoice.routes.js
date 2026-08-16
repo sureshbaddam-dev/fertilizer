@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { salesInvoiceController } from '../controllers/salesInvoice.controller.js';
 
+import { protect } from '../../../middlewares/auth.middleware.js';
+
 const router = Router();
+
+router.use(protect);
 
 router.get('/', salesInvoiceController.getInvoices);
 router.post('/preview', salesInvoiceController.previewInvoice);

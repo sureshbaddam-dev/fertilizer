@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const customerSchema = new mongoose.Schema(
   {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     name: { type: String, required: true, index: true },
     mobile: { type: String, required: true },
     village: { type: String, default: 'Narketpally' },
@@ -38,7 +39,7 @@ const customerSchema = new mongoose.Schema(
 );
 
 customerSchema.index(
-  { mobile: 1 },
+  { userId: 1, mobile: 1 },
   {
     unique: true,
     partialFilterExpression: { customerType: 'ADDED' },

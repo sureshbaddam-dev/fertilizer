@@ -19,54 +19,67 @@ export const productRepository = {
     return await query.exec();
   },
 
-  async findByIdPopulated(id) {
-    return await Product.findById(id)
+  async findByIdPopulated(id, userId = null) {
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    return await Product.findOne(filter)
       .populate('brandId', 'name shortName logo')
       .populate('categoryId', 'name slug icon color')
       .populate('defaultUnitId', 'name shortName allowDecimals')
       .exec();
   },
 
-  async incrementStock(productId, qty, session = null) {
+  async incrementStock(productId, qty, session = null, userId = null) {
     const opts = session ? { session } : {};
-    return await Product.findByIdAndUpdate(
-      productId,
+    const filter = userId ? { _id: productId, userId } : { _id: productId };
+    return await Product.findOneAndUpdate(
+      filter,
       { $inc: { totalStock: qty } },
       { new: true, ...opts }
     ).exec();
   },
 
-  async findBatch(productId, batchNumber, session = null) {
+  async findBatch(productId, batchNumber, session = null, userId = null) {
     const opts = session ? { session } : {};
-    return await ProductBatch.findOne({ productId, batchNumber }, null, opts).exec();
+    const filter = userId ? { productId, batchNumber, userId } : { productId, batchNumber };
+    return await ProductBatch.findOne(filter, null, opts).exec();
   },
 
-  async findBatchesByProduct(productId) {
-    return await ProductBatch.find({ productId, isActive: true }).sort({ expiryDate: 1 }).exec();
+  async findBatchesByProduct(productId, userId = null) {
+    const filter = userId ? { productId, userId, isDeleted: { $ne: true } } : { productId, isDeleted: { $ne: true } };
+    return await ProductBatch.find(filter).sort({ createdAt: 1 }).exec();
   },
 
   async upsertBatch(batchData, session = null) {
-    const { productId, batchNumber, quantity = 0, ...rest } = batchData;
+    const { productId, batchNumber, quantity = 0, userId, ...rest } = batchData;
 
-    let batch = await ProductBatch.findOne({ productId, batchNumber }, null, session ? { session } : {});
+    const filter = userId ? { productId, batchNumber, userId } : { productId, batchNumber };
+    let batch = await ProductBatch.findOne(filter, null, session ? { session } : {});
     if (batch) {
-      if (quantity) batch.currentStock += quantity;
+      if (quantity) {
+        batch.initialQuantity = (batch.initialQuantity || 0) + quantity;
+        batch.currentStock += quantity;
+      }
       if (rest.purchaseRate !== undefined) batch.purchaseRate = Number(rest.purchaseRate) || 0;
       if (rest.mrp !== undefined) batch.mrp = Number(rest.mrp) || 0;
       if (rest.sellingPrice !== undefined) batch.sellingPrice = Number(rest.sellingPrice) || 0;
       if (rest.expiryDate) batch.expiryDate = rest.expiryDate;
       if (rest.mfgDate) batch.mfgDate = rest.mfgDate;
+      batch.isActive = batch.currentStock > 0;
       await batch.save(session ? { session } : {});
       return batch;
     } else {
+      const initQty = Number(quantity) || Number(rest.currentStock) || Number(rest.initialQuantity) || 0;
       const [newBatch] = await ProductBatch.create(
         [{
           productId,
           batchNumber,
-          currentStock: Number(quantity) || 0,
+          userId,
+          initialQuantity: initQty,
+          currentStock: initQty,
           purchaseRate: Number(rest.purchaseRate) || 0,
           mrp: Number(rest.mrp) || 0,
           sellingPrice: Number(rest.sellingPrice) || 0,
+          isActive: true,
           ...rest,
         }],
         session ? { session } : {}

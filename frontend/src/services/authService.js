@@ -1,6 +1,55 @@
 import { apiClient } from './apiClient';
+import { queryClient } from '../utils/queryClient';
+
+let listeners = [];
+let isInitializing = true;
+
+const notifyListeners = () => {
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (_e) {}
+  });
+};
+
+
+const saveTokens = (data) => {
+  if (data?.accessToken) {
+    localStorage.setItem('vedixa_access_token', data.accessToken);
+    localStorage.setItem('mandhi_access_token', data.accessToken);
+  }
+  if (data?.user) {
+    localStorage.setItem('vedixa_user', JSON.stringify(data.user));
+    localStorage.setItem('mandhi_user', JSON.stringify(data.user));
+  }
+};
+
+const clearTokens = () => {
+  queryClient.clear();
+  localStorage.removeItem('vedixa_access_token');
+  localStorage.removeItem('vedixa_refresh_token');
+  localStorage.removeItem('vedixa_user');
+  localStorage.removeItem('mandhi_access_token');
+  localStorage.removeItem('mandhi_refresh_token');
+  localStorage.removeItem('mandhi_user');
+};
 
 export const authService = {
+  get isInitializing() {
+    return isInitializing;
+  },
+
+  subscribe(fn) {
+    listeners.push(fn);
+    try {
+      fn();
+    } catch (_e) {}
+    return () => {
+      listeners = listeners.filter((l) => l !== fn);
+    };
+  },
+
+
   async signup(data) {
     return await apiClient.post('/auth/signup', data);
   },
@@ -8,12 +57,8 @@ export const authService = {
   async verifySignupOtp(data) {
     const response = await apiClient.post('/auth/verify-signup-otp', data);
     if (response.success && response.data?.accessToken) {
-      localStorage.setItem('vedixa_access_token', response.data.accessToken);
-      localStorage.setItem('vedixa_refresh_token', response.data.refreshToken);
-      localStorage.setItem('vedixa_user', JSON.stringify(response.data.user));
-      localStorage.setItem('mandhi_access_token', response.data.accessToken);
-      localStorage.setItem('mandhi_refresh_token', response.data.refreshToken);
-      localStorage.setItem('mandhi_user', JSON.stringify(response.data.user));
+      saveTokens(response.data);
+      notifyListeners();
     }
     return response;
   },
@@ -21,12 +66,8 @@ export const authService = {
   async login(data) {
     const response = await apiClient.post('/auth/login', data);
     if (response.success && response.data?.accessToken) {
-      localStorage.setItem('vedixa_access_token', response.data.accessToken);
-      localStorage.setItem('vedixa_refresh_token', response.data.refreshToken);
-      localStorage.setItem('vedixa_user', JSON.stringify(response.data.user));
-      localStorage.setItem('mandhi_access_token', response.data.accessToken);
-      localStorage.setItem('mandhi_refresh_token', response.data.refreshToken);
-      localStorage.setItem('mandhi_user', JSON.stringify(response.data.user));
+      saveTokens(response.data);
+      notifyListeners();
     }
     return response;
   },
@@ -43,17 +84,38 @@ export const authService = {
     return await apiClient.post('/auth/reset-password', data);
   },
 
+  async refreshToken() {
+    try {
+      const response = await apiClient.post('/auth/refresh', {});
+      const payload = response.data || response;
+      if (payload?.accessToken) {
+        saveTokens(payload);
+        notifyListeners();
+        return payload;
+      } else {
+        throw new Error('Invalid refresh response structure');
+      }
+    } catch (err) {
+      clearTokens();
+      notifyListeners();
+      throw err;
+    }
+  },
+
   async logout() {
     try {
-      await apiClient.post('/auth/logout');
+      await apiClient.post('/auth/logout', {});
+    } catch (_err) {
+      // Continue cleanup regardless
     } finally {
-      localStorage.removeItem('vedixa_access_token');
-      localStorage.removeItem('vedixa_refresh_token');
-      localStorage.removeItem('vedixa_user');
-      localStorage.removeItem('mandhi_access_token');
-      localStorage.removeItem('mandhi_refresh_token');
-      localStorage.removeItem('mandhi_user');
+      clearTokens();
+      notifyListeners();
     }
+  },
+
+  handleForceLogout() {
+    clearTokens();
+    notifyListeners();
   },
 
   getCurrentUser() {
@@ -61,7 +123,69 @@ export const authService = {
     return userStr ? JSON.parse(userStr) : null;
   },
 
+  getAccessToken() {
+    return localStorage.getItem('vedixa_access_token') || localStorage.getItem('mandhi_access_token');
+  },
+
   isAuthenticated() {
-    return !!(localStorage.getItem('vedixa_access_token') || localStorage.getItem('mandhi_access_token'));
+    return !!this.getAccessToken();
+  },
+
+  async initAuth() {
+    try {
+      const token = this.getAccessToken();
+
+      if (!token) {
+        clearTokens();
+      } else {
+        let isExpired = false;
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            const expMs = payload.exp * 1000;
+            if (Date.now() >= expMs - 30000) {
+              isExpired = true;
+            }
+          } else {
+            isExpired = true;
+          }
+        } catch (_e) {
+          isExpired = true;
+        }
+
+        if (isExpired) {
+          try {
+            await this.refreshToken();
+          } catch (_err) {
+            clearTokens();
+          }
+        }
+      }
+    } catch (_err) {
+      clearTokens();
+    } finally {
+      isInitializing = false;
+      notifyListeners();
+    }
+  },
+
+  async getProfile() {
+    return await apiClient.get('/auth/me');
+  },
+
+  async updateProfile(data) {
+    const res = await apiClient.put('/auth/me', data);
+    if (res.success && res.data) {
+      localStorage.setItem('vedixa_user', JSON.stringify(res.data));
+      localStorage.setItem('mandhi_user', JSON.stringify(res.data));
+      notifyListeners();
+    }
+    return res;
   },
 };
+
+// Initialize session check on boot
+authService.initAuth();
+
+

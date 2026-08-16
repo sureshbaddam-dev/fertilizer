@@ -265,6 +265,7 @@ export default function BillsHistoryPage() {
 
                       const isPaid = inv.status === 'Paid';
                       const isPartial = inv.status === 'Partial';
+                      const isCancelled = inv.status === 'Cancelled';
 
                       return (
                         <tr
@@ -301,6 +302,8 @@ export default function BillsHistoryPage() {
                                   ? 'bg-emerald-50 text-[#047857] border border-emerald-200'
                                   : isPartial
                                   ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : isCancelled
+                                  ? 'bg-slate-100 text-slate-700 border border-slate-300'
                                   : 'bg-red-50 text-red-700 border border-red-200'
                               }`}
                             >
@@ -348,6 +351,7 @@ export default function BillsHistoryPage() {
 
               const isPaid = inv.status === 'Paid';
               const isPartial = inv.status === 'Partial';
+              const isCancelled = inv.status === 'Cancelled';
 
               return (
                 <div
@@ -368,6 +372,8 @@ export default function BillsHistoryPage() {
                           ? 'bg-emerald-50 text-[#047857] border border-emerald-200'
                           : isPartial
                           ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                          : isCancelled
+                          ? 'bg-slate-100 text-slate-700 border border-slate-300'
                           : 'bg-red-50 text-red-700 border border-red-200'
                       }`}
                     >

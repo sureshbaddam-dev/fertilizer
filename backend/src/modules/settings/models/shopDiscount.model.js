@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const shopDiscountSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     discountType: {
       type: String,
       enum: ['percentage', 'amount'],

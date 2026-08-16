@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import AddCustomerModal from '../../components/customers/AddCustomerModal';
 import { customerService } from '../../services/customerService';
+import { useSettings } from '../../contexts/SettingsContext';
 import Button from '../../components/ui/Button';
 import PageLayout from '../../components/ui/PageLayout';
 
@@ -159,8 +160,10 @@ function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
               <label className="text-[11px] font-semibold text-gray-700 block">Credit Limit (₹)</label>
               <input
                 type="number"
-                value={formData.creditLimit}
-                onChange={(e) => setFormData({ ...formData, creditLimit: Number(e.target.value) })}
+                onFocus={(e) => e.target.select()}
+                value={formData.creditLimit === 0 || formData.creditLimit === '0' || !formData.creditLimit ? '' : formData.creditLimit}
+                onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                placeholder="50000"
                 className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:outline-none focus:border-[#00783C]"
               />
             </div>
@@ -278,15 +281,16 @@ function DeleteCustomerModal({ isOpen, onClose, customer, onDeleteSuccess }) {
 }
 
 // WhatsApp Broadcast Modal Component
-function WhatsAppBroadcastModal({ isOpen, onClose, customers }) {
+function WhatsAppBroadcastModal({ isOpen, onClose, customers, shopSettings = {} }) {
   const [audience, setAudience] = useState('due');
 
   if (!isOpen) return null;
 
   const dueCustomers = customers.filter((c) => (c.outstandingBalance || 0) > 0);
+  const shopName = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
 
   const handleSend = () => {
-    const text = `🌾 *VEDIXA AGRI SOLUTIONS*\n*Customer Ledger Summary Broadcast*\n\nTotal Due Customers: ${dueCustomers.length}\nTotal Outstanding Amount: ₹ ${dueCustomers.reduce((a, b) => a + (b.outstandingBalance || 0), 0).toLocaleString('en-IN')}\n\nThank you for choosing Vedixa Agri Solutions!`;
+    const text = `🌾 *${shopName || 'Store'}*\n*Customer Ledger Summary Broadcast*\n\nTotal Due Customers: ${dueCustomers.length}\nTotal Outstanding Amount: ₹ ${dueCustomers.reduce((a, b) => a + (b.outstandingBalance || 0), 0).toLocaleString('en-IN')}\n\nThank you for choosing ${shopName || 'us'}!`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
     onClose();
   };
@@ -374,6 +378,7 @@ function WhatsAppBroadcastModal({ isOpen, onClose, customers }) {
 export default function CustomerListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings: shopSettings } = useSettings();
 
   // Search & Pagination State
   const [searchQuery, setSearchQuery] = useState('');
@@ -460,42 +465,73 @@ export default function CustomerListPage() {
     const drawHeaderAndSummary = () => {
       const pageWidth = doc.internal.pageSize.width;
 
+      const shopName = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
+      const address = (shopSettings?.address || '').trim();
+      const phone = (shopSettings?.mobile || shopSettings?.phone || shopSettings?.whatsappNumber || '').trim();
+      const gstin = (shopSettings?.gstNumber || shopSettings?.gstin || '').trim();
+      const email = (shopSettings?.email || '').trim();
+
+      const contactParts = [];
+      if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
+      if (phone) contactParts.push(`Phone: ${phone}`);
+      if (email) contactParts.push(`Email: ${email}`);
+      const contactLine = contactParts.join(' | ');
+
+      const logoUrl = shopSettings?.logoUrl || shopSettings?.shopLogo || '';
+      let textLeftX = 12;
+
+      if (logoUrl) {
+        try {
+          doc.addImage(logoUrl, 12, 4, 28, 17);
+          textLeftX = 44;
+        } catch (e) {
+          textLeftX = 12;
+        }
+      }
+
       // 1. Header Banner
-      doc.setFillColor(4, 120, 87); // VEDIXA Green (#047857)
-      doc.rect(0, 0, pageWidth, 24, 'F');
+      doc.setFillColor(4, 120, 87); // Emerald Green (#047857)
+      doc.rect(0, 0, pageWidth, 26, 'F');
 
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text('VEDIXA AGRI SOLUTIONS', 12, 11);
+      doc.setFontSize(15);
+      doc.text((shopName || 'CUSTOMER DIRECTORY').toUpperCase(), textLeftX, 10);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text('Fertilizers, Pesticides & Seeds Master Dealer | Main Market, Narketpally', 12, 17);
-      doc.text('GSTIN: 36ABCDE1234F1Z5 | Phone: +91 98765 43210', 12, 22);
+      doc.setFontSize(8.5);
+
+      if (address && contactLine) {
+        doc.text(address, textLeftX, 15.5);
+        doc.text(contactLine, textLeftX, 20.5);
+      } else if (address) {
+        doc.text(address, textLeftX, 18);
+      } else if (contactLine) {
+        doc.text(contactLine, textLeftX, 18);
+      }
 
       // 2. Report Title
       doc.setTextColor(17, 24, 39);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(13);
-      doc.text('CUSTOMER MASTER LIST REPORT', 12, 31);
+      doc.text('CUSTOMER MASTER LIST REPORT', 12, 33);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(107, 114, 128);
-      doc.text(`Generated Date & Time: ${dateFormatted} at ${timeFormatted}`, 12, 36);
+      doc.text(`Generated Date & Time: ${dateFormatted} at ${timeFormatted}`, 12, 38);
 
       // 3. Dynamic Summary Bar
       doc.setFillColor(243, 244, 246);
-      doc.roundedRect(12, 40, pageWidth - 24, 14, 2, 2, 'F');
+      doc.roundedRect(12, 42, pageWidth - 24, 14, 2, 2, 'F');
 
       doc.setFontSize(8.5);
       doc.setTextColor(31, 41, 55);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Total Customers: ${summary.totalCustomers}`, 18, 49);
-      doc.text(`Customers with Due: ${summary.customersWithDue}`, 90, 49);
+      doc.text(`Total Customers: ${summary.totalCustomers}`, 18, 51);
+      doc.text(`Customers with Due: ${summary.customersWithDue}`, 90, 51);
       doc.setTextColor(220, 38, 38);
-      doc.text(`Total Outstanding Due: Rs. ${summary.totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 175, 49);
+      doc.text(`Total Outstanding Due: Rs. ${summary.totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 175, 51);
     };
 
     // Table Data Matrix
@@ -547,8 +583,8 @@ export default function CustomerListPage() {
     ]);
 
     autoTable(doc, {
-      startY: 58,
-      margin: { top: 58, bottom: 16, left: 12, right: 12 },
+      startY: 60,
+      margin: { top: 60, bottom: 16, left: 12, right: 12 },
       head: tableHeaders,
       body: tableData,
       theme: 'grid',
@@ -590,8 +626,10 @@ export default function CustomerListPage() {
         doc.setFontSize(8);
         doc.setTextColor(156, 163, 175);
         doc.setFont('helvetica', 'normal');
+        const shopTitle = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
+        const footerTitle = shopTitle ? `${shopTitle} - ` : '';
         doc.text(
-          `Page ${data.pageNumber} of ${pageCount} | VEDIXA AGRI SOLUTIONS - Master Customer Report (Confidential)`,
+          `Page ${data.pageNumber} of ${pageCount} | ${footerTitle}Master Customer Report (Confidential)`,
           12,
           pageHeight - 8
         );
@@ -644,14 +682,15 @@ export default function CustomerListPage() {
   // Individual WhatsApp Chat
   const handleSingleWhatsApp = (e, c) => {
     e.stopPropagation();
-    const text = `🌾 *VEDIXA AGRI SOLUTIONS*\nHello ${c.name},\nYour outstanding due balance is ₹ ${(c.outstandingBalance || 0).toLocaleString('en-IN')}.\nThank you!`;
+    const shopName = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
+    const text = `🌾 *${shopName || 'Store'}*\nHello ${c.name},\nYour outstanding due balance is ₹ ${(c.outstandingBalance || 0).toLocaleString('en-IN')}.\nThank you!`;
     window.open(`https://api.whatsapp.com/send?phone=${c.mobile}&text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
     <PageLayout
       title="Customer List"
-      breadcrumb="Vedixa ERP > Customers"
+      breadcrumb="Customers"
       icon={Users}
       action={(
         <div className="flex items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
@@ -1200,6 +1239,7 @@ export default function CustomerListPage() {
         isOpen={isWhatsAppModalOpen}
         onClose={() => setIsWhatsAppModalOpen(false)}
         customers={customersList}
+        shopSettings={shopSettings}
       />
 
     </PageLayout>

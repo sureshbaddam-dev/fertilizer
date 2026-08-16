@@ -3,15 +3,15 @@ import { Supplier } from '../models/supplier.model.js';
 import { supplierRepository } from '../repositories/supplier.repository.js';
 import { SupplierLedger } from '../models/supplierLedger.model.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
-import { baseMasterService } from '../../../common/baseMaster.service.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
+import { normalizeMoney } from '../../../utils/pricingUtils.js';
 
 export const supplierService = {
-
-  async getAllSuppliers(query = {}) {
-    const filter = {};
+  async getAllSuppliers(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
+    const filter = { userId };
     if (query.search) {
       filter.$or = [
         { name: { $regex: query.search, $options: 'i' } },
@@ -23,7 +23,7 @@ export const supplierService = {
     if (query.status === 'inactive') filter.isActive = false;
 
     const sort = { name: 1 };
-    const suppliersDocs = await supplierRepository.findAll(filter, { sort });
+    const suppliersDocs = await Supplier.find(filter).sort(sort).exec();
 
     let overallOutstanding = 0;
     let overallPurchases = 0;
@@ -36,7 +36,7 @@ export const supplierService = {
 
         let ledger = [];
         try {
-          ledger = await SupplierLedger.find({ supplierId: sId, isDeleted: { $ne: true } }).sort({ date: -1 }).exec();
+          ledger = await SupplierLedger.find({ userId, supplierId: sId, isDeleted: { $ne: true } }).sort({ date: -1 }).exec();
         } catch (err) {
           logger.error({ err }, `Failed to fetch ledger for supplier ${sId}`);
           ledger = [];
@@ -49,14 +49,21 @@ export const supplierService = {
         let lastPaymentAmount = 0;
 
         ledger.forEach((item) => {
+          const pAmt = Number(item.purchaseAmount) || 0;
+          const pdAmt = Number(item.paidAmount) || 0;
+
           if (item.transactionType === 'PURCHASE') {
-            supTotalPurchases += Number(item.purchaseAmount) || 0;
+            supTotalPurchases += pAmt;
             if (!lastPurchaseDate) lastPurchaseDate = item.date;
-          } else if (item.transactionType === 'PAYMENT') {
-            supTotalPayments += Number(item.paidAmount) || 0;
-            if (!lastPaymentDate) {
-              lastPaymentDate = item.date;
-              lastPaymentAmount = Number(item.paidAmount) || 0;
+          }
+
+          if (pdAmt > 0) {
+            if (!(item.transactionType === 'PAYMENT' && item.referenceNumber?.startsWith('PAY-PUR-'))) {
+              supTotalPayments += pdAmt;
+              if (!lastPaymentDate) {
+                lastPaymentDate = item.date;
+                lastPaymentAmount = pdAmt;
+              }
             }
           }
         });
@@ -101,61 +108,97 @@ export const supplierService = {
     };
   },
 
-  async getSupplierById(id) {
+  async getSupplierById(id, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    const supplier = await supplierRepository.findById(id);
+    const supplier = await Supplier.findOne({ _id: id, userId }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
     return supplier;
   },
 
-  async createSupplier(data) {
-    const existing = await supplierRepository.findByName(data.name);
-    if (existing) {
-      throw new AppError(`Supplier with name '${data.name}' already exists`, HTTP_STATUS.CONFLICT);
+  async createSupplier(data, userId) {
+    if (!userId) throw new Error('userId is required');
+
+    const mobileTrim = (data.mobile || '').toString().replace(/\s+/g, '').trim();
+    if (mobileTrim && !data.allowDuplicateMobile) {
+      const existingMobile = await Supplier.findOne({ userId, mobile: mobileTrim, isActive: true }).exec();
+      if (existingMobile) {
+        throw new AppError(`Supplier with mobile number '${mobileTrim}' already exists`, HTTP_STATUS.CONFLICT);
+      }
     }
-    return await supplierRepository.create(data);
+
+    const nameTrim = (data.name || '').toString().trim();
+    try {
+      return await Supplier.create({
+        ...data,
+        userId,
+        name: nameTrim,
+        mobile: mobileTrim,
+      });
+    } catch (err) {
+      if (err.code === 11000 && (err.keyPattern?.mobile || (err.message && err.message.includes('mobile')))) {
+        console.warn('⚠️ Stale unique mobile index encountered in MongoDB. Cleaning up index and saving supplier...');
+        try {
+          const idxName = err.indexName || 'userId_1_mobile_1';
+          await Supplier.collection.dropIndex(idxName);
+        } catch (e) {
+          // ignore drop error
+        }
+        return await Supplier.create({
+          ...data,
+          userId,
+          name: nameTrim,
+          mobile: mobileTrim,
+        });
+      }
+      throw err;
+    }
   },
 
-  async updateSupplier(id, data) {
+  async updateSupplier(id, data, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    const supplier = await supplierRepository.findById(id);
+    const cleanData = { ...data };
+    delete cleanData.userId;
+    delete cleanData._id;
+
+    const supplier = await Supplier.findOneAndUpdate({ _id: id, userId }, { $set: cleanData }, { new: true }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
-    return await supplierRepository.update(id, data);
+    return supplier;
   },
 
-  async deactivateSupplier(id, userId = null) {
+  async deactivateSupplier(id, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    const supplier = await Supplier.findById(id).exec();
+    const supplier = await Supplier.findOne({ _id: id, userId }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
 
     supplier.isActive = false;
     supplier.deletedAt = new Date();
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      supplier.deletedBy = userId;
-    }
-
+    supplier.deletedBy = userId;
     await supplier.save();
-    logger.info(`🔒 Soft Deleted Supplier '${supplier.name}' [${id}] -> isActive: false, deletedAt: ${supplier.deletedAt}`);
+    logger.info(`🔒 Soft Deleted Supplier '${supplier.name}' [${id}]`);
     return supplier;
   },
 
-  async restoreSupplier(id) {
+  async restoreSupplier(id, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    const supplier = await Supplier.findById(id).exec();
+    const supplier = await Supplier.findOne({ _id: id, userId }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -164,21 +207,22 @@ export const supplierService = {
     supplier.deletedAt = null;
     supplier.deletedBy = null;
     await supplier.save();
-    logger.info(`🔓 Restored Supplier '${supplier.name}' [${id}] -> isActive: true`);
+    logger.info(`🔓 Restored Supplier '${supplier.name}' [${id}]`);
     return supplier;
   },
 
-  async getSupplierLedger(supplierId, query = {}) {
+  async getSupplierLedger(supplierId, query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const supplier = await supplierRepository.findById(supplierId);
+    const supplier = await Supplier.findOne({ _id: supplierId, userId }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    const filter = { supplierId, isDeleted: { $ne: true } };
+    const filter = { userId, supplierId, isDeleted: { $ne: true } };
     if (query.transactionType && query.transactionType !== 'ALL') {
       filter.transactionType = query.transactionType;
     }
@@ -195,14 +239,13 @@ export const supplierService = {
       ledgerEntries = [];
     }
 
-    // Populate purchase items and linked payments safely for each purchase record
     const enrichedEntries = await Promise.all(
       ledgerEntries.map(async (entry) => {
         if (entry.purchaseId && entry.purchaseId._id) {
           try {
             const [purchaseItems, linkedPayments] = await Promise.all([
-              PurchaseItem.find({ purchaseId: entry.purchaseId._id }).populate('productId').lean().exec(),
-              SupplierLedger.find({ purchaseId: entry.purchaseId._id, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).lean().exec(),
+              PurchaseItem.find({ userId, purchaseId: entry.purchaseId._id }).populate('productId').lean().exec(),
+              SupplierLedger.find({ userId, purchaseId: entry.purchaseId._id, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).lean().exec(),
             ]);
             entry.purchaseId.items = purchaseItems || [];
             entry.purchaseId.payments = linkedPayments || [];
@@ -218,7 +261,6 @@ export const supplierService = {
       })
     );
 
-    // Filter out legacy duplicate initial payment rows (where referenceNumber starts with 'PAY-PUR-')
     const activeEntries = enrichedEntries.filter((entry) => {
       if (entry.transactionType === 'PAYMENT' && entry.referenceNumber?.startsWith('PAY-PUR-')) {
         return false;
@@ -242,9 +284,11 @@ export const supplierService = {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     activeEntries.forEach((item) => {
+      const pAmt = Number(item.purchaseAmount) || 0;
+      const pdAmt = Number(item.paidAmount) || 0;
+
       if (item.transactionType === 'PURCHASE') {
-        const amt = Number(item.purchaseAmount) || 0;
-        totalPurchases += amt;
+        totalPurchases += pAmt;
         purchaseCount += 1;
         if (!lastPurchaseDate) lastPurchaseDate = item.date;
 
@@ -264,20 +308,23 @@ export const supplierService = {
             }
           }
         }
-      } else if (item.transactionType === 'PAYMENT') {
-        const amt = Number(item.paidAmount) || 0;
-        totalPayments += amt;
+      }
+
+      if (pdAmt > 0) {
+        totalPayments += pdAmt;
         if (!lastPaymentDate) {
           lastPaymentDate = item.date;
-          lastPaymentAmount = amt;
+          lastPaymentAmount = pdAmt;
         }
-        paymentsList.push({
-          _id: item._id,
-          date: item.date,
-          amount: amt,
-          method: item.notes || 'Payment',
-          referenceNumber: item.referenceNumber,
-        });
+        if (item.transactionType === 'PAYMENT') {
+          paymentsList.push({
+            _id: item._id,
+            date: item.date,
+            amount: pdAmt,
+            method: item.notes || 'Payment',
+            referenceNumber: item.referenceNumber,
+          });
+        }
       }
     });
 
@@ -303,11 +350,12 @@ export const supplierService = {
     };
   },
 
-  async recordSupplierPayment(supplierId, data) {
+  async recordSupplierPayment(supplierId, data, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) {
       throw new AppError('Invalid Supplier ID format', HTTP_STATUS.BAD_REQUEST);
     }
-    const supplier = await supplierRepository.findById(supplierId);
+    const supplier = await Supplier.findOne({ _id: supplierId, userId }).exec();
     if (!supplier) {
       throw new AppError('Supplier not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -323,6 +371,7 @@ export const supplierService = {
     const targetPurchaseId = data.purchaseId && mongoose.Types.ObjectId.isValid(data.purchaseId) ? data.purchaseId : null;
 
     const paymentLedgerData = {
+      userId,
       supplierId,
       purchaseId: targetPurchaseId,
       transactionType: 'PAYMENT',
@@ -336,14 +385,14 @@ export const supplierService = {
     };
 
     const entry = await SupplierLedger.create(paymentLedgerData);
-    await supplierRepository.update(supplierId, { outstandingBalance: newBalance });
+    await Supplier.findOneAndUpdate({ _id: supplierId, userId }, { outstandingBalance: newBalance });
 
-    // If linked to a purchase invoice, update purchase paid & due amounts
     if (targetPurchaseId) {
       const { Purchase } = await import('../../purchases/models/purchase.model.js');
-      const purchase = await Purchase.findById(targetPurchaseId).exec();
+      const purchase = await Purchase.findOne({ _id: targetPurchaseId, userId }).exec();
       if (purchase) {
         const activePayments = await SupplierLedger.find({
+          userId,
           purchaseId: purchase._id,
           transactionType: 'PAYMENT',
           isDeleted: { $ne: true },
@@ -353,43 +402,43 @@ export const supplierService = {
         purchase.paidAmount = totalPaid;
         purchase.dueAmount = Math.max(0, Number(purchase.totalInvoiceAmount || 0) - totalPaid);
         await purchase.save();
-        logger.info(`✅ Updated Purchase [${purchase._id}] with linked payment -> Total Paid: ₹${totalPaid}, Outstanding: ₹${purchase.dueAmount}`);
       }
     }
 
-    logger.info(`✅ Recorded Supplier Payment -₹${amount} (Linked Purchase: ${targetPurchaseId || 'None'}) -> New Outstanding: ₹${newBalance}`);
-
+    logger.info(`✅ Recorded Supplier Payment -₹${amount} (Linked Purchase: ${targetPurchaseId || 'None'})`);
     return entry;
   },
 
-  async calculateSupplierBalance(supplierId) {
+  async calculateSupplierBalance(supplierId, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) return 0;
-    const ledger = await SupplierLedger.find({ supplierId, isDeleted: { $ne: true } }).sort({ date: 1, createdAt: 1 }).exec();
+    const ledger = await SupplierLedger.find({ userId, supplierId, isDeleted: { $ne: true } }).sort({ date: 1, createdAt: 1 }).exec();
 
     let balance = 0;
     for (const entry of ledger) {
       if (entry.transactionType === 'PURCHASE') {
-        const purchaseAmt = Number(entry.purchaseAmount || 0);
-        const paidAmt = Number(entry.paidAmount ?? 0);
+        const purchaseAmt = normalizeMoney(entry.purchaseAmount || 0);
+        const paidAmt = normalizeMoney(entry.paidAmount ?? 0);
         balance += (purchaseAmt - paidAmt);
       } else if (entry.transactionType === 'PAYMENT') {
-        // Skip legacy duplicate initial payment entries to prevent double counting
         if (!entry.referenceNumber?.startsWith('PAY-PUR-')) {
-          balance -= Number(entry.paidAmount || 0);
+          balance -= normalizeMoney(entry.paidAmount || 0);
         }
       } else if (entry.transactionType === 'ADJUSTMENT') {
-        balance += Number(entry.purchaseAmount || 0) - Number(entry.paidAmount || 0);
+        balance += normalizeMoney(entry.purchaseAmount || 0) - normalizeMoney(entry.paidAmount || 0);
       }
+      balance = normalizeMoney(balance);
       entry.runningBalance = balance;
       await entry.save();
     }
 
-    await supplierRepository.update(supplierId, { outstandingBalance: balance });
-    logger.info(`✅ Recalculated Supplier Balance for [${supplierId}] -> Final Balance: ₹${balance}`);
+    balance = normalizeMoney(balance);
+    await Supplier.findOneAndUpdate({ _id: supplierId, userId }, { outstandingBalance: balance });
     return balance;
   },
 
-  async softDeletePayment(paymentId, userContext = {}, confirmation = '') {
+  async softDeletePayment(paymentId, userId, confirmation = '') {
+    if (!userId) throw new Error('userId is required');
     if (!paymentId || !mongoose.Types.ObjectId.isValid(paymentId)) {
       throw new AppError('Invalid Payment ID format', HTTP_STATUS.BAD_REQUEST);
     }
@@ -397,7 +446,7 @@ export const supplierService = {
       throw new AppError('Invalid confirmation text. Must type DELETE exactly.', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const payment = await SupplierLedger.findOne({ _id: paymentId, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).exec();
+    const payment = await SupplierLedger.findOne({ _id: paymentId, userId, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).exec();
     if (!payment) {
       throw new AppError('Active payment record not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -406,14 +455,12 @@ export const supplierService = {
     payment.deletedAt = new Date();
     await payment.save();
 
-    logger.info(`🗑️ Soft-deleted Supplier Payment [${paymentId}] (-₹${payment.paidAmount})`);
-
-    // If payment was linked to a purchase, recalculate purchase paid & due amounts
     if (payment.purchaseId) {
       const { Purchase } = await import('../../purchases/models/purchase.model.js');
-      const purchase = await Purchase.findById(payment.purchaseId).exec();
+      const purchase = await Purchase.findOne({ _id: payment.purchaseId, userId }).exec();
       if (purchase) {
         const remainingPayments = await SupplierLedger.find({
+          userId,
           purchaseId: purchase._id,
           transactionType: 'PAYMENT',
           isDeleted: { $ne: true },
@@ -423,12 +470,10 @@ export const supplierService = {
         purchase.paidAmount = totalPaid;
         purchase.dueAmount = Math.max(0, Number(purchase.totalInvoiceAmount || 0) - totalPaid);
         await purchase.save();
-        logger.info(`✅ Recalculated Purchase [${purchase._id}] -> Paid: ₹${totalPaid}, Due: ₹${purchase.dueAmount}`);
       }
     }
 
-    // Recalculate supplier running balance
-    const updatedBalance = await this.calculateSupplierBalance(payment.supplierId);
+    const updatedBalance = await this.calculateSupplierBalance(payment.supplierId, userId);
 
     return {
       message: 'Payment soft-deleted successfully',
@@ -438,12 +483,13 @@ export const supplierService = {
     };
   },
 
-  async restorePayment(paymentId, userContext = {}) {
+  async restorePayment(paymentId, userId) {
+    if (!userId) throw new Error('userId is required');
     if (!paymentId || !mongoose.Types.ObjectId.isValid(paymentId)) {
       throw new AppError('Invalid Payment ID format', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const payment = await SupplierLedger.findOne({ _id: paymentId, transactionType: 'PAYMENT', isDeleted: true }).exec();
+    const payment = await SupplierLedger.findOne({ _id: paymentId, userId, transactionType: 'PAYMENT', isDeleted: true }).exec();
     if (!payment) {
       throw new AppError('Soft-deleted payment record not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -452,13 +498,12 @@ export const supplierService = {
     payment.deletedAt = null;
     await payment.save();
 
-    logger.info(`🔄 Restored Supplier Payment [${paymentId}] (₹${payment.paidAmount})`);
-
     if (payment.purchaseId) {
       const { Purchase } = await import('../../purchases/models/purchase.model.js');
-      const purchase = await Purchase.findById(payment.purchaseId).exec();
+      const purchase = await Purchase.findOne({ _id: payment.purchaseId, userId }).exec();
       if (purchase) {
         const activePayments = await SupplierLedger.find({
+          userId,
           purchaseId: purchase._id,
           transactionType: 'PAYMENT',
           isDeleted: { $ne: true },
@@ -471,7 +516,7 @@ export const supplierService = {
       }
     }
 
-    const updatedBalance = await this.calculateSupplierBalance(payment.supplierId);
+    const updatedBalance = await this.calculateSupplierBalance(payment.supplierId, userId);
 
     return {
       message: 'Payment restored successfully',

@@ -3,6 +3,12 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const supplierSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Supplier name is required'],
@@ -49,6 +55,22 @@ const supplierSchema = new mongoose.Schema(
 
 supplierSchema.plugin(softDeletePlugin);
 supplierSchema.index({ name: 'text', companyName: 'text', mobile: 'text' });
-supplierSchema.index({ mobile: 1 }, { unique: true, partialFilterExpression: { isActive: true } });
+supplierSchema.index({ userId: 1, mobile: 1 });
 
 export const Supplier = mongoose.model('Supplier', supplierSchema);
+
+// Automatic index cleanup: Drop any legacy unique index on mobile in MongoDB
+setTimeout(async () => {
+  try {
+    const collection = Supplier.collection;
+    const indexes = await collection.indexes();
+    for (const idx of indexes) {
+      if (idx.unique && (idx.name.includes('mobile') || (idx.key && idx.key.mobile))) {
+        console.log(`🧹 Dropping legacy unique index on suppliers collection: ${idx.name}`);
+        await collection.dropIndex(idx.name);
+      }
+    }
+  } catch (err) {
+    // Ignore error if collection does not exist yet
+  }
+}, 1000);

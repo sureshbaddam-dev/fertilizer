@@ -4,24 +4,62 @@ import { Filter, Search } from 'lucide-react';
 export default function ProductsHeaderBar({
   activeTab = 'All Products',
   onTabChange,
+  categories = [],
   filterCounts = {},
   searchQuery = '',
   onSearchChange,
   onOpenFilterModal,
 }) {
-  const defaultCategories = ['All Products', 'Fertilizers', 'Seeds', 'Pesticides', 'Plant Growth', 'Others'];
-  
-  const allCategoryKeys = Array.from(
-    new Set([...defaultCategories, ...Object.keys(filterCounts)])
-  );
+  const categoryMap = new Map();
+
+  // 1. Populate from authenticated user's master categories (preserves clean display name)
+  if (Array.isArray(categories)) {
+    categories.forEach((c) => {
+      const name = typeof c === 'string' ? c : c?.name || c?.title;
+      if (name && name.trim()) {
+        const key = name.trim().toLowerCase();
+        if (!categoryMap.has(key)) {
+          categoryMap.set(key, name.trim());
+        }
+      }
+    });
+  }
+
+  // 2. Populate any extra categories present in filterCounts case-insensitively
+  Object.keys(filterCounts).forEach((k) => {
+    if (k && k !== 'all' && k.toLowerCase() !== 'all products') {
+      const key = k.trim().toLowerCase();
+      if (!categoryMap.has(key)) {
+        categoryMap.set(key, k.trim());
+      }
+    }
+  });
+
+  const uniqueCategoryNames = Array.from(categoryMap.values());
+  const allCategoryKeys = ['All Products', ...uniqueCategoryNames];
+
+  // Helper to sum count for a category case-insensitively
+  const getCategoryCount = (displayName) => {
+    if (displayName === 'All Products') {
+      return filterCounts['all'] || filterCounts['All Products'] || 0;
+    }
+    const targetKey = displayName.trim().toLowerCase();
+    let total = 0;
+    Object.keys(filterCounts).forEach((k) => {
+      if (k.trim().toLowerCase() === targetKey) {
+        total += Number(filterCounts[k]) || 0;
+      }
+    });
+    return total;
+  };
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 mb-4 w-full">
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-1.5 w-full">
       {/* Category Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full no-scrollbar">
         {allCategoryKeys.map((catKey) => {
-          const count = filterCounts[catKey] || 0;
-          const isActive = activeTab === catKey;
+          const count = getCategoryCount(catKey);
+          const isActive = activeTab.trim().toLowerCase() === catKey.trim().toLowerCase();
           return (
             <button
               key={catKey}

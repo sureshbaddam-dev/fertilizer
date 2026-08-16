@@ -12,14 +12,44 @@ export const signup = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Registration initiated. OTP sent to mobile number.', result, HTTP_STATUS.OK);
 });
 
+const ACCESS_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  path: '/',
+};
+
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (sliding)
+  path: '/api/v1/auth', // Path-scoped strictly to /auth endpoints
+};
+
 export const verifySignupOtp = asyncHandler(async (req, res) => {
   const result = await authService.verifySignupOtp(req.body);
-  return sendSuccess(res, 'Mobile verified and user registered successfully.', result, HTTP_STATUS.CREATED);
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Mobile verified and user registered successfully.', clientData, HTTP_STATUS.CREATED);
 });
 
 export const login = asyncHandler(async (req, res) => {
   const result = await authService.login(req.body);
-  return sendSuccess(res, 'Login successful.', result, HTTP_STATUS.OK);
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Login successful.', clientData, HTTP_STATUS.OK);
 });
 
 export const forgotPassword = asyncHandler(async (req, res) => {
@@ -37,10 +67,44 @@ export const resetPassword = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Password reset successful.', result, HTTP_STATUS.OK);
 });
 
-export const logout = asyncHandler(async (_req, res) => {
+export const logout = asyncHandler(async (req, res) => {
+  const token =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+
+  await authService.logout(token, req.user?._id);
+
+  res.clearCookie('token', ACCESS_COOKIE_OPTIONS);
+  res.clearCookie('refreshToken', REFRESH_COOKIE_OPTIONS);
   return sendSuccess(res, 'Logged out successfully.', null, HTTP_STATUS.OK);
 });
 
-export const refreshToken = asyncHandler(async (_req, res) => {
-  return sendSuccess(res, 'Token refreshed successfully.', null, HTTP_STATUS.OK);
+export const refreshToken = asyncHandler(async (req, res) => {
+  const token =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+
+  const result = await authService.refreshToken(token);
+
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Token refreshed successfully.', clientData, HTTP_STATUS.OK);
+});
+
+export const getProfile = asyncHandler(async (req, res) => {
+  const user = await authService.getProfile(req.user._id);
+  return sendSuccess(res, 'User profile retrieved successfully.', user, HTTP_STATUS.OK);
+});
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const user = await authService.updateProfile(req.user._id, req.body);
+  return sendSuccess(res, 'User profile updated successfully.', user, HTTP_STATUS.OK);
 });

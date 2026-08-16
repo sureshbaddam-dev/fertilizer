@@ -20,6 +20,9 @@ const startServer = async () => {
     // 3. Start Server Listener
     server = app.listen(envConfig.port, () => {
       logger.info(`🚀 MANDHI Backend ERP Server running on port ${envConfig.port} in [${envConfig.env}] mode`);
+      const keyId = envConfig.razorpay?.keyId || '';
+      const keySecret = envConfig.razorpay?.keySecret || '';
+      logger.info(`💳 Razorpay mode: TEST | Key ID prefix: ${keyId.slice(0, 9)}... | Key ID present: ${!!keyId} | Secret present: ${!!keySecret}`);
     });
   } catch (error) {
     logger.error({ error }, 'Failed to start MANDHI Backend ERP server');

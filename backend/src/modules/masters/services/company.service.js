@@ -1,12 +1,11 @@
-import { companyRepository } from '../repositories/company.repository.js';
-import { baseMasterService } from '../../../common/baseMaster.service.js';
+import { Company } from '../models/company.model.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
-import { logger } from '../../../config/logger.config.js';
 
 export const companyService = {
-  async getAllCompanies(query = {}) {
-    const filter = {};
+  async getAllCompanies(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
+    const filter = { userId };
     if (query.search) {
       filter.$or = [
         { name: { $regex: query.search, $options: 'i' } },
@@ -18,81 +17,71 @@ export const companyService = {
     }
 
     const sort = { name: 1 };
-    const companies = await companyRepository.findAll(filter, { sort });
-    const total = await companyRepository.count(filter);
+    const companies = await Company.find(filter).sort(sort).exec();
+    const total = await Company.countDocuments(filter);
 
     return { companies, total };
   },
 
-  async getCompanyById(id) {
-    const company = await companyRepository.findById(id);
+  async getCompanyById(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const company = await Company.findOne({ _id: id, userId }).exec();
     if (!company) {
       throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
     }
     return company;
   },
 
-  async createCompany(data) {
-    logger.info(`⚙️ [Service Started] companyService.createCompany -> Name: '${data.name}'`);
-
-    // 1. Duplicate Check
-    logger.info(`🔍 Performing Duplicate Check for Name: '${data.name}'`);
-    const existing = await companyRepository.findByName(data.name);
+  async createCompany(data, userId) {
+    if (!userId) throw new Error('userId is required');
+    const nameTrimmed = (data.name || '').trim();
+    const existing = await Company.findOne({ userId, name: nameTrimmed }).exec();
     if (existing) {
-      logger.warn(`⚠️ Duplicate Company Found! ID: ${existing._id}, Name: ${existing.name}`);
       throw new AppError(`Company name '${data.name}' already exists.`, HTTP_STATUS.CONFLICT);
     }
-    logger.info('✅ Duplicate Check Passed (No existing company found)');
 
-    // 2. Data Sanitization (convert empty string fields to undefined so Mongo doesn't store empty string noise)
-    const sanitized = { ...data };
+    const sanitized = { ...data, userId, name: nameTrimmed };
     Object.keys(sanitized).forEach((key) => {
       if (typeof sanitized[key] === 'string' && sanitized[key].trim() === '') {
         delete sanitized[key];
       }
     });
 
-    logger.info(`💾 Sanitized Data Before Save: ${JSON.stringify(sanitized, null, 2)}`);
-
-    // 3. Save via Repository
-    const createdCompany = await companyRepository.create(sanitized);
-    logger.info(`🎉 [Service Finished] Saved Company ID: ${createdCompany._id}`);
-    return createdCompany;
+    return await Company.create(sanitized);
   },
 
-  async updateCompany(id, data) {
-    logger.info(`⚙️ [Service Started] companyService.updateCompany -> ID: ${id}`);
-    const company = await companyRepository.findById(id);
+  async updateCompany(id, data, userId) {
+    if (!userId) throw new Error('userId is required');
+    const company = await Company.findOne({ _id: id, userId }).exec();
     if (!company) {
       throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
     }
 
     if (data.name && data.name.toLowerCase() !== company.name.toLowerCase()) {
-      const existing = await companyRepository.findByName(data.name);
+      const existing = await Company.findOne({ userId, name: data.name.trim() }).exec();
       if (existing) {
         throw new AppError(`Company name '${data.name}' already exists.`, HTTP_STATUS.CONFLICT);
       }
     }
 
-    const sanitized = { ...data };
-    Object.keys(sanitized).forEach((key) => {
-      if (typeof sanitized[key] === 'string' && sanitized[key].trim() === '') {
-        delete sanitized[key];
-      }
-    });
+    const cleanData = { ...data };
+    delete cleanData.userId;
+    delete cleanData._id;
 
-    return await companyRepository.update(id, sanitized);
+    return await Company.findOneAndUpdate({ _id: id, userId }, { $set: cleanData }, { new: true }).exec();
   },
 
-  async deactivateCompany(id) {
-    return await baseMasterService.deactivateMaster(companyRepository, id, 'Company');
+  async deactivateCompany(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const company = await Company.findOneAndUpdate({ _id: id, userId }, { isActive: false }, { new: true }).exec();
+    if (!company) throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
+    return company;
   },
 
-  async restoreCompany(id) {
-    return await baseMasterService.restoreMaster(companyRepository, id, 'Company');
-  },
-
-  async toggleCompanyStatus(id) {
-    return await baseMasterService.toggleMasterStatus(companyRepository, id, 'Company');
+  async restoreCompany(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const company = await Company.findOneAndUpdate({ _id: id, userId }, { isActive: true }, { new: true }).exec();
+    if (!company) throw new AppError('Company not found', HTTP_STATUS.NOT_FOUND);
+    return company;
   },
 };

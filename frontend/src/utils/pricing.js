@@ -37,11 +37,6 @@ export const getItemUnitPrice = (item) => {
     if (!isNaN(val)) return val;
   }
 
-  if (item.mrp !== undefined && item.mrp !== null) {
-    const val = Number(item.mrp);
-    if (!isNaN(val)) return val;
-  }
-
   return 0;
 };
 

@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { getPurchases, getPurchaseById, createPurchase, deletePurchase, restorePurchase, getDeletedPurchases } from './controllers/purchase.controller.js';
 import { purchaseReturnController } from './controllers/purchaseReturn.controller.js';
 
+import { protect } from '../../middlewares/auth.middleware.js';
+
 const router = Router();
+
+router.use(protect);
 
 // Supplier Return Routes
 router.get('/supplier-return/purchase-history', purchaseReturnController.getPurchaseHistoryForReturn);

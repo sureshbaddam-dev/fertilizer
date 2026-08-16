@@ -13,6 +13,7 @@ import { supplierService } from '../../services/supplierService';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
 import { purchaseService } from '../../services/purchaseService';
+import { authService } from '../../services/authService';
 
 export default function NewPurchasePage() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export default function NewPurchasePage() {
   const [supplierId, setSupplierId] = useState('');
   const [purchaseNumber, setPurchaseNumber] = useState(generatePurchaseNo());
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paidAmount, setPaidAmount] = useState('0'); // Default ₹0.00
+  const [paidAmount, setPaidAmount] = useState('');
   const [notes, setNotes] = useState('');
 
   // Items State
@@ -44,12 +45,16 @@ export default function NewPurchasePage() {
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
   const [supplierInitialName, setSupplierInitialName] = useState('');
 
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
+
   // Fetch Masters, Suppliers, Products
   const { data: mastersData } = useQuery({
-    queryKey: ['masters-all'],
+    queryKey: ['masters-all', currentUserId],
     queryFn: masterService.getAllMasters,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    enabled: !!currentUserId,
   });
 
   const { data: suppliersData } = useQuery({
@@ -71,13 +76,19 @@ export default function NewPurchasePage() {
   const suppliers = useMemo(() => suppliersData?.data?.suppliers || [], [suppliersData]);
   const products = useMemo(() => productsData?.data?.products || [], [productsData]);
 
-  // Set default supplier if empty
-  if (!supplierId && suppliers.length > 0) {
-    setSupplierId(suppliers[0]._id);
-  }
-
   // Live Calculations
-  const totalInvoiceAmount = items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.purchaseRate || 0)), 0);
+  const totalInvoiceAmount = items.reduce((sum, item) => {
+    const qty = Number(item.quantity || 0);
+    const rate = Number(item.purchaseRate || 0);
+    const rawSub = qty * rate;
+    const discVal = Number(item.discount !== undefined && item.discount !== '' && item.discount !== null ? item.discount : (item.product?.discount ?? 0));
+    const discType = item.discountType || item.product?.discountType || 'Percentage';
+    const discAmt = (discType === 'Percentage' || discType === '%')
+      ? (rawSub * discVal) / 100
+      : discVal;
+    return sum + Math.max(0, rawSub - discAmt);
+  }, 0);
+
   const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity || 0)), 0);
   const selectedSupplier = suppliers.find((s) => s._id === supplierId);
 
@@ -90,20 +101,33 @@ export default function NewPurchasePage() {
       ? Number(prod.purchasePrice)
       : 0;
 
-    const defaultMrpVal = Number(prod.defaultMrp ?? prod.mrp ?? (defaultRate ? defaultRate * 1.2 : 0));
-    const defaultSellVal = Number(prod.defaultSellingPrice ?? prod.sellingPrice ?? (defaultMrpVal || (defaultRate ? defaultRate * 1.1 : 0)));
+    const defaultSellVal = Number(prod.defaultSellingPrice ?? prod.sellingPrice ?? 0);
+
+    // Batch Fallback Priority: Batch value -> Product basic value -> 0
+    const rawProd = prod.product || prod;
+    const effectiveDiscount = prod.discount !== undefined && prod.discount !== null && Number(prod.discount) !== 0
+      ? prod.discount
+      : (rawProd.discount ?? '');
+
+    const effectiveDiscountType = prod.discountType || rawProd.discountType || 'Percentage';
+
+    const effectiveGstRate = prod.gstRate !== undefined && prod.gstRate !== null && Number(prod.gstRate) !== 0
+      ? prod.gstRate
+      : (rawProd.gstRate ?? '');
 
     const newItem = {
       tempId: Date.now() + Math.random(),
-      productId: prod._id || prod.id,
-      product: prod,
-      categoryId: prod.categoryId?._id || prod.categoryId || (categories[0]?._id || ''),
-      unitId: prod.defaultUnitId?._id || prod.unitId?._id || prod.unitId || (units[0]?._id || ''),
-      batchNumber: (prod.batchCode || prod.batchNumber || '').trim(),
+      productId: rawProd._id || rawProd.id,
+      product: rawProd,
+      categoryId: rawProd.categoryId?._id || rawProd.categoryId || (categories[0]?._id || ''),
+      unitId: rawProd.defaultUnitId?._id || rawProd.unitId?._id || rawProd.unitId || (units[0]?._id || ''),
+      batchNumber: prod.batchCode || prod.batchNumber || '',
       quantity: 10,
       purchaseRate: defaultRate,
-      mrp: defaultMrpVal,
       sellingPrice: defaultSellVal,
+      discount: effectiveDiscount ? String(effectiveDiscount) : '',
+      discountType: effectiveDiscountType,
+      gstRate: effectiveGstRate ? String(effectiveGstRate) : '',
       updateMasterPrice: false,
     };
     setItems((prev) => [...prev, newItem]);
@@ -140,7 +164,6 @@ export default function NewPurchasePage() {
               categoryId: updatedOrNewProd.categoryId?._id || updatedOrNewProd.categoryId || it.categoryId,
               unitId: updatedOrNewProd.defaultUnitId?._id || updatedOrNewProd.unitId?._id || updatedOrNewProd.unitId || it.unitId,
               purchaseRate: updatedOrNewProd.defaultPurchaseRate !== undefined ? Number(updatedOrNewProd.defaultPurchaseRate) : it.purchaseRate,
-              mrp: updatedOrNewProd.defaultMrp || it.mrp,
               sellingPrice: updatedOrNewProd.defaultSellingPrice || it.sellingPrice,
             };
           }
@@ -202,11 +225,10 @@ export default function NewPurchasePage() {
         productId: it.productId,
         categoryId: it.categoryId,
         unitId: it.unitId,
-        batchNumber: it.batchNumber,
+        batchNumber: (it.batchNumber || '').trim(),
         quantity: Number(it.quantity) || 1,
         purchaseRate: Number(it.purchaseRate) || 0,
-        mrp: Number(it.mrp) || Number(it.purchaseRate) * 1.2,
-        sellingPrice: Number(it.sellingPrice) || Number(it.purchaseRate) * 1.1,
+        sellingPrice: Number(it.sellingPrice) || 0,
         updateMasterPrice: Boolean(it.updateMasterPrice),
       })),
     };
@@ -216,7 +238,7 @@ export default function NewPurchasePage() {
 
   const handleResetForm = () => {
     setItems([]);
-    setPaidAmount('0');
+    setPaidAmount('');
     setNotes('');
     setApiError(null);
     setSaveSuccessMsg(null);

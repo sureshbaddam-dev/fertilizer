@@ -32,7 +32,7 @@ export default function NotificationsPage() {
           '🌾 {{SHOP_NAME}}\n\nDear {{CUSTOMER_NAME}},\n\nThis is a friendly reminder regarding your outstanding bill balance of ₹ {{OUTSTANDING}}.\n\nPayment Link:\n{{UPI_PAYMENT_LINK}}\n\nThank you.\n{{SHOP_NAME}}\nPhone: {{SHOP_MOBILE}}',
       });
     }
-  }, [settingsApi]);
+  }, [s]);
 
   const saveMutation = useMutation({
     mutationFn: (data) => settingService.updateSettings(data),

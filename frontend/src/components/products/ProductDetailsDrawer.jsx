@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Edit, Trash2, Tag, Layers, ArrowUpRight, ArrowDownLeft, Clock, History, FileText, CheckCircle2, AlertCircle, Save, Check } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
 
 export default function ProductDetailsDrawer({
   isOpen,
@@ -14,40 +15,47 @@ export default function ProductDetailsDrawer({
 }) {
   const [activeTab, setActiveTab] = useState('Overview');
   const [historySubTab, setHistorySubTab] = useState('movements');
-  const [editingBatchId, setEditingBatchId] = useState(null);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, batch: null });
+  const [editModal, setEditModal] = useState({ isOpen: false, mode: 'selling', batch: null });
   const [editPriceInput, setEditPriceInput] = useState('');
 
+  const longPressTimerRef = React.useRef(null);
+  const touchStartCoordsRef = React.useRef({ x: 0, y: 0 });
+
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
   const productId = product?._id || product?.id;
 
   // Fetch Full Product Details (including batches & pricing calculation)
   const { data: fullProductApi } = useQuery({
-    queryKey: ['product-detail-drawer', productId],
+    queryKey: ['product-detail-drawer', currentUserId, productId],
     queryFn: () => productService.getProductById(productId),
-    enabled: Boolean(isOpen && productId),
+    enabled: Boolean(isOpen && productId && currentUserId),
     staleTime: 2000,
   });
 
   // Fetch Full Product History (Stock Movements, Purchase History, Sales History)
   const { data: productHistoryApi } = useQuery({
-    queryKey: ['product-history-drawer', productId],
+    queryKey: ['product-history-drawer', currentUserId, productId],
     queryFn: () => productService.getProductHistory(productId),
-    enabled: Boolean(isOpen && productId),
+    enabled: Boolean(isOpen && productId && currentUserId),
     staleTime: 2000,
   });
 
-  // Batch Selling Price Update Mutation
+  // Batch Price Update Mutation
   const updateBatchMutation = useMutation({
-    mutationFn: ({ batchId, sellingPrice }) => productService.updateBatch(batchId, { sellingPrice }),
+    mutationFn: ({ batchId, sellingPrice, purchaseRate }) =>
+      productService.updateBatch(batchId, { sellingPrice, purchaseRate }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['product-detail-drawer', productId] });
+      queryClient.invalidateQueries({ queryKey: ['product-detail-drawer', currentUserId, productId] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['product-history-drawer', productId] });
-      setEditingBatchId(null);
+      queryClient.invalidateQueries({ queryKey: ['product-history-drawer', currentUserId, productId] });
+      setEditModal({ isOpen: false, mode: 'selling', batch: null });
       setEditPriceInput('');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update batch selling price');
+      alert(err?.response?.data?.message || err?.message || 'Failed to update batch price');
     },
   });
 
@@ -93,18 +101,77 @@ export default function ProductDetailsDrawer({
   const descriptionText = detailProduct.description || product.description || null;
   const createdDateStr = detailProduct.createdAt ? new Date(detailProduct.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
-  const handleStartEditBatch = (b) => {
-    setEditingBatchId(b._id);
-    setEditPriceInput((b.sellingPrice || 0).toString());
+  const handleBatchContextMenu = (e, batch) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      batch,
+    });
   };
 
-  const handleSaveBatchPrice = (batchId) => {
+  const handleBatchTouchStart = (e, batch) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchStartCoordsRef.current = { x: touch.clientX, y: touch.clientY };
+
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+
+    longPressTimerRef.current = setTimeout(() => {
+      if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+        window.navigator.vibrate(40);
+      }
+      setContextMenu({
+        visible: true,
+        x: touchStartCoordsRef.current.x,
+        y: touchStartCoordsRef.current.y,
+        batch,
+      });
+      longPressTimerRef.current = null;
+    }, 500);
+  };
+
+  const handleBatchTouchMove = (e) => {
+    if (!longPressTimerRef.current || !e.touches || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartCoordsRef.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartCoordsRef.current.y);
+
+    if (deltaX > 10 || deltaY > 10) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleBatchTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const openPriceEditModal = (batch, mode) => {
+    setContextMenu({ visible: false, x: 0, y: 0, batch: null });
+    const initialVal = mode === 'purchase' ? Number(batch.purchaseRate || 0) : Number(batch.sellingPrice || 0);
+    setEditPriceInput(initialVal.toString());
+    setEditModal({ isOpen: true, mode, batch });
+  };
+
+  const handleSaveModalPrice = () => {
     const val = parseFloat(editPriceInput);
-    if (isNaN(val) || val < 0) {
-      alert('Please enter a valid selling price');
+    if (isNaN(val) || val <= 0) {
+      alert('Please enter a valid price greater than 0');
       return;
     }
-    updateBatchMutation.mutate({ batchId, sellingPrice: val });
+    if (!editModal.batch) return;
+
+    if (editModal.mode === 'purchase') {
+      updateBatchMutation.mutate({ batchId: editModal.batch._id, purchaseRate: val });
+    } else {
+      updateBatchMutation.mutate({ batchId: editModal.batch._id, sellingPrice: val });
+    }
   };
 
   const cardContent = (
@@ -367,7 +434,7 @@ export default function ProductDetailsDrawer({
             <div className="space-y-1.5 pt-1">
               <h4 className="font-bold text-gray-900 text-xs flex items-center justify-between">
                 <span>Batch Pricing History</span>
-                <span className="text-[10px] font-normal text-gray-500">Edit batch selling prices independently</span>
+                <span className="text-[10px] font-normal text-gray-500">Right-click (Desktop) or Long-press (Mobile) row to edit price</span>
               </h4>
               <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
                 <table className="w-full text-xs text-left">
@@ -379,7 +446,6 @@ export default function ProductDetailsDrawer({
                       <th className="py-2 px-2.5 text-center">Purchased Qty</th>
                       <th className="py-2 px-2.5 text-center">Remaining Qty</th>
                       <th className="py-2 px-2.5 text-center">Status</th>
-                      <th className="py-2 px-2.5 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -387,79 +453,36 @@ export default function ProductDetailsDrawer({
                       sortedBatches.map((b, idx) => {
                         const status = b.status || ((b.currentStock > 0 || b.quantityRemaining > 0) ? (currentActiveBatch?._id === b._id ? 'ACTIVE' : 'UPCOMING') : 'DEPLETED');
                         const isCurrentActive = status === 'ACTIVE';
-                        const isEditingThis = editingBatchId === b._id;
 
                         return (
-                          <tr key={b._id || idx} className={isCurrentActive ? 'bg-emerald-50/30' : 'hover:bg-gray-50/50'}>
-                            <td className="py-2 px-2.5 font-mono font-bold text-gray-900">{b.batchNumber}</td>
-                            <td className="py-2 px-2.5 text-right font-mono text-gray-700">₹ {Number(b.purchaseRate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="py-2 px-2.5 text-right font-mono font-bold text-[#047857]">
-                              {isEditingThis ? (
-                                <div className="flex items-center justify-end gap-1">
-                                  <span className="text-gray-500 text-[10px]">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={editPriceInput}
-                                    onChange={(e) => setEditPriceInput(e.target.value)}
-                                    className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold border border-emerald-400 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') handleSaveBatchPrice(b._id);
-                                      if (e.key === 'Escape') setEditingBatchId(null);
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <span>₹ {Number(b.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                              )}
+                          <tr
+                            key={b._id || idx}
+                            onContextMenu={(e) => handleBatchContextMenu(e, b)}
+                            onTouchStart={(e) => handleBatchTouchStart(e, b)}
+                            onTouchMove={handleBatchTouchMove}
+                            onTouchEnd={handleBatchTouchEnd}
+                            onTouchCancel={handleBatchTouchEnd}
+                            className={`select-none cursor-pointer transition-colors ${isCurrentActive ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-gray-50/70'}`}
+                            title="Right-click or Long-press to edit price"
+                          >
+                            <td className="py-2.5 px-2.5 font-mono font-bold text-gray-900">{b.batchNumber}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-gray-700">₹ {Number(b.purchaseRate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono font-bold text-[#047857]">
+                              ₹ {Number(b.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
-                            <td className="py-2 px-2.5 text-center font-mono text-gray-600">{b.initialQuantity ?? b.quantityPurchased ?? 0}</td>
-                            <td className="py-2 px-2.5 text-center font-mono font-bold text-gray-900">{b.currentStock ?? b.quantityRemaining ?? 0}</td>
-                            <td className="py-2 px-2.5 text-center">
+                            <td className="py-2.5 px-2.5 text-center font-mono text-gray-600">{b.initialQuantity ?? b.quantityPurchased ?? 0}</td>
+                            <td className="py-2.5 px-2.5 text-center font-mono font-bold text-gray-900">{b.currentStock ?? b.quantityRemaining ?? 0}</td>
+                            <td className="py-2.5 px-2.5 text-center">
                               {status === 'ACTIVE' && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold badge-agri-active">ACTIVE</span>}
                               {status === 'UPCOMING' && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">UPCOMING</span>}
                               {status === 'DEPLETED' && <span className="px-2 py-0.5 rounded-full text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">DEPLETED</span>}
-                            </td>
-                            <td className="py-2 px-2.5 text-center">
-                              {isEditingThis ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveBatchPrice(b._id)}
-                                    disabled={updateBatchMutation.isPending}
-                                    className="p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 cursor-pointer"
-                                    title="Save Price"
-                                  >
-                                    <Save className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingBatchId(null)}
-                                    className="p-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 cursor-pointer"
-                                    title="Cancel"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEditBatch(b)}
-                                  className="px-2 py-0.5 border border-gray-300 hover:bg-gray-100 text-gray-700 rounded text-[10px] font-semibold transition-colors cursor-pointer"
-                                  title="Edit Selling Price for this batch"
-                                >
-                                  Edit Price
-                                </button>
-                              )}
                             </td>
                           </tr>
                         );
                       })
                     ) : (
                       <tr>
-                        <td colSpan={7} className="py-4 text-center text-gray-400 italic text-xs">
+                        <td colSpan={6} className="py-4 text-center text-gray-400 italic text-xs">
                           No purchase batch history available for this product.
                         </td>
                       </tr>
@@ -683,6 +706,134 @@ export default function ProductDetailsDrawer({
           Close
         </button>
       </div>
+
+      {/* VEDIXA BATCH CONTEXT MENU */}
+      {contextMenu.visible && contextMenu.batch && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-transparent"
+            onClick={() => setContextMenu({ visible: false, x: 0, y: 0, batch: null })}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu({ visible: false, x: 0, y: 0, batch: null });
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: `${Math.min(contextMenu.y, window.innerHeight - 130)}px`,
+              left: `${Math.min(contextMenu.x, window.innerWidth - 200)}px`,
+            }}
+            className="z-50 w-48 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 font-sans text-xs select-none animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-bold font-mono text-gray-500 bg-gray-50/80">
+              Batch {contextMenu.batch.batchNumber}
+            </div>
+            <button
+              type="button"
+              onClick={() => openPriceEditModal(contextMenu.batch, 'purchase')}
+              className="w-full text-left px-3 py-2 text-gray-700 hover:bg-emerald-50 hover:text-[#047857] flex items-center gap-2 font-medium cursor-pointer transition-colors"
+            >
+              <Tag className="w-3.5 h-3.5 text-[#047857]" />
+              <span>Edit Purchase Price</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openPriceEditModal(contextMenu.batch, 'selling')}
+              className="w-full text-left px-3 py-2 text-gray-700 hover:bg-emerald-50 hover:text-[#047857] flex items-center gap-2 font-medium cursor-pointer transition-colors"
+            >
+              <Edit className="w-3.5 h-3.5 text-[#047857]" />
+              <span>Edit Selling Price</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* PRICE EDIT MODAL */}
+      {editModal.isOpen && editModal.batch && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-4 py-3 bg-gradient-to-r from-[#047857] to-emerald-700 text-white flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                {editModal.mode === 'purchase' ? <Tag className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
+                <span>Edit {editModal.mode === 'purchase' ? 'Purchase Price' : 'Selling Price'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditModal({ isOpen: false, mode: 'selling', batch: null })}
+                className="p-1 rounded-md text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 text-xs">
+              <div className="p-2.5 bg-gray-50 rounded-xl space-y-1.5 border border-gray-100">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 font-medium">Product:</span>
+                  <strong className="text-gray-900 font-semibold">{productName}</strong>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="text-gray-500 font-sans font-medium">Batch Number:</span>
+                  <strong className="text-gray-900">{editModal.batch.batchNumber}</strong>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="text-gray-500 font-sans font-medium">
+                    Current {editModal.mode === 'purchase' ? 'Purchase Rate' : 'Selling Price'}:
+                  </span>
+                  <strong className="text-[#047857]">
+                    ₹ {Number(editModal.mode === 'purchase' ? editModal.batch.purchaseRate || 0 : editModal.batch.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-gray-700">
+                  New {editModal.mode === 'purchase' ? 'Purchase Price' : 'Selling Price'} (₹)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-mono font-bold">₹</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={editPriceInput}
+                    onChange={(e) => setEditPriceInput(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#047857] focus:border-transparent bg-white shadow-2xs"
+                    placeholder="0.00"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveModalPrice();
+                      if (e.key === 'Escape') setEditModal({ isOpen: false, mode: 'selling', batch: null });
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 pt-0.5">
+                  Monetary value will be rounded exactly to 2 decimal places. Quantity & FIFO layer stay unchanged.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditModal({ isOpen: false, mode: 'selling', batch: null })}
+                className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveModalPrice}
+                disabled={updateBatchMutation.isPending}
+                className="px-4 py-1.5 btn-agri-primary rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              >
+                {updateBatchMutation.isPending ? 'Saving...' : 'Save Price'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

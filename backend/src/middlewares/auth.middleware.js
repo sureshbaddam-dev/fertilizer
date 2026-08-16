@@ -6,8 +6,9 @@ import { User } from '../modules/auth/user.model.js';
 
 export const protect = asyncHandler(async (req, _res, next) => {
   let token;
-
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  if (req.cookies && (req.cookies.token || req.cookies.jwt)) {
+    token = req.cookies.token || req.cookies.jwt;
+  } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   }
 

@@ -8,7 +8,10 @@ import {
   resetPassword,
   logout,
   refreshToken,
+  getProfile,
+  updateProfile,
 } from './auth.controller.js';
+import { protect } from '../../middlewares/auth.middleware.js';
 import {
   signupRules,
   verifyOtpRules,
@@ -37,5 +40,10 @@ router.post('/verify-forgot-otp', verifyOtpRules, verifyForgotOtp);
 router.post('/reset-password', resetPasswordRules, resetPassword);
 router.post('/logout', logout);
 router.post('/refresh-token', refreshToken);
+router.post('/refresh', refreshToken);
+
+// User Profile Endpoints (Protected)
+router.get('/me', protect, getProfile);
+router.put('/me', protect, updateProfile);
 
 export default router;

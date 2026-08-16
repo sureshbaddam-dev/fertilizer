@@ -284,7 +284,7 @@ export default function BillingPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold text-gray-900 leading-tight">Billing &amp; Point of Sale (POS)</h1>
               <span className="px-2 py-0.5 bg-emerald-50 text-[#047857] border border-emerald-200 rounded font-mono text-[11px] font-bold">
-                INV-2026-0109 (Auto)
+                Auto Bill Ref
               </span>
             </div>
             <LiveHeaderClock />

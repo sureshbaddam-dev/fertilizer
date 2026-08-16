@@ -1,17 +1,22 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingService } from '../services/settingService';
+import { authService } from '../services/authService';
 
 const SettingsContext = createContext(null);
 
 export function SettingsProvider({ children }) {
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
+  const isAuthenticated = authService.isAuthenticated();
 
   const { data: settingsApi, isLoading, refetch } = useQuery({
-    queryKey: ['shop-settings-global'],
+    queryKey: ['shop-settings-global', currentUserId, isAuthenticated],
     queryFn: () => settingService.getSettings(),
     staleTime: 10 * 60 * 1000, // 10 mins caching
     refetchOnWindowFocus: false,
+    enabled: isAuthenticated && !!currentUserId,
   });
 
   const settings = useMemo(() => {

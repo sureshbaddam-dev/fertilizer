@@ -3,11 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { ChevronDown } from 'lucide-react';
 import FormDrawer from '../ui/FormDrawer';
 import SmartMasterSelect from '../ui/SmartMasterSelect';
 import ImageUpload from '../ui/ImageUpload';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
+import { authService } from '../../services/authService';
 
 const productSchema = z.object({
   image: z.string().optional(),
@@ -18,15 +20,19 @@ const productSchema = z.object({
   brandId: z.string().optional(),
   categoryId: z.string().min(1, 'Category is required'),
   unitId: z.string().min(1, 'Unit is required'),
-  defaultPurchaseRate: z.coerce.number().default(0),
-  defaultMrp: z.coerce.number().default(0),
-  defaultSellingPrice: z.coerce.number().min(0, 'Default Selling Price is required'),
+  defaultPurchaseRate: z.union([z.string(), z.number()]).optional(),
+  defaultMrp: z.union([z.string(), z.number()]).optional(),
+  defaultSellingPrice: z.union([z.string(), z.number()]).optional(),
+  discount: z.union([z.string(), z.number()]).optional(),
+  discountType: z.string().optional(),
   hsnCode: z.string().optional(),
-  gstRate: z.coerce.number().default(18),
+  gstRate: z.union([z.string(), z.number()]).optional(),
   batchCode: z.string().optional(),
   expiryDate: z.string().optional(),
-  minStockAlert: z.coerce.number().default(10),
+  minStockAlert: z.union([z.string(), z.number()]).optional(),
 });
+
+const toInputValue = (val) => (val === 0 || val === '0' || val === null || val === undefined ? '' : String(val));
 
 export default function QuickAddProductDrawer({
   isOpen,
@@ -37,10 +43,13 @@ export default function QuickAddProductDrawer({
 }) {
   const queryClient = useQueryClient();
   const isEditMode = Boolean(editingProduct);
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   const { data: mastersData, isLoading: isMastersLoading } = useQuery({
-    queryKey: ['masters-all'],
+    queryKey: ['masters-all', currentUserId],
     queryFn: masterService.getAllMasters,
+    enabled: Boolean(isOpen && currentUserId),
   });
 
   const suppliers = mastersData?.data?.suppliers || [];
@@ -53,8 +62,6 @@ export default function QuickAddProductDrawer({
     handleSubmit,
     control,
     reset,
-    setValue,
-    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(productSchema),
@@ -67,14 +74,16 @@ export default function QuickAddProductDrawer({
       brandId: '',
       categoryId: '',
       unitId: '',
-      defaultPurchaseRate: 0,
-      defaultMrp: 0,
-      defaultSellingPrice: 0,
+      defaultPurchaseRate: '',
+      defaultMrp: '',
+      defaultSellingPrice: '',
+      discount: '',
+      discountType: 'Percentage',
       hsnCode: '',
-      gstRate: 18,
+      gstRate: '',
       batchCode: '',
       expiryDate: '',
-      minStockAlert: 10,
+      minStockAlert: '10',
     },
   });
 
@@ -95,14 +104,16 @@ export default function QuickAddProductDrawer({
         brandId: brandIdVal,
         categoryId: categoryIdVal,
         unitId: unitIdVal,
-        defaultPurchaseRate: editingProduct.defaultPurchaseRate || 0,
-        defaultMrp: editingProduct.defaultMrp || 0,
-        defaultSellingPrice: editingProduct.defaultSellingPrice || 0,
+        defaultPurchaseRate: toInputValue(editingProduct.defaultPurchaseRate),
+        defaultMrp: toInputValue(editingProduct.defaultMrp),
+        defaultSellingPrice: toInputValue(editingProduct.defaultSellingPrice),
+        discount: toInputValue(editingProduct.discount),
+        discountType: editingProduct.discountType || 'Percentage',
         hsnCode: editingProduct.hsnCode || '',
-        gstRate: editingProduct.gstRate || 18,
+        gstRate: toInputValue(editingProduct.gstRate),
         batchCode: editingProduct.batchCode || '',
         expiryDate: editingProduct.expiryDate ? new Date(editingProduct.expiryDate).toISOString().split('T')[0] : '',
-        minStockAlert: editingProduct.minimumStockAlert || 10,
+        minStockAlert: toInputValue(editingProduct.minimumStockAlert || 10),
       });
     } else {
       reset({
@@ -114,14 +125,16 @@ export default function QuickAddProductDrawer({
         brandId: brands[0]?._id || '',
         categoryId: categories[0]?._id || '',
         unitId: units[0]?._id || '',
-        defaultPurchaseRate: 0,
-        defaultMrp: 0,
-        defaultSellingPrice: 0,
+        defaultPurchaseRate: '',
+        defaultMrp: '',
+        defaultSellingPrice: '',
+        discount: '',
+        discountType: 'Percentage',
         hsnCode: '',
-        gstRate: 18,
+        gstRate: '',
         batchCode: '',
         expiryDate: '',
-        minStockAlert: 10,
+        minStockAlert: '10',
       });
     }
   }, [editingProduct?._id, editingProduct?.id, initialName, isOpen]);
@@ -155,29 +168,43 @@ export default function QuickAddProductDrawer({
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   const onSubmit = (formData) => {
+    const payload = {
+      ...formData,
+      defaultPurchaseRate: formData.defaultPurchaseRate === '' || formData.defaultPurchaseRate === undefined ? 0 : Number(formData.defaultPurchaseRate),
+      defaultMrp: formData.defaultMrp === '' || formData.defaultMrp === undefined ? 0 : Number(formData.defaultMrp),
+      defaultSellingPrice: formData.defaultSellingPrice === '' || formData.defaultSellingPrice === undefined ? 0 : Number(formData.defaultSellingPrice),
+      discount: formData.discount === '' || formData.discount === undefined ? 0 : Number(formData.discount),
+      discountType: formData.discountType || 'Percentage',
+      gstRate: formData.gstRate === '' || formData.gstRate === undefined ? 0 : Number(formData.gstRate),
+      minimumStockAlert: formData.minStockAlert === '' || formData.minStockAlert === undefined ? 10 : Number(formData.minStockAlert),
+    };
+
     if (isEditMode) {
-      updateMutation.mutate(formData);
+      updateMutation.mutate(payload);
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(payload);
     }
   };
 
-  const handleCreateCompanyInline = async (typedName) => {
-    const res = await masterService.createCompany({ name: typedName });
-    queryClient.invalidateQueries({ queryKey: ['masters-all'] });
-    return res.data?.company;
+  const handleCreateBrandInline = async (typedName) => {
+    const res = await masterService.createBrand({ name: typedName });
+    await queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+    const brandDoc = res.data?.data || res.data?.brand || res.data?.company || res.data;
+    return brandDoc;
   };
 
   const handleCreateCategoryInline = async (typedName) => {
     const res = await masterService.createCategory({ name: typedName });
-    queryClient.invalidateQueries({ queryKey: ['masters-all'] });
-    return res.data?.category;
+    await queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+    const categoryDoc = res.data?.data || res.data?.category || res.data;
+    return categoryDoc;
   };
 
   const handleCreateUnitInline = async (typedName) => {
     const res = await masterService.createUnit({ name: typedName, shortName: typedName.toLowerCase().slice(0, 3) });
-    queryClient.invalidateQueries({ queryKey: ['masters-all'] });
-    return res.data?.unit;
+    await queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+    const unitDoc = res.data?.data || res.data?.unit || res.data;
+    return unitDoc;
   };
 
   return (
@@ -215,8 +242,6 @@ export default function QuickAddProductDrawer({
           {errors.name && <p className="text-[10px] text-red-500 font-medium">{errors.name.message}</p>}
         </div>
 
-
-
         {/* 4. Brand (Master) */}
         <Controller
           name="brandId"
@@ -227,6 +252,7 @@ export default function QuickAddProductDrawer({
               options={brands}
               value={field.value}
               onChange={field.onChange}
+              onAddNew={handleCreateBrandInline}
               placeholder="Select Brand..."
               isLoading={isMastersLoading}
               error={errors.brandId?.message}
@@ -274,34 +300,58 @@ export default function QuickAddProductDrawer({
         <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl">
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-gray-700 block">Purchase Rate (₹)</label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('defaultPurchaseRate')}
-              placeholder="0.00"
-              className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            <Controller
+              name="defaultPurchaseRate"
+              control={control}
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  onFocus={(e) => e.target.select()}
+                  value={toInputValue(field.value)}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              )}
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-gray-700 block">MRP (₹)</label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('defaultMrp')}
-              placeholder="0.00"
-              className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            <Controller
+              name="defaultMrp"
+              control={control}
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  onFocus={(e) => e.target.select()}
+                  value={toInputValue(field.value)}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              )}
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-emerald-800 block">Default Selling Price (₹) *</label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('defaultSellingPrice')}
-              placeholder="0.00"
-              className="w-full px-2.5 py-1.5 bg-white border border-emerald-400 rounded-md text-xs font-medium text-emerald-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            <Controller
+              name="defaultSellingPrice"
+              control={control}
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  onFocus={(e) => e.target.select()}
+                  value={toInputValue(field.value)}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-2.5 py-1.5 bg-white border border-emerald-400 rounded-md text-xs font-medium text-emerald-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              )}
             />
             {errors.defaultSellingPrice && (
               <p className="text-[9px] text-red-500 font-medium">{errors.defaultSellingPrice.message}</p>
@@ -309,31 +359,77 @@ export default function QuickAddProductDrawer({
           </div>
         </div>
 
-        {/* 9 & 10. HSN Code & GST Rate */}
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Discount & GST Row */}
+        <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl">
           <div className="space-y-1">
-            <label className="font-medium text-gray-700 block">HSN Code</label>
-            <input
-              type="text"
-              {...register('hsnCode')}
-              placeholder="e.g. 3105"
-              className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-mono text-[12px]"
+            <label className="text-[11px] font-medium text-gray-700 block">Discount</label>
+            <Controller
+              name="discount"
+              control={control}
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  onFocus={(e) => e.target.select()}
+                  value={toInputValue(field.value)}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              )}
             />
           </div>
 
           <div className="space-y-1">
-            <label className="font-medium text-gray-700 block">GST Rate (%)</label>
-            <select
-              {...register('gstRate')}
-              className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-medium text-[12px]"
-            >
-              <option value={0}>0% (Exempted)</option>
-              <option value={5}>5%</option>
-              <option value={12}>12%</option>
-              <option value={18}>18%</option>
-              <option value={28}>28%</option>
-            </select>
+            <label className="text-[11px] font-medium text-gray-700 block">Discount Type</label>
+            <Controller
+              name="discountType"
+              control={control}
+              render={({ field }) => (
+                <div className="relative">
+                  <select
+                    value={field.value || 'Percentage'}
+                    onChange={(e) => field.onChange(e.target.value)}
+                    className="w-full px-2.5 pr-7 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="Percentage">Percentage (%)</option>
+                    <option value="Amount">Fixed Amount (₹)</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                </div>
+              )}
+            />
           </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-gray-700 block">GST Rate (%)</label>
+            <Controller
+              name="gstRate"
+              control={control}
+              render={({ field }) => (
+                <input
+                  type="number"
+                  step="0.01"
+                  onFocus={(e) => e.target.select()}
+                  value={toInputValue(field.value)}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              )}
+            />
+          </div>
+        </div>
+
+        {/* 9 & 10. HSN Code */}
+        <div className="space-y-1">
+          <label className="font-medium text-gray-700 block">HSN Code</label>
+          <input
+            type="text"
+            {...register('hsnCode')}
+            placeholder="e.g. 3105"
+            className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-mono text-[12px]"
+          />
         </div>
 
         {/* 11 & 12. Batch Code (Optional) & Expiry Date (Optional) */}
@@ -370,11 +466,19 @@ export default function QuickAddProductDrawer({
             <span>Minimum Stock Alert</span>
             <span className="text-[10px] text-gray-400 font-normal">(Low Stock Notification)</span>
           </label>
-          <input
-            type="number"
-            {...register('minStockAlert')}
-            placeholder="e.g. 10"
-            className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-medium text-[12px]"
+          <Controller
+            name="minStockAlert"
+            control={control}
+            render={({ field }) => (
+              <input
+                type="number"
+                onFocus={(e) => e.target.select()}
+                value={toInputValue(field.value)}
+                onChange={(e) => field.onChange(e.target.value)}
+                placeholder="10"
+                className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-medium text-[12px] font-mono"
+              />
+            )}
           />
         </div>
 

@@ -1,0 +1,15 @@
+{
+  "short_name": "VEDIXA",
+  "name": "VEDIXA Agri-Business ERP",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#047857",
+  "display": "standalone"
+}

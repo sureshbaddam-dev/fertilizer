@@ -5,7 +5,8 @@ import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 export const customerController = {
   async getCustomers(req, res, next) {
     try {
-      const result = await customerService.getAllCustomers(req.query);
+      const userId = req.user._id;
+      const result = await customerService.getAllCustomers(req.query, userId);
       return sendSuccess(res, 'Customers retrieved successfully', result, HTTP_STATUS.OK);
     } catch (err) {
       next(err);
@@ -14,7 +15,8 @@ export const customerController = {
 
   async getGeneralCustomers(req, res, next) {
     try {
-      const result = await customerService.getGeneralCustomers(req.query);
+      const userId = req.user._id;
+      const result = await customerService.getGeneralCustomers(req.query, userId);
       return sendSuccess(res, 'General Customers retrieved successfully', result, HTTP_STATUS.OK);
     } catch (err) {
       next(err);
@@ -23,7 +25,8 @@ export const customerController = {
 
   async getSuggestions(req, res, next) {
     try {
-      const suggestions = await customerService.getSuggestions();
+      const userId = req.user._id;
+      const suggestions = await customerService.getSuggestions(userId);
       return sendSuccess(res, 'Customer suggestions retrieved successfully', suggestions, HTTP_STATUS.OK);
     } catch (err) {
       next(err);
@@ -32,7 +35,8 @@ export const customerController = {
 
   async getCustomerById(req, res, next) {
     try {
-      const result = await customerService.getCustomerById(req.params.id);
+      const userId = req.user._id;
+      const result = await customerService.getCustomerById(req.params.id, userId);
       if (!result || !result.customer) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({ success: false, message: 'Customer not found' });
       }
@@ -44,7 +48,8 @@ export const customerController = {
 
   async createCustomer(req, res, next) {
     try {
-      const customer = await customerService.createCustomer(req.body);
+      const userId = req.user._id;
+      const customer = await customerService.createCustomer(req.body, userId);
       return sendSuccess(res, 'Customer created successfully', { customer }, HTTP_STATUS.CREATED);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -53,7 +58,8 @@ export const customerController = {
 
   async updateCustomer(req, res, next) {
     try {
-      const customer = await customerService.updateCustomer(req.params.id, req.body);
+      const userId = req.user._id;
+      const customer = await customerService.updateCustomer(req.params.id, req.body, userId);
       return sendSuccess(res, 'Customer updated successfully', { customer }, HTTP_STATUS.OK);
     } catch (err) {
       next(err);
@@ -62,7 +68,8 @@ export const customerController = {
 
   async deleteCustomer(req, res, next) {
     try {
-      await customerService.deleteCustomer(req.params.id);
+      const userId = req.user._id;
+      await customerService.deleteCustomer(req.params.id, userId);
       return sendSuccess(res, 'Customer deleted successfully', null, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -71,7 +78,8 @@ export const customerController = {
 
   async recordPayment(req, res, next) {
     try {
-      const payment = await customerService.recordPayment(req.params.id, req.body);
+      const userId = req.user._id;
+      const payment = await customerService.recordPayment(req.params.id, req.body, userId);
       return sendSuccess(res, 'Payment recorded and persisted successfully', { payment }, HTTP_STATUS.CREATED);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -80,7 +88,8 @@ export const customerController = {
 
   async updatePayment(req, res, next) {
     try {
-      const payment = await customerService.updatePayment(req.params.paymentId, req.body);
+      const userId = req.user._id;
+      const payment = await customerService.updatePayment(req.params.paymentId, req.body, userId);
       return sendSuccess(res, 'Payment updated successfully', { payment }, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -89,7 +98,8 @@ export const customerController = {
 
   async deletePayment(req, res, next) {
     try {
-      const result = await customerService.deletePayment(req.params.paymentId);
+      const userId = req.user._id;
+      const result = await customerService.deletePayment(req.params.paymentId, userId);
       return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -98,7 +108,8 @@ export const customerController = {
 
   async addNote(req, res, next) {
     try {
-      const notes = await customerService.addNote(req.params.id, req.body);
+      const userId = req.user._id;
+      const notes = await customerService.addNote(req.params.id, req.body, userId);
       return sendSuccess(res, 'Note added successfully', { notes }, HTTP_STATUS.CREATED);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -107,7 +118,8 @@ export const customerController = {
 
   async updateNote(req, res, next) {
     try {
-      const notes = await customerService.updateNote(req.params.id, req.params.noteId, req.body);
+      const userId = req.user._id;
+      const notes = await customerService.updateNote(req.params.id, req.params.noteId, req.body, userId);
       return sendSuccess(res, 'Note updated successfully', { notes }, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -116,7 +128,8 @@ export const customerController = {
 
   async deleteNote(req, res, next) {
     try {
-      const notes = await customerService.deleteNote(req.params.id, req.params.noteId);
+      const userId = req.user._id;
+      const notes = await customerService.deleteNote(req.params.id, req.params.noteId, userId);
       return sendSuccess(res, 'Note deleted successfully', { notes }, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -125,7 +138,8 @@ export const customerController = {
 
   async addDocument(req, res, next) {
     try {
-      const documents = await customerService.addDocument(req.params.id, req.body);
+      const userId = req.user._id;
+      const documents = await customerService.addDocument(req.params.id, req.body, userId);
       return sendSuccess(res, 'Document added successfully', { documents }, HTTP_STATUS.CREATED);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
@@ -134,7 +148,8 @@ export const customerController = {
 
   async deleteDocument(req, res, next) {
     try {
-      const documents = await customerService.deleteDocument(req.params.id, req.params.docId);
+      const userId = req.user._id;
+      const documents = await customerService.deleteDocument(req.params.id, req.params.docId, userId);
       return sendSuccess(res, 'Document deleted successfully', { documents }, HTTP_STATUS.OK);
     } catch (err) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });

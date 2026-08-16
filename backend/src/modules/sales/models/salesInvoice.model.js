@@ -33,7 +33,8 @@ const salesInvoiceItemSchema = new mongoose.Schema({
 
 const salesInvoiceSchema = new mongoose.Schema(
   {
-    invoiceNumber: { type: String, required: true, unique: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    invoiceNumber: { type: String, required: true },
     date: { type: Date, default: Date.now },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null, index: true },
     customerType: { type: String, enum: ['ADDED', 'GENERAL'], default: 'GENERAL', index: true },
@@ -69,5 +70,7 @@ const salesInvoiceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+salesInvoiceSchema.index({ userId: 1, invoiceNumber: 1 }, { unique: true });
 
 export const SalesInvoice = mongoose.model('SalesInvoice', salesInvoiceSchema);

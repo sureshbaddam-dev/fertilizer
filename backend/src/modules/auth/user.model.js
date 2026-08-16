@@ -15,6 +15,15 @@ const userSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    email: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    profilePicUrl: {
+      type: String,
+      default: '',
+    },
     passwordHash: {
       type: String,
       required: [true, 'Password is required'],
@@ -33,6 +42,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    currentRefreshToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -41,7 +55,14 @@ const userSchema = new mongoose.Schema(
 
 // Method to compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.passwordHash);
+  try {
+    if (!candidatePassword || typeof candidatePassword !== 'string' || !this.passwordHash || typeof this.passwordHash !== 'string') {
+      return false;
+    }
+    return await bcrypt.compare(candidatePassword, this.passwordHash);
+  } catch (_err) {
+    return false;
+  }
 };
 
 export const User = mongoose.model('User', userSchema);

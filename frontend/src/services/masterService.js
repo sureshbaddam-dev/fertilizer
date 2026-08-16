@@ -21,6 +21,10 @@ export const masterService = {
     return await apiClient.post('/masters/brands', data);
   },
 
+  async createCompany(data) {
+    return await apiClient.post('/masters/brands', data);
+  },
+
   async updateBrand({ id, ...data }) {
     return await apiClient.put(`/masters/brands/${id}`, data);
   },

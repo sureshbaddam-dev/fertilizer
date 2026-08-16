@@ -3,10 +3,12 @@ import { Customer } from '../models/customer.model.js';
 import { CustomerPayment } from '../models/customerPayment.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { logger } from '../../../config/logger.config.js';
+import { calculateInvoicePaymentStatus, normalizeMoney } from '../../../utils/pricingUtils.js';
 
 export const customerService = {
-  async getAllCustomers(query = {}) {
-    const filter = { isActive: { $ne: false }, customerType: 'ADDED' };
+  async getAllCustomers(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
+    const filter = { userId, isActive: { $ne: false }, customerType: 'ADDED' };
 
     if (query.status && query.status !== 'all') {
       filter.status = new RegExp(`^${query.status.trim()}$`, 'i');
@@ -26,10 +28,10 @@ export const customerService = {
     const customers = await Customer.find(filter).sort({ name: 1 }).lean().exec();
 
     // Summary statistics for ADDED (Customer Master) Customers ONLY
-    const totalCustomers = await Customer.countDocuments({ isActive: { $ne: false }, customerType: 'ADDED' });
-    const activeCustomers = await Customer.countDocuments({ isActive: { $ne: false }, customerType: 'ADDED', status: 'Active' });
-    const inactiveCustomers = await Customer.countDocuments({ isActive: { $ne: false }, customerType: 'ADDED', status: 'Inactive' });
-    const blockedCustomers = await Customer.countDocuments({ isActive: { $ne: false }, customerType: 'ADDED', status: 'Blocked' });
+    const totalCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED' });
+    const activeCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Active' });
+    const inactiveCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Inactive' });
+    const blockedCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Blocked' });
 
     const totalOutstanding = customers.reduce((acc, c) => acc + (c.outstandingBalance || 0), 0);
     const customersWithDue = customers.filter((c) => (c.outstandingBalance || 0) > 0).length;
@@ -43,17 +45,30 @@ export const customerService = {
         blockedCustomers,
         totalOutstanding,
         customersWithDue,
-        advanceAmount: 3850,
+        advanceAmount: 0,
       },
     };
   },
 
-  async getGeneralCustomers(query = {}) {
-    // Exclude any invoices belonging to ADDED customers
-    const addedCustomers = await Customer.find({ customerType: 'ADDED' }).select('_id mobile').lean().exec();
-    const addedCustomerIds = addedCustomers.map((c) => c._id);
+  async getGeneralCustomers(query = {}, userId) {
+    if (!userId) throw new Error('userId is required');
 
+    // 1. Exclude ADDED customers
+    const addedCustomers = await Customer.find({ userId, customerType: 'ADDED' }).select('_id mobile').lean().exec();
+    const addedCustomerIds = addedCustomers.map((c) => c._id);
+    const addedMobiles = new Set(addedCustomers.map((c) => (c.mobile || '').trim()));
+
+    // 2. Fetch General Customer master documents
+    const generalMasterCusts = await Customer.find({
+      userId,
+      customerType: 'GENERAL',
+      isActive: { $ne: false },
+    }).lean().exec();
+
+    // 3. Build query filter for general invoices
     const filter = {
+      userId,
+      isDeleted: { $ne: true },
       customerId: { $nin: addedCustomerIds },
       customerType: { $ne: 'ADDED' },
     };
@@ -69,21 +84,48 @@ export const customerService = {
 
     const generalInvoices = await SalesInvoice.find(filter).sort({ date: -1, createdAt: -1 }).lean().exec();
 
-    // Summary metrics strictly for GENERAL Customer bills
-    const totalBills = generalInvoices.length;
-    const totalPurchaseValue = generalInvoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0);
-    const totalPaid = generalInvoices.reduce((acc, inv) => acc + (Number(inv.paidAmount) || 0), 0);
-    const outstanding = Math.max(0, totalPurchaseValue - totalPaid);
-
-    // Grouping by customerName + customerMobile for General Customer Cards/Table
     const customerGroupMap = {};
+
+    // First seed with General Customer master records
+    for (const master of generalMasterCusts) {
+      const mob = (master.mobile || '').trim();
+      if (mob && addedMobiles.has(mob)) continue;
+      const name = (master.name || 'General Customer').trim();
+      const key = `${name.toLowerCase()}_${mob}`;
+
+      customerGroupMap[key] = {
+        _id: master._id.toString(),
+        name,
+        mobile: mob || '-',
+        village: master.village || 'Narketpally',
+        district: master.district || 'Nalgonda',
+        customerType: 'GENERAL',
+        totalPurchases: Number(master.totalPurchases || 0),
+        totalPaid: Number(master.totalPaid || 0),
+        outstandingBalance: Number(master.outstandingBalance || 0),
+        totalBills: 0,
+        lastPurchaseDate: master.updatedAt || master.createdAt,
+        invoices: [],
+        createdAt: master.createdAt,
+        updatedAt: master.updatedAt,
+      };
+    }
+
+    // Next group and accumulate invoices
     for (const inv of generalInvoices) {
-      const key = `${(inv.customerName || 'General Customer').trim().toLowerCase()}_${(inv.customerMobile || '').trim()}`;
+      const mob = (inv.customerMobile || '').trim();
+      if (mob && addedMobiles.has(mob)) continue;
+
+      const name = (inv.customerName || 'General Customer').trim();
+      const key = `${name.toLowerCase()}_${mob}`;
+
       if (!customerGroupMap[key]) {
         customerGroupMap[key] = {
           _id: inv._id.toString(),
-          name: inv.customerName || 'General Customer',
-          mobile: inv.customerMobile || '-',
+          name,
+          mobile: mob || '-',
+          village: inv.customerVillage || 'Narketpally',
+          district: 'Nalgonda',
           customerType: 'GENERAL',
           totalPurchases: 0,
           totalPaid: 0,
@@ -91,36 +133,50 @@ export const customerService = {
           totalBills: 0,
           lastPurchaseDate: inv.date || inv.createdAt,
           invoices: [],
+          createdAt: inv.createdAt || inv.date,
+          updatedAt: inv.updatedAt || inv.createdAt || inv.date,
         };
       }
+
       const grp = customerGroupMap[key];
       grp.totalBills += 1;
       grp.totalPurchases += Number(inv.totalAmount) || 0;
       grp.totalPaid += Number(inv.paidAmount) || 0;
       grp.outstandingBalance += Math.max(0, (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0));
+      if (!grp.lastPurchaseDate || new Date(inv.date || inv.createdAt) > new Date(grp.lastPurchaseDate)) {
+        grp.lastPurchaseDate = inv.date || inv.createdAt;
+      }
       grp.invoices.push(inv);
     }
 
     const generalCustomers = Object.values(customerGroupMap);
 
+    const totalBills = generalInvoices.length;
+    const totalPurchaseValue = generalCustomers.reduce((acc, c) => acc + (c.totalPurchases || 0), 0);
+    const totalPaidSum = generalCustomers.reduce((acc, c) => acc + (c.totalPaid || 0), 0);
+    const totalOutstandingSum = generalCustomers.reduce((acc, c) => acc + (c.outstandingBalance || 0), 0);
+
     return {
+      generalCustomers,
       customers: generalCustomers,
-      invoices: generalInvoices,
       summary: {
-        totalCustomers: generalCustomers.length,
         totalBills,
         totalPurchaseValue,
-        totalPaid,
-        outstanding,
+        totalPaid: totalPaidSum,
+        outstanding: totalOutstandingSum,
+        totalCustomers: generalCustomers.length,
       },
     };
   },
 
-  async calculateCustomerBalance(customerId) {
-    const customer = await Customer.findById(customerId).exec();
+  async calculateCustomerBalance(customerId, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer || customer.customerType === 'GENERAL') return null;
 
     const invoices = await SalesInvoice.find({
+      userId,
+      isDeleted: { $ne: true },
       $or: [
         { customerId: customer._id },
         { customerMobile: customer.mobile, customerType: 'ADDED' },
@@ -128,19 +184,36 @@ export const customerService = {
     }).sort({ date: 1, createdAt: 1 }).exec();
 
     const payments = await CustomerPayment.find({
+      userId,
+      isDeleted: { $ne: true },
       $or: [
         { customer: customer._id },
         { customerMobile: customer.mobile },
       ],
     }).sort({ date: 1, createdAt: 1 }).exec();
 
-    const totalPurchases = invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0);
-    const totalInitialInvoicePaid = invoices.reduce((acc, inv) => acc + (Number(inv.paidAmount) || 0), 0);
-    const totalExplicitPayments = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const totalPaid = totalInitialInvoicePaid + totalExplicitPayments;
+    // Linked invoice IDs that already have a CustomerPayment record
+    const linkedInvoiceIds = new Set(
+      payments
+        .filter((p) => p.invoiceId)
+        .map((p) => p.invoiceId.toString())
+    );
 
-    const outstandingBalance = Math.max(0, totalPurchases - totalPaid);
-    const advanceBalance = Math.max(0, totalPaid - totalPurchases);
+    const totalPurchases = invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0);
+
+    // Sum canonical payments from CustomerPayment documents
+    let totalPaid = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+    // Add paidAmount for legacy invoices that do NOT have a linked CustomerPayment
+    invoices.forEach((inv) => {
+      if (inv.paidAmount > 0 && !linkedInvoiceIds.has(inv._id.toString())) {
+        totalPaid += Number(inv.paidAmount) || 0;
+      }
+    });
+
+    const netBalance = totalPurchases - totalPaid;
+    const outstandingBalance = Math.max(0, netBalance);
+    const advanceBalance = Math.max(0, -netBalance);
     const creditLimit = Number(customer.creditLimit || 50000);
     const availableLimit = Math.max(0, creditLimit - outstandingBalance + advanceBalance);
 
@@ -150,29 +223,13 @@ export const customerService = {
     customer.advanceBalance = advanceBalance;
     await customer.save();
 
-    let extraPaymentPool = totalExplicitPayments;
     for (const inv of invoices) {
       const invTotal = Number(inv.totalAmount) || 0;
-      const initialPaid = Math.min(invTotal, Number(inv.paidAmount) || 0);
-      const remainingDue = Math.max(0, invTotal - initialPaid);
-
-      const allocatedFromPool = Math.min(extraPaymentPool, remainingDue);
-      extraPaymentPool = Math.max(0, extraPaymentPool - allocatedFromPool);
-
-      const effectivePaid = initialPaid + allocatedFromPool;
-      const effectiveDue = Math.max(0, invTotal - effectivePaid);
+      const effectiveDue = Math.max(0, invTotal - (inv.paidAmount || 0));
 
       inv.dueAmount = effectiveDue;
-      if (effectiveDue === 0) {
-        inv.status = 'Paid';
-        inv.dueStatus = 'No Due';
-      } else if (effectivePaid > 0) {
-        inv.status = 'Partial';
-        inv.dueStatus = 'Due In 30 Days';
-      } else {
-        inv.status = 'Due';
-        inv.dueStatus = 'Due In 30 Days';
-      }
+      inv.status = calculateInvoicePaymentStatus(invTotal, inv.paidAmount, effectiveDue, inv.status);
+      inv.dueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
       await inv.save();
     }
 
@@ -189,84 +246,47 @@ export const customerService = {
     };
   },
 
-  async syncInvoicePayment(invoiceId) {
-    if (!invoiceId) return null;
-    let invoice = null;
-    if (mongoose.Types.ObjectId.isValid(invoiceId)) {
-      invoice = await SalesInvoice.findById(invoiceId).exec();
-    }
-    if (!invoice && typeof invoiceId === 'string') {
-      invoice = await SalesInvoice.findOne({ invoiceNumber: invoiceId }).exec();
-    }
-    if (!invoice) return null;
-
-    const payments = await CustomerPayment.find({
-      $or: [
-        { invoiceId: invoice._id },
-        { invoiceNumber: invoice.invoiceNumber },
-      ],
-    }).exec();
-
-    const paidFromPayments = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const totalAmount = Number(invoice.totalAmount) || 0;
-
-    const initialPaid = Number(invoice.paidAmount || 0);
-    const totalCombinedPaid = initialPaid + paidFromPayments;
-    const finalPaid = Math.min(totalAmount, totalCombinedPaid);
-    const dueAmount = Math.max(0, totalAmount - finalPaid);
-
-    let status = 'Due';
-    if (dueAmount === 0) {
-      status = 'Paid';
-    } else if (finalPaid > 0) {
-      status = 'Partial';
-    }
-
-    const dueStatus = dueAmount === 0 ? 'No Due' : 'Due In 30 Days';
-
-    invoice.dueAmount = dueAmount;
-    invoice.status = status;
-    invoice.dueStatus = dueStatus;
-    await invoice.save();
-
-    if (invoice.customerMobile || invoice.customerName) {
-      const customer = await Customer.findOne({
-        $or: [
-          { mobile: invoice.customerMobile },
-          { name: new RegExp(`^${(invoice.customerName || '').trim()}$`, 'i') },
-        ],
-      }).exec();
-      if (customer) {
-        await this.calculateCustomerBalance(customer._id);
-      }
-    }
-
-    return invoice;
-  },
-
-  async syncCustomerAndInvoices(customerId) {
-    return this.calculateCustomerBalance(customerId);
-  },
-
-  async getCustomerById(id) {
-    const calcData = await this.calculateCustomerBalance(id);
+  async getCustomerById(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const calcData = await this.calculateCustomerBalance(id, userId);
     if (!calcData) return null;
 
     const { customer, invoices, payments, totalPurchases, totalPaid, outstandingBalance, advanceBalance, creditLimit, availableLimit } = calcData;
 
-    const invoiceTransactions = [];
-    const advanceTransactions = [];
+    // Track payment IDs that are allocated/linked to invoices
+    const allocatedPaymentIds = new Set();
+    const invoicePaymentMap = new Map(); // invoiceId -> sumOfPayments
 
-    invoices.forEach((inv) => {
+    payments.forEach((p) => {
+      let invId = p.invoiceId ? p.invoiceId.toString() : null;
+      if (!invId && p.refNo?.startsWith('PAY-BILL-')) {
+        const invNum = p.refNo.replace('PAY-BILL-', '').trim();
+        const matchedInv = invoices.find((i) => i.invoiceNumber === invNum);
+        if (matchedInv) invId = matchedInv._id.toString();
+      }
+
+      if (invId) {
+        allocatedPaymentIds.add((p._id || p.id).toString());
+        const currentSum = invoicePaymentMap.get(invId) || 0;
+        invoicePaymentMap.set(invId, currentSum + (Number(p.amount) || 0));
+      }
+    });
+
+    const invoiceTransactions = invoices.map((inv) => {
       const invTotal = Number(inv.totalAmount) || 0;
+      const invIdStr = inv._id.toString();
+
+      // Sum of explicit payments linked to this invoice
+      const explicitAllocated = invoicePaymentMap.get(invIdStr) || 0;
+
+      // Fallback for legacy invoices without CustomerPayment doc
       const invPaid = Number(inv.paidAmount) || 0;
+      const totalCredit = explicitAllocated > 0 ? explicitAllocated : invPaid;
 
-      const cappedCredit = Math.min(invTotal, invPaid);
-      const invoiceDue = Math.max(0, invTotal - cappedCredit);
-      const overpaidSurplus = Math.max(0, invPaid - invTotal);
+      const invoiceDue = Math.max(0, invTotal - totalCredit);
 
-      invoiceTransactions.push({
-        id: inv._id.toString(),
+      return {
+        id: invIdStr,
         date: new Date(inv.date || inv.createdAt).toLocaleDateString('en-IN', {
           day: '2-digit',
           month: 'short',
@@ -282,44 +302,23 @@ export const customerService = {
         type: 'Invoice',
         particulars: `Purchase - ${inv.items?.length || 1} Items`,
         debit: invTotal,
-        credit: cappedCredit,
+        credit: totalCredit,
         dueAmount: invoiceDue,
         paymentMode: inv.paymentMode || 'Cash',
-        status: inv.status,
+        status: calculateInvoicePaymentStatus(invTotal, totalCredit, invoiceDue, inv.status),
         items: inv.items || [],
         subtotal: inv.subtotal || invTotal,
         discountAmount: inv.discountAmount || 0,
         taxAmount: inv.taxAmount || 0,
-        paidAmount: invPaid,
-      });
-
-      if (overpaidSurplus > 0) {
-        advanceTransactions.push({
-          id: `adv-${inv._id.toString()}`,
-          date: new Date(inv.date || inv.createdAt).toLocaleDateString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-          }),
-          time: new Date(inv.date || inv.createdAt).toLocaleTimeString('en-IN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true,
-          }),
-          rawDate: inv.date || inv.createdAt,
-          refNo: `ADV-${inv.invoiceNumber}`,
-          type: 'Advance',
-          particulars: `Advance Balance (Overpaid on Invoice #${inv.invoiceNumber})`,
-          debit: 0,
-          credit: overpaidSurplus,
-          paymentMode: inv.paymentMode || 'Cash',
-          notes: 'Customer Overpayment converted to Advance',
-        });
-      }
+        paidAmount: totalCredit,
+      };
     });
 
-    const paymentTransactions = payments.map((p) => ({
-      id: p._id.toString(),
+    // Standalone / unlinked payments (e.g. general advance payments not tied to an invoice)
+    const unlinkedPayments = payments.filter((p) => !allocatedPaymentIds.has((p._id || p.id).toString()));
+
+    const standalonePaymentTransactions = unlinkedPayments.map((p) => ({
+      id: (p._id || p.id).toString(),
       date: new Date(p.date || p.createdAt).toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -331,28 +330,33 @@ export const customerService = {
         hour12: true,
       }),
       rawDate: p.date || p.createdAt,
-      refNo: p.refNo,
+      refNo: p.refNo || `PAY-${(p._id || p.id).toString().slice(-6)}`,
       type: 'Payment',
-      particulars: `Payment Received (${p.paymentMode})`,
+      particulars: p.notes || `Received Payment (${p.paymentMode || 'Cash'})`,
       debit: 0,
-      credit: p.amount,
-      paymentMode: p.paymentMode,
-      notes: p.notes,
+      credit: Number(p.amount) || 0,
+      paymentMode: p.paymentMode || 'Cash',
+      notes: p.notes || '',
     }));
 
-    let transactions = [...invoiceTransactions, ...advanceTransactions, ...paymentTransactions].sort(
-      (a, b) => new Date(a.rawDate) - new Date(b.rawDate)
-    );
+    const allTx = [...invoiceTransactions, ...standalonePaymentTransactions];
+    allTx.sort((a, b) => {
+      const diff = new Date(a.rawDate) - new Date(b.rawDate);
+      if (diff !== 0) return diff;
+      if (a.type === 'Invoice' && b.type === 'Payment') return -1;
+      if (a.type === 'Payment' && b.type === 'Invoice') return 1;
+      return 0;
+    });
 
     let runningBalance = 0;
-    const transactionsWithBalance = transactions.map((t) => {
-      runningBalance = runningBalance + (t.debit || 0) - (t.credit || 0);
-      const absBal = Math.abs(runningBalance);
+    const transactionsWithBalance = allTx.map((t) => {
+      runningBalance = runningBalance + t.debit - t.credit;
+
       const formattedBalance = runningBalance > 0
-        ? `Outstanding ₹${absBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+        ? `₹ ${runningBalance.toLocaleString('en-IN')} Dr`
         : runningBalance < 0
-          ? `Advance ₹${absBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-          : '₹ 0.00';
+          ? `₹ ${Math.abs(runningBalance).toLocaleString('en-IN')} Cr`
+          : `₹ 0`;
 
       return {
         ...t,
@@ -401,8 +405,9 @@ export const customerService = {
     };
   },
 
-  async recordPayment(customerId, paymentData) {
-    const customer = await Customer.findById(customerId).exec();
+  async recordPayment(customerId, paymentData, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) {
       throw new Error('Customer not found');
     }
@@ -418,8 +423,16 @@ export const customerService = {
     const invoiceId = paymentData.invoiceId || null;
     const invoiceNumber = (paymentData.invoiceNumber || '').trim();
 
-    // 1. Save CustomerPayment permanently in MongoDB
+    if (refNo) {
+      const existingPay = await CustomerPayment.findOne({ userId, customer: customer._id, refNo }).exec();
+      if (existingPay) {
+        logger.warn(`⚠️ Duplicate payment submit blocked for RefNo: ${refNo}`);
+        return existingPay;
+      }
+    }
+
     const payment = await CustomerPayment.create({
+      userId,
       customer: customer._id,
       customerName: customer.name,
       customerMobile: customer.mobile,
@@ -432,15 +445,15 @@ export const customerService = {
       date: paymentData.date ? new Date(paymentData.date) : new Date(),
     });
 
-    // 2. Synchronize Customer totals & Sales Invoices via single source of truth
-    await this.calculateCustomerBalance(customer._id);
+    await this.calculateCustomerBalance(customer._id, userId);
 
     logger.info(`💰 Payment recorded: ₹${amount} for Customer ${customer.name} (Ref: ${refNo})`);
     return payment;
   },
 
-  async updatePayment(paymentId, updateData) {
-    const payment = await CustomerPayment.findById(paymentId).exec();
+  async updatePayment(paymentId, updateData, userId) {
+    if (!userId) throw new Error('userId is required');
+    const payment = await CustomerPayment.findOne({ _id: paymentId, userId }).exec();
     if (!payment) {
       throw new Error('Payment record not found');
     }
@@ -459,44 +472,47 @@ export const customerService = {
     await payment.save();
 
     if (payment.customer) {
-      await this.calculateCustomerBalance(payment.customer);
+      await this.calculateCustomerBalance(payment.customer, userId);
     }
 
     return payment;
   },
 
-  async deletePayment(paymentId) {
-    const payment = await CustomerPayment.findById(paymentId).exec();
+  async deletePayment(paymentId, userId) {
+    if (!userId) throw new Error('userId is required');
+    const payment = await CustomerPayment.findOne({ _id: paymentId, userId }).exec();
     if (!payment) {
       throw new Error('Payment record not found');
     }
 
     const customerId = payment.customer;
-    await CustomerPayment.findByIdAndDelete(paymentId).exec();
+    await CustomerPayment.findOneAndDelete({ _id: paymentId, userId }).exec();
 
     if (customerId) {
-      await this.calculateCustomerBalance(customerId);
+      await this.calculateCustomerBalance(customerId, userId);
     }
 
     return { success: true, message: 'Payment deleted successfully and ledger recalculated' };
   },
 
-  async getSuggestions() {
-    const villages = await Customer.distinct('village', { village: { $ne: null, $ne: '' } });
-    const mandals = await Customer.distinct('mandal', { mandal: { $ne: null, $ne: '' } });
+  async getSuggestions(userId) {
+    if (!userId) throw new Error('userId is required');
+    const villages = await Customer.distinct('village', { userId, village: { $ne: null, $ne: '' } });
+    const mandals = await Customer.distinct('mandal', { userId, mandal: { $ne: null, $ne: '' } });
     return {
       villages: villages.filter(Boolean).map((v) => v.trim()).sort(),
       mandals: mandals.filter(Boolean).map((m) => m.trim()).sort(),
     };
   },
 
-  async createCustomer(data) {
+  async createCustomer(data, userId) {
+    if (!userId) throw new Error('userId is required');
     const mobileTrimmed = (data.mobile || '').trim();
     if (!mobileTrimmed) {
       throw new Error('Mobile number is required for customer registration');
     }
 
-    const existing = await Customer.findOne({ mobile: mobileTrimmed, customerType: 'ADDED', isActive: { $ne: false } }).lean().exec();
+    const existing = await Customer.findOne({ userId, mobile: mobileTrimmed, customerType: 'ADDED', isActive: { $ne: false } }).lean().exec();
     if (existing) {
       throw new Error(`Customer with mobile number ${mobileTrimmed} already exists`);
     }
@@ -505,6 +521,7 @@ export const customerService = {
 
     return await Customer.create({
       ...data,
+      userId,
       name: nameTrimmed || `Customer ${mobileTrimmed.slice(-4)}`,
       mobile: mobileTrimmed,
       customerType: 'ADDED',
@@ -516,23 +533,30 @@ export const customerService = {
     });
   },
 
-  async updateCustomer(id, data) {
-    return await Customer.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true }).lean().exec();
+  async updateCustomer(id, data, userId) {
+    if (!userId) throw new Error('userId is required');
+    const cleanData = { ...data };
+    delete cleanData.userId;
+    delete cleanData._id;
+
+    return await Customer.findOneAndUpdate({ _id: id, userId }, { $set: cleanData }, { new: true, runValidators: true }).lean().exec();
   },
 
-  async deleteCustomer(id) {
-    const customer = await Customer.findById(id).lean().exec();
+  async deleteCustomer(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: id, userId }).lean().exec();
     if (!customer) {
       throw new Error('Customer not found');
     }
     if ((customer.outstandingBalance || 0) > 0) {
       throw new Error(`Cannot delete customer ${customer.name} with active outstanding balance of ₹ ${customer.outstandingBalance.toLocaleString('en-IN')}`);
     }
-    return await Customer.findByIdAndDelete(id).exec();
+    return await Customer.findOneAndDelete({ _id: id, userId }).exec();
   },
 
-  async addNote(customerId, noteData) {
-    const customer = await Customer.findById(customerId).exec();
+  async addNote(customerId, noteData, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) throw new Error('Customer not found');
     const text = (noteData.text || '').trim();
     if (!text) throw new Error('Note text cannot be empty');
@@ -542,8 +566,9 @@ export const customerService = {
     return customer.notes;
   },
 
-  async updateNote(customerId, noteId, noteData) {
-    const customer = await Customer.findById(customerId).exec();
+  async updateNote(customerId, noteId, noteData, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) throw new Error('Customer not found');
     const note = customer.notes.id(noteId);
     if (!note) throw new Error('Note not found');
@@ -552,16 +577,18 @@ export const customerService = {
     return customer.notes;
   },
 
-  async deleteNote(customerId, noteId) {
-    const customer = await Customer.findById(customerId).exec();
+  async deleteNote(customerId, noteId, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) throw new Error('Customer not found');
     customer.notes.pull({ _id: noteId });
     await customer.save();
     return customer.notes;
   },
 
-  async addDocument(customerId, docData) {
-    const customer = await Customer.findById(customerId).exec();
+  async addDocument(customerId, docData, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) throw new Error('Customer not found');
     const title = (docData.title || '').trim();
     const fileUrl = (docData.fileUrl || '').trim();
@@ -577,8 +604,9 @@ export const customerService = {
     return customer.documents;
   },
 
-  async deleteDocument(customerId, docId) {
-    const customer = await Customer.findById(customerId).exec();
+  async deleteDocument(customerId, docId, userId) {
+    if (!userId) throw new Error('userId is required');
+    const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer) throw new Error('Customer not found');
     customer.documents.pull({ _id: docId });
     await customer.save();

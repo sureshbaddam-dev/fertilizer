@@ -11,11 +11,31 @@ import {
   Trash2,
 } from 'lucide-react';
 import { settingService } from '../../services/settingService';
+import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useNavigate } from 'react-router-dom';
+import { ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
 import Button from '../../components/ui/Button';
 
 export default function ShopProfilePage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Consume Shared Settings from Context
+  const { settings, isLoading } = useSettings();
+
+  // Fetch Current Subscription for Profile Display
+  const { data: subRes } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: subscriptionService.getMySubscription,
+  });
+
+  const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
+  const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
+
+  const daysRemaining = currentSub?.expiryDate
+    ? Math.max(0, Math.ceil((new Date(currentSub.expiryDate) - new Date()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   const [formData, setFormData] = useState({
     shopName: '',
@@ -40,9 +60,6 @@ export default function ShopProfilePage() {
 
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [saveErrorMsg, setSaveErrorMsg] = useState('');
-
-  // 1. Consume Shared Settings from Context (Single Source of Truth)
-  const { settings, isLoading } = useSettings();
 
   const logoInputRef = React.useRef(null);
   const ownerPhotoInputRef = React.useRef(null);
@@ -197,6 +214,99 @@ export default function ShopProfilePage() {
           <span>{saveErrorMsg}</span>
         </div>
       )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* SUBSCRIPTION & PLAN SECTION */}
+      {/* ------------------------------------------------------------- */}
+      <div className="p-5 bg-white border border-gray-200 rounded-2xl shadow-2xs space-y-4 font-sans text-xs">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-[#047857] flex items-center justify-center border border-emerald-100">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-gray-900 uppercase tracking-tight">Subscription &amp; Plan</h3>
+              <p className="text-[11px] text-gray-500 font-medium">Manage your active VEDIXA ERP plan entitlements, billing, and validity.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/subscription/plans')}
+            className="px-3.5 py-1.5 bg-[#047857] hover:bg-[#036448] text-white rounded-xl font-extrabold text-xs transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>{hasActiveSub ? 'Upgrade Plan' : 'Choose Plan'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {hasActiveSub && currentSub ? (
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-emerald-50/60 border border-emerald-200/70 rounded-xl gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-black text-gray-900 uppercase tracking-tight">{currentSub.planName} PLAN</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-[#047857] border border-emerald-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#047857]" /> ACTIVE
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-bold text-[#047857] block pt-0.5">
+                  ₹{currentSub.amountPaid || (currentSub.planCode === 'STARTER' ? 199 : currentSub.planCode === 'PROFESSIONAL' ? 399 : 699)} / month
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-gray-50/70 rounded-xl border border-gray-200/70 text-xs">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-gray-500 block">Started</span>
+                <strong className="font-mono text-gray-900">{currentSub.startDate ? new Date(currentSub.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-gray-500 block">Expires</span>
+                <strong className="font-mono text-gray-900">{currentSub.expiryDate ? new Date(currentSub.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'} ({daysRemaining} days left)</strong>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-gray-500 block">Amount Paid</span>
+                <strong className="font-mono text-gray-900">₹{currentSub.amountPaid ?? 0}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-gray-500 block">Payment Status</span>
+                <strong className="text-[#047857] font-bold">
+                  {currentSub.activationType === 'ADMIN_MANUAL' ? 'Activated by Admin' : 'Paid'}
+                </strong>
+              </div>
+            </div>
+          </div>
+        ) : currentSub?.status === 'EXPIRED' ? (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3 text-xs">
+            <div>
+              <strong className="text-rose-900 font-extrabold block text-sm">Subscription Expired</strong>
+              <span className="text-rose-700 block">Your {currentSub.planName} plan expired on {new Date(currentSub.expiryDate).toLocaleDateString('en-IN')}.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/subscription/plans')}
+              className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white font-extrabold rounded-xl text-xs shrink-0 cursor-pointer"
+            >
+              Renew / Choose Plan
+            </button>
+          </div>
+        ) : (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs">
+            <div>
+              <strong className="text-amber-900 font-extrabold block text-sm">No Active Subscription</strong>
+              <span className="text-amber-700 block">Choose a VEDIXA ERP plan to access store management features.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/subscription/plans')}
+              className="px-4 py-2 bg-[#047857] hover:bg-[#036448] text-white font-extrabold rounded-xl text-xs shrink-0 cursor-pointer"
+            >
+              Choose Plan
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Form Fields Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -9,6 +9,7 @@ import {
   FileText,
   X,
   Printer,
+  Download,
   Share2,
   Calendar,
   DollarSign,
@@ -22,6 +23,7 @@ import { customerService } from '../../services/customerService';
 import { invoiceService } from '../../services/invoiceService';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { generateGeneralCustomersPdf, printGeneralCustomersPdf } from '../../utils/pdfGenerator';
 
 export default function GeneralCustomersPage() {
   const navigate = useNavigate();
@@ -45,7 +47,13 @@ export default function GeneralCustomersPage() {
   });
 
   const rawCustomersList = useMemo(() => {
-    return customersApi?.data?.customers || customersApi?.customers || [];
+    return (
+      customersApi?.data?.generalCustomers ||
+      customersApi?.generalCustomers ||
+      customersApi?.data?.customers ||
+      customersApi?.customers ||
+      []
+    );
   }, [customersApi]);
 
   // Fetch Invoices for Selected Customer Details Modal
@@ -103,6 +111,32 @@ export default function GeneralCustomersPage() {
     };
   }, [selectedCustomer, customerInvoices]);
 
+  const filterLabels = {
+    ALL: 'All Customers',
+    DUE: 'Due Customers',
+    NO_DUE: 'No Due Customers',
+    RECENT: 'Recent Customers',
+    HIGH_VALUE: 'High Value Customers',
+  };
+
+  const handlePrintDirectory = () => {
+    if (filteredCustomers.length === 0) return;
+    const activeFilterLabel = filterLabels[activeFilter] || 'All Customers';
+    printGeneralCustomersPdf(filteredCustomers, shopSettings, {
+      activeFilter: activeFilterLabel,
+      searchQuery,
+    });
+  };
+
+  const handleSaveDirectoryPdf = () => {
+    if (filteredCustomers.length === 0) return;
+    const activeFilterLabel = filterLabels[activeFilter] || 'All Customers';
+    generateGeneralCustomersPdf(filteredCustomers, shopSettings, {
+      activeFilter: activeFilterLabel,
+      searchQuery,
+    });
+  };
+
   const handlePrintInvoice = () => {
     window.print();
   };
@@ -129,16 +163,52 @@ export default function GeneralCustomersPage() {
           </div>
         </div>
 
-        {/* Global Search Bar */}
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by customer, mobile, village, bill #..."
-            className="w-full h-9 pl-9 pr-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#047857] focus:ring-2 focus:ring-emerald-500/20"
-          />
+        {/* Search & Actions Group */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+          {/* Global Search Bar */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search customer, mobile..."
+              className="w-full h-9 pl-9 pr-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#047857] focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </div>
+
+          {/* Directory Action Buttons: Print & Save PDF */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePrintDirectory}
+              disabled={filteredCustomers.length === 0}
+              className={`h-9 px-3.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs border transition-all cursor-pointer ${
+                filteredCustomers.length === 0
+                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 active:bg-gray-100'
+              }`}
+              title="Print General Customers Directory"
+            >
+              <Printer className="w-3.5 h-3.5 text-gray-600" />
+              <span>Print</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveDirectoryPdf}
+              disabled={filteredCustomers.length === 0}
+              className={`h-9 px-3.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer ${
+                filteredCustomers.length === 0
+                  ? 'bg-emerald-300 text-white cursor-not-allowed opacity-60'
+                  : 'bg-[#047857] hover:bg-[#036549] text-white active:bg-[#02523b]'
+              }`}
+              title="Save General Customers Directory as PDF"
+            >
+              <Download className="w-3.5 h-3.5 text-white" />
+              <span>Save PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -185,19 +255,19 @@ export default function GeneralCustomersPage() {
               <table className="w-full text-left text-[11px] border-collapse">
                 <thead className="bg-gray-50/90 border-b border-gray-200 text-gray-600 font-semibold text-[10px] uppercase tracking-tight">
                   <tr>
-                    <th className="py-2.5 px-3">Customer Name</th>
-                    <th className="py-2.5 px-3">Mobile Number</th>
-                    <th className="py-2.5 px-3">Village / Location</th>
-                    <th className="py-2.5 px-3 text-center">Total Bills</th>
-                    <th className="py-2.5 px-3 text-right">Total Purchase Value (₹)</th>
-                    <th className="py-2.5 px-3 text-right">Total Paid (₹)</th>
-                    <th className="py-2.5 px-3 text-right">Outstanding (₹)</th>
-                    <th className="py-2.5 px-3 text-center">Last Bill Date</th>
-                    <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-center w-[5%]">#</th>
+                    <th className="py-2.5 px-3 w-[22%]">Customer Name</th>
+                    <th className="py-2.5 px-3 w-[16%]">Mobile</th>
+                    <th className="py-2.5 px-3 text-center w-[8%]">Bills</th>
+                    <th className="py-2.5 px-3 text-right w-[16%]">Purchase Value (₹)</th>
+                    <th className="py-2.5 px-3 text-right w-[14%]">Total Paid (₹)</th>
+                    <th className="py-2.5 px-3 text-right w-[12%]">Outstanding (₹)</th>
+                    <th className="py-2.5 px-3 text-center w-[12%]">Last Bill Date</th>
+                    <th className="py-2.5 px-3 text-center w-[8%]">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
-                  {filteredCustomers.map((cust) => {
+                  {filteredCustomers.map((cust, idx) => {
                     const dueVal = Number(cust.outstandingBalance || 0);
                     const totalPurchases = Number(cust.totalPurchases || 0);
                     const totalPaid = Number(cust.totalPaid || (totalPurchases - dueVal));
@@ -215,12 +285,10 @@ export default function GeneralCustomersPage() {
                         onClick={() => setSelectedCustomer(cust)}
                         className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                       >
+                        <td className="py-3 px-3 text-center font-mono text-gray-400 text-[10px]">{idx + 1}</td>
                         <td className="py-3 px-3 font-bold text-gray-900">{cust.name}</td>
                         <td className="py-3 px-3 font-mono text-gray-600">
                           {cust.mobile || 'N/A'}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">
-                          {cust.village || cust.address || 'Narketpally'}
                         </td>
                         <td className="py-3 px-3 text-center font-mono font-bold text-gray-700">
                           {cust.totalBillsCount || 1}
@@ -294,16 +362,10 @@ export default function GeneralCustomersPage() {
                       </span>
                     </div>
 
-                    {/* Mobile & Village */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Mobile</span>
-                        <span className="font-mono font-bold text-gray-900 block">{cust.mobile || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Village / Location</span>
-                        <span className="font-medium text-gray-800 block break-words">{cust.village || cust.address || 'Narketpally'}</span>
-                      </div>
+                    {/* Mobile */}
+                    <div className="text-xs">
+                      <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Mobile</span>
+                      <span className="font-mono font-bold text-gray-900 block">{cust.mobile || 'N/A'}</span>
                     </div>
 
                     {/* Financial Breakdown */}
@@ -354,7 +416,7 @@ export default function GeneralCustomersPage() {
                 <div>
                   <h2 className="text-base font-extrabold text-gray-900">{selectedCustomer.name}</h2>
                   <p className="text-[11px] text-gray-500 font-medium">
-                    Phone: {selectedCustomer.mobile || 'N/A'} • Village: {selectedCustomer.village || 'Narketpally'}
+                    Phone: {selectedCustomer.mobile || 'N/A'}
                   </p>
                 </div>
               </div>

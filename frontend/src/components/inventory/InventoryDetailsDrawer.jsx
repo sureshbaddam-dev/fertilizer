@@ -230,7 +230,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                               +{ph.quantity} {unitName}
                             </td>
                             <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
-                              ₹ {Number(ph.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              ₹ {Number(ph.purchaseRate ?? ph.rate ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
                           </tr>
                         ))}
@@ -248,7 +248,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                         </div>
                         <div className="flex items-center justify-between text-[11px] font-mono text-gray-600">
                           <span>{ph.date}</span>
-                          <span>Rate: ₹ {Number(ph.rate || 0).toLocaleString('en-IN')}</span>
+                          <span>Rate: ₹ {Number(ph.purchaseRate ?? ph.rate ?? 0).toLocaleString('en-IN')}</span>
                         </div>
                       </div>
                     ))}
@@ -306,7 +306,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                               -{sh.quantity} {unitName}
                             </td>
                             <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
-                              ₹ {Number(sh.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              ₹ {Number(sh.sellingPrice ?? sh.price ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
                           </tr>
                         ))}
@@ -324,7 +324,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                         </div>
                         <div className="flex items-center justify-between text-[11px] font-mono text-gray-600">
                           <span>{sh.date}</span>
-                          <span>Price: ₹ {Number(sh.price || 0).toLocaleString('en-IN')}</span>
+                          <span>Price: ₹ {Number(sh.sellingPrice ?? sh.price ?? 0).toLocaleString('en-IN')}</span>
                         </div>
                       </div>
                     ))}

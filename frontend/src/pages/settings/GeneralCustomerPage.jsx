@@ -90,7 +90,6 @@ export default function GeneralCustomerPage() {
                     <th className="py-2.5 px-3">#</th>
                     <th className="py-2.5 px-3">Customer Name</th>
                     <th className="py-2.5 px-3">Mobile Number</th>
-                    <th className="py-2.5 px-3">Village / Location</th>
                     <th className="py-2.5 px-3 text-right">Outstanding Dues (₹)</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
                     <th className="py-2.5 px-3 text-center">Action</th>
@@ -110,9 +109,6 @@ export default function GeneralCustomerPage() {
                         <td className="py-2.5 px-3 font-mono font-medium text-gray-600 flex items-center gap-1">
                           <Phone className="w-3 h-3 text-gray-400" />
                           <span>{cust.mobile || 'N/A'}</span>
-                        </td>
-                        <td className="py-2.5 px-3 text-gray-600">
-                          {cust.village || cust.address || 'Narketpally'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold">
                           {dueVal > 0 ? (
@@ -175,17 +171,11 @@ export default function GeneralCustomerPage() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Village / Location</span>
-                        <span className="font-medium text-gray-800 block break-words">{cust.village || cust.address || 'Narketpally'}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Outstanding Dues</span>
-                        <span className={`font-mono font-black text-xs block ${dueVal > 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                          ₹ {dueVal.toLocaleString('en-IN')}
-                        </span>
-                      </div>
+                    <div className="text-xs">
+                      <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Outstanding Dues</span>
+                      <span className={`font-mono font-black text-xs block ${dueVal > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                        ₹ {dueVal.toLocaleString('en-IN')}
+                      </span>
                     </div>
                   </div>
                 );
@@ -212,7 +202,7 @@ export default function GeneralCustomerPage() {
                   Invoice History: {selectedCustomer.name}
                 </h3>
                 <p className="text-[11px] text-gray-500 font-medium">
-                  Mobile: {selectedCustomer.mobile || 'N/A'} • Village: {selectedCustomer.village || 'Narketpally'}
+                  Mobile: {selectedCustomer.mobile || 'N/A'}
                 </p>
               </div>
 

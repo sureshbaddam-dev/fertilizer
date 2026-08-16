@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Home,
   ShoppingCart,
@@ -16,9 +16,11 @@ import {
   Tag,
   X,
   Truck,
+  LogOut,
 } from 'lucide-react';
 import ShopDiscountModal from '../settings/ShopDiscountModal';
 import { dashboardService } from '../../services/dashboardService';
+import { authService } from '../../services/authService';
 import BrandLogo from '../common/BrandLogo';
 
 const NAV_ITEMS = [
@@ -31,12 +33,26 @@ const NAV_ITEMS = [
   { name: 'Suppliers Directory', path: '/suppliers', icon: Truck },
   { name: 'Reports', path: '/reports', icon: BarChart3 },
   { name: 'General Customers', path: '/general-customers', icon: UserCheck },
+  { name: 'Support & Tickets', path: '/support', icon: Bell },
   { name: 'Settings', path: '/settings', icon: Settings },
 ];
 
 export default function Sidebar({ isOpen, onCloseMobile }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    try {
+      await authService.logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+  };
 
   const { data: dashboardApi } = useQuery({
     queryKey: ['dashboard-summary'],
@@ -115,7 +131,7 @@ export default function Sidebar({ isOpen, onCloseMobile }) {
           </div>
         </div>
 
-        {/* Bottom Card: Shop Discount (Desktop Only) */}
+        {/* Bottom Card: Shop Discount & Sign Out (Desktop Only) */}
         <div className="hidden space-y-3 border-t border-slate-100 pt-3 lg:block mt-auto">
           <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-slate-50 p-3">
             <div className="flex items-center gap-2">
@@ -133,6 +149,15 @@ export default function Sidebar({ isOpen, onCloseMobile }) {
               Manage
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+          >
+            <LogOut className="h-4 w-4 text-red-600" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
 

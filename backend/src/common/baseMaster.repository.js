@@ -20,8 +20,9 @@ export function createBaseMasterRepository(Model) {
       return await query.exec();
     },
 
-    async findById(id) {
-      return await Model.findById(id).exec();
+    async findById(id, userId = null) {
+      const query = userId ? { _id: id, userId } : { _id: id };
+      return await Model.findOne(query).exec();
     },
 
     async findOne(filter = {}) {
@@ -32,20 +33,24 @@ export function createBaseMasterRepository(Model) {
       return await Model.create(data);
     },
 
-    async update(id, data) {
-      return await Model.findByIdAndUpdate(id, data, { new: true, runValidators: true }).exec();
+    async update(id, data, userId = null) {
+      const filter = userId ? { _id: id, userId } : { _id: id };
+      return await Model.findOneAndUpdate(filter, data, { new: true, runValidators: true }).exec();
     },
 
-    async softDelete(id) {
-      return await Model.findByIdAndUpdate(id, { isActive: false }, { new: true }).exec();
+    async softDelete(id, userId = null) {
+      const filter = userId ? { _id: id, userId } : { _id: id };
+      return await Model.findOneAndUpdate(filter, { isActive: false }, { new: true }).exec();
     },
 
-    async restore(id) {
-      return await Model.findByIdAndUpdate(id, { isActive: true }, { new: true }).exec();
+    async restore(id, userId = null) {
+      const filter = userId ? { _id: id, userId } : { _id: id };
+      return await Model.findOneAndUpdate(filter, { isActive: true }, { new: true }).exec();
     },
 
-    async toggleStatus(id) {
-      const doc = await Model.findById(id);
+    async toggleStatus(id, userId = null) {
+      const filter = userId ? { _id: id, userId } : { _id: id };
+      const doc = await Model.findOne(filter);
       if (!doc) return null;
       doc.isActive = !doc.isActive;
       return await doc.save();

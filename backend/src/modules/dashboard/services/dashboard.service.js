@@ -6,19 +6,18 @@ import { shopDiscountService } from '../../settings/services/shopDiscount.servic
 import { reportsService } from '../../reports/services/reports.service.js';
 
 export const dashboardService = {
-  async getDashboardSummary() {
+  async getDashboardSummary(userId) {
+    if (!userId) throw new Error('userId is required');
     const now = new Date();
-    
-    // Single Source of Truth: Reuse Reports BI Analytics engine
-    const biData = await reportsService.getBIAnalytics();
+
+    const biData = await reportsService.getBIAnalytics({}, userId);
 
     const salesInfo = biData?.sales || {};
     const overallInfo = biData?.overallBusiness || {};
 
-    // 1. Today's Summary Metrics (Matching Reports exactly)
     const rawTodaySales = salesInfo.todaySales > 0 ? salesInfo.todaySales : (salesInfo.totalSales || 0);
-    const totalBillsCount = await SalesInvoice.countDocuments();
-    const activeCustomersCount = await Customer.countDocuments({ isActive: true });
+    const totalBillsCount = await SalesInvoice.countDocuments({ userId });
+    const activeCustomersCount = await Customer.countDocuments({ userId, isActive: true });
     const rawPendingPayments = overallInfo.customerOutstanding !== undefined
       ? overallInfo.customerOutstanding
       : (salesInfo.outstandingCollection || 0);
@@ -29,8 +28,7 @@ export const dashboardService = {
       year: 'numeric',
     });
 
-    // 2. Recent Bills (Latest Invoices from MongoDB)
-    const recentInvoices = await SalesInvoice.find()
+    const recentInvoices = await SalesInvoice.find({ userId })
       .sort({ createdAt: -1, date: -1 })
       .limit(5)
       .lean()
@@ -58,8 +56,7 @@ export const dashboardService = {
       };
     });
 
-    // 3. Low Stock Products (Matching live Product collection)
-    const lowStockDocs = await Product.find({ totalStock: { $lte: 20 }, isActive: true })
+    const lowStockDocs = await Product.find({ userId, totalStock: { $lte: 20 }, isActive: true })
       .populate('brandId', 'name')
       .sort({ totalStock: 1 })
       .limit(5)
@@ -82,14 +79,13 @@ export const dashboardService = {
       };
     });
 
-    // 4. Stock Alerts Summary (Live MongoDB counts)
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const { ProductBatch } = await import('../../products/models/productBatch.model.js');
 
-    const totalLowStock = await Product.countDocuments({ totalStock: { $gt: 0, $lte: 10 }, isActive: true });
-    const totalOutOfStock = await Product.countDocuments({ totalStock: { $eq: 0 }, isActive: true });
-    const expiryAlerts = await ProductBatch.countDocuments({ currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } });
-    const expiredProducts = await ProductBatch.countDocuments({ currentStock: { $gt: 0 }, expiryDate: { $lt: now } });
+    const totalLowStock = await Product.countDocuments({ userId, totalStock: { $gt: 0, $lte: 10 }, isActive: true });
+    const totalOutOfStock = await Product.countDocuments({ userId, totalStock: { $eq: 0 }, isActive: true });
+    const expiryAlerts = await ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } });
+    const expiredProducts = await ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } });
 
     const stockAlerts = {
       totalAlerts: totalLowStock + totalOutOfStock + expiryAlerts + expiredProducts,
@@ -99,11 +95,10 @@ export const dashboardService = {
       expiredProducts,
     };
 
-    // 5. Top Categories (Matching Categories from MongoDB with live product counts)
-    const dbCategories = await Category.find().lean().exec();
+    const dbCategories = await Category.find({ userId }).lean().exec();
     const categoriesWithCount = await Promise.all(
       dbCategories.map(async (cat) => {
-        const prodCount = await Product.countDocuments({ categoryId: cat._id, isActive: true });
+        const prodCount = await Product.countDocuments({ userId, categoryId: cat._id, isActive: true });
         return {
           _id: cat._id,
           title: cat.name,
@@ -115,8 +110,7 @@ export const dashboardService = {
 
     categoriesWithCount.sort((a, b) => b.prodCount - a.prodCount);
 
-    // 6. Shop Discount
-    const shopDiscount = await shopDiscountService.getShopDiscount();
+    const shopDiscount = await shopDiscountService.getShopDiscount(userId);
 
     return {
       todaySummary: {
@@ -140,13 +134,13 @@ export const dashboardService = {
     };
   },
 
-  async getNotifications() {
+  async getNotifications(userId) {
+    if (!userId) throw new Error('userId is required');
     const now = new Date();
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const notifications = [];
 
-    // 1. Low Stock Alerts
-    const lowStockProds = await Product.find({ totalStock: { $lte: 10 }, isActive: true })
+    const lowStockProds = await Product.find({ userId, totalStock: { $lte: 10 }, isActive: true })
       .limit(5)
       .lean()
       .exec();
@@ -164,9 +158,9 @@ export const dashboardService = {
       });
     });
 
-    // 2. Expiry Alerts
     const { ProductBatch } = await import('../../products/models/productBatch.model.js');
     const expiringBatches = await ProductBatch.find({
+      userId,
       currentStock: { $gt: 0 },
       expiryDate: { $lte: in30Days },
     })
@@ -190,8 +184,7 @@ export const dashboardService = {
       });
     });
 
-    // 3. Pending Customer Dues
-    const dueCustomers = await Customer.find({ outstandingBalance: { $gt: 0 }, isActive: true })
+    const dueCustomers = await Customer.find({ userId, outstandingBalance: { $gt: 0 }, isActive: true })
       .sort({ outstandingBalance: -1 })
       .limit(5)
       .lean()
@@ -210,9 +203,8 @@ export const dashboardService = {
       });
     });
 
-    // 4. Pending Supplier Payments
     const { Supplier } = await import('../../suppliers/models/supplier.model.js');
-    const dueSuppliers = await Supplier.find({ outstandingBalance: { $gt: 0 }, isActive: true })
+    const dueSuppliers = await Supplier.find({ userId, outstandingBalance: { $gt: 0 }, isActive: true })
       .sort({ outstandingBalance: -1 })
       .limit(5)
       .lean()
@@ -231,8 +223,7 @@ export const dashboardService = {
       });
     });
 
-    // 5. Recent System Alerts (Latest Invoice created)
-    const latestInvoice = await SalesInvoice.findOne()
+    const latestInvoice = await SalesInvoice.findOne({ userId })
       .sort({ createdAt: -1 })
       .lean()
       .exec();

@@ -12,7 +12,11 @@ import {
   restorePayment,
 } from './controllers/supplier.controller.js';
 
+import { protect } from '../../middlewares/auth.middleware.js';
+
 const router = Router();
+
+router.use(protect);
 
 router.get('/', getSuppliers);
 router.post('/', createSupplier);

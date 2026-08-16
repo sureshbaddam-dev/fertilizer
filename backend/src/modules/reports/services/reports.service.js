@@ -9,12 +9,14 @@ import { ProductBatch } from '../../products/models/productBatch.model.js';
 import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
 
 export const reportsService = {
-  async getBIAnalytics(filters = {}) {
+  async getBIAnalytics(filters = {}, userId) {
+    if (!userId) throw new Error('userId is required');
+    const userObjId = new mongoose.Types.ObjectId(userId);
+
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
 
-    // Date Boundaries for MongoDB Aggregation $match filters
     const startOfToday = new Date(currentYear, currentMonth, now.getDate());
     const endOfToday = new Date(currentYear, currentMonth, now.getDate(), 23, 59, 59, 999);
 
@@ -27,9 +29,6 @@ export const reportsService = {
 
     const startOfYear = new Date(currentYear, 0, 1);
 
-    // ------------------------------------------------------------------
-    // PARALLEL MONGODB AGGREGATION PIPELINES (0 IN-MEMORY LOOPS)
-    // ------------------------------------------------------------------
     const [
       salesFacetResult,
       purchaseFacetResult,
@@ -41,6 +40,7 @@ export const reportsService = {
     ] = await Promise.all([
       // 1. SalesInvoice MongoDB Facet Aggregation Pipeline
       SalesInvoice.aggregate([
+        { $match: { userId: userObjId } },
         {
           $facet: {
             todaySales: [
@@ -232,6 +232,7 @@ export const reportsService = {
 
       // 2. Purchase MongoDB Facet Aggregation Pipeline
       Purchase.aggregate([
+        { $match: { userId: userObjId } },
         {
           $facet: {
             todayPurchase: [
@@ -308,15 +309,26 @@ export const reportsService = {
 
       // 3. Product Inventory MongoDB Aggregation Pipeline
       Product.aggregate([
-        { $match: { isActive: true } },
+        { $match: { userId: userObjId, isActive: true } },
         {
           $facet: {
             inventorySummary: [
               {
                 $lookup: {
                   from: 'productbatches',
-                  localField: '_id',
-                  foreignField: 'productId',
+                  let: { prodId: '$_id' },
+                  pipeline: [
+                    {
+                      $match: {
+                        $expr: {
+                          $and: [
+                            { $eq: ['$productId', '$$prodId'] },
+                            { $eq: ['$userId', userObjId] }
+                          ]
+                        }
+                      }
+                    }
+                  ],
                   as: 'batchDocs',
                 },
               },
@@ -408,7 +420,7 @@ export const reportsService = {
 
       // 4. Customer MongoDB Aggregation Pipeline
       Customer.aggregate([
-        { $match: { isActive: true } },
+        { $match: { userId: userObjId, isActive: true } },
         {
           $group: {
             _id: null,
@@ -420,7 +432,7 @@ export const reportsService = {
 
       // 5. Supplier MongoDB Aggregation Pipeline
       Supplier.aggregate([
-        { $match: { isActive: true } },
+        { $match: { userId: userObjId, isActive: true } },
         {
           $group: {
             _id: null,
@@ -431,6 +443,7 @@ export const reportsService = {
 
       // 6. CustomerPayment MongoDB Aggregation Pipeline
       CustomerPayment.aggregate([
+        { $match: { userId: userObjId } },
         {
           $group: {
             _id: null,
@@ -446,7 +459,7 @@ export const reportsService = {
 
       // 7. SupplierLedger MongoDB Aggregation Pipeline
       SupplierLedger.aggregate([
-        { $match: { transactionType: 'PAYMENT' } },
+        { $match: { userId: userObjId, transactionType: 'PAYMENT' } },
         {
           $group: {
             _id: null,
@@ -456,9 +469,6 @@ export const reportsService = {
       ]),
     ]);
 
-    // ------------------------------------------------------------------
-    // EXTRACT AGGREGATED MONGO DATA & FORMAT RESPONSE (0 HARDCODED FALLBACKS)
-    // ------------------------------------------------------------------
     const salesDataObj = salesFacetResult[0] || {};
     const purchaseDataObj = purchaseFacetResult[0] || {};
     const productDataObj = productFacetResult[0] || {};
@@ -492,16 +502,13 @@ export const reportsService = {
     const extraCashCollection = customerCashPaymentResult[0]?.cashCollection || 0;
     const cashCollectionOnly = totalSalesPaid + extraCashCollection;
 
-    // Calculate Gross Profit strictly from historical invoice item snapshots in MongoDB
     const totalGrossProfit = Math.round(salesDataObj.totalProfit?.[0]?.totalGrossProfit || 0);
 
-    // Growth Rates & Averages (ZERO FALLBACK NUMBERS: 0 if no prior period)
     const salesGrowthPct = prevMonthlySales > 0 ? Number((((monthlySales - prevMonthlySales) / prevMonthlySales) * 100).toFixed(1)) : 0;
     const purchaseGrowthPct = prevMonthlyPurchase > 0 ? Number((((monthlyPurchase - prevMonthlyPurchase) / prevMonthlyPurchase) * 100).toFixed(1)) : 0;
     const avgBillValue = totalInvoicesCount > 0 ? Math.round(totalSalesVal / totalInvoicesCount) : 0;
     const profitPctVal = totalSalesVal > 0 ? Number(((totalGrossProfit / totalSalesVal) * 100).toFixed(1)) : 0;
 
-    // Format Monthly Trends for Recharts
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthlySalesMap = {};
     const monthlyProfitMap = {};
@@ -535,7 +542,6 @@ export const reportsService = {
       profit: y.profit || 0,
     }));
 
-    // Business Health Rating Engine (Dynamic based on MongoDB balance ratios)
     const isSupplierDuesExceedStock = finalSupplierOutstanding > currentStockVal;
     let businessHealthStatus = 'Excellent';
     let businessHealthScore = 100;

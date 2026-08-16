@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const stockLedgerSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     transactionType: {
       type: String,
       enum: ['PURCHASE', 'SALE', 'SALE_RETURN', 'PURCHASE_RETURN', 'ADJUSTMENT', 'DAMAGE', 'OPENING_STOCK'],
@@ -61,6 +67,15 @@ const stockLedgerSchema = new mongoose.Schema(
       type: String,
       default: 'Ramesh Kumar',
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
     timestamp: {
       type: Date,
       default: Date.now,
@@ -72,7 +87,8 @@ const stockLedgerSchema = new mongoose.Schema(
   }
 );
 
-stockLedgerSchema.index({ productId: 1, batchId: 1, timestamp: -1 });
-stockLedgerSchema.index({ productId: 1, timestamp: -1 });
+stockLedgerSchema.index({ userId: 1, productId: 1, batchId: 1, timestamp: -1 });
+stockLedgerSchema.index({ userId: 1, productId: 1, timestamp: -1 });
+stockLedgerSchema.index({ userId: 1, referenceId: 1, isDeleted: 1 });
 
 export const StockLedger = mongoose.model('StockLedger', stockLedgerSchema);

@@ -3,6 +3,12 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const brandSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Brand name is required'],
@@ -34,6 +40,6 @@ const brandSchema = new mongoose.Schema(
 );
 
 brandSchema.plugin(softDeletePlugin);
-brandSchema.index({ name: 1 });
+brandSchema.index({ userId: 1, name: 1 });
 
-export const Brand = mongoose.model('Brand', brandSchema);
+export const Brand = mongoose.models.Brand || mongoose.model('Brand', brandSchema);

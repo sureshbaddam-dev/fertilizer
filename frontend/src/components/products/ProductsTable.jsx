@@ -122,10 +122,8 @@ export default function ProductsTable({
                 <th className="py-3 px-2.5 text-center align-middle">Brand</th>
                 <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">Purchase Price (₹)</th>
                 <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">Selling Price (₹)</th>
-                <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">MRP (₹)</th>
                 <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">Current Stock</th>
                 <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">Low Stock Alert</th>
-                <th className="py-3 px-2.5 text-center align-middle whitespace-nowrap">Status</th>
                 <th className="py-3 px-2.5 text-center align-middle w-16">Actions</th>
               </tr>
             </thead>
@@ -139,7 +137,6 @@ export default function ProductsTable({
                 const lowStockAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
                 const purchasePrice = Number(p.currentActiveBatch?.purchaseRate ?? p.defaultPurchaseRate ?? p.purchasePrice ?? 0);
                 const sellingPrice = Number(p.currentSellingPrice ?? p.sellingPrice ?? p.defaultSellingPrice ?? 0);
-                const mrpVal = Number(p.defaultMrp ?? p.mrp ?? 0);
                 const packageSize = p.packageSize || p.packaging || `${unitName}`;
 
                 return (
@@ -147,42 +144,39 @@ export default function ProductsTable({
                     key={p._id || p.id || idx}
                     className="hover:bg-slate-50/70 transition-colors"
                   >
-                    <td className="py-2 px-2 text-center text-gray-500 font-medium text-[11px] align-middle">
+                    <td className="py-2.5 px-2 text-center text-gray-500 font-medium text-xs align-middle">
                       {rowIndex}
                     </td>
-                    <td className="py-2 px-2.5 text-left align-middle">
+                    <td className="py-2.5 px-2.5 text-left align-middle">
                       <div className="flex items-center gap-2.5">
                         <ProductAvatar src={p.image} name={p.name} size={34} />
                         <div>
-                          <span className="font-medium text-gray-900 text-[11px] block">{p.name}</span>
-                          <span className="text-[10px] text-gray-400 block">{packageSize}</span>
+                          <span className="font-medium text-gray-900 text-xs block">{p.name}</span>
+                          <span className="text-[11px] text-gray-400 block">{packageSize}</span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-2 px-2 text-center align-middle">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border inline-block whitespace-nowrap ${getCategoryBadgeClass(categoryName)}`}>
+                    <td className="py-2.5 px-2 text-center align-middle">
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border inline-block whitespace-nowrap ${getCategoryBadgeClass(categoryName)}`}>
                         {categoryName}
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-center font-medium text-gray-700 text-[11px] align-middle truncate max-w-[110px]" title={brandName}>
+                    <td className="py-2.5 px-2 text-center font-medium text-gray-700 text-xs align-middle truncate max-w-[110px]" title={brandName}>
                       {brandName}
                     </td>
-                    <td className="py-2 px-2.5 text-center font-mono font-medium text-gray-800 text-[11px] align-middle whitespace-nowrap">
-                      ₹ {purchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <td className="py-2.5 px-2.5 text-center font-mono font-medium text-gray-800 text-xs align-middle whitespace-nowrap">
+                      ₹ {purchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-2 px-2.5 text-center font-mono font-bold text-gray-900 text-[11px] align-middle whitespace-nowrap">
-                      ₹ {sellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <td className="py-2.5 px-2.5 text-center font-mono font-bold text-[#047857] text-xs align-middle whitespace-nowrap">
+                      ₹ {sellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-2 px-2.5 text-center font-mono text-gray-500 text-[11px] align-middle whitespace-nowrap">
-                      ₹ {mrpVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-2 px-2.5 text-center font-mono font-bold text-gray-900 text-[11px] align-middle whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-center font-mono font-bold text-gray-900 text-xs align-middle whitespace-nowrap">
                       {currentStock} {unitName}
                     </td>
-                    <td className="py-2 px-2.5 text-center font-mono text-gray-500 text-[11px] align-middle whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-center font-mono text-gray-500 text-xs align-middle whitespace-nowrap">
                       {lowStockAlert} {unitName}
                     </td>
-                    <td className="py-2 px-2.5 text-center align-middle whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-center align-middle whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
@@ -190,7 +184,7 @@ export default function ProductsTable({
                           className="p-1 rounded text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer flex items-center justify-center"
                           title="View Product Details"
                         >
-                          <MoreVertical className="w-3.5 h-3.5" />
+                          <MoreVertical className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -202,11 +196,11 @@ export default function ProductsTable({
         </div>
 
         {/* Dynamic Pagination Bar */}
-        <div className="px-3.5 py-2 bg-gray-50/80 border-t border-gray-200/80 flex items-center justify-between text-[11px] text-gray-600 flex-wrap gap-2">
+        <div className="px-3.5 py-2.5 bg-gray-50/80 border-t border-gray-200/80 flex items-center justify-between text-xs text-gray-600 flex-wrap gap-2">
           <div className="flex items-center gap-1 leading-none">
-            Showing <span className="font-medium text-gray-900">{products.length > 0 ? startIndex : 0}</span> to{' '}
-            <span className="font-medium text-gray-900">{endIndex}</span> of{' '}
-            <span className="font-medium text-gray-900">{totalCount}</span> products
+            Showing <span className="font-semibold text-gray-900">{products.length > 0 ? startIndex : 0}</span> to{' '}
+            <span className="font-semibold text-gray-900">{endIndex}</span> of{' '}
+            <span className="font-semibold text-gray-900">{totalCount}</span> products
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -215,15 +209,15 @@ export default function ProductsTable({
               <button
                 disabled={currentPage <= 1}
                 onClick={() => onPageChange && onPageChange(currentPage - 1)}
-                className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 cursor-pointer text-[10px]"
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 cursor-pointer text-xs"
               >
-                <ChevronLeft className="w-3 h-3" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
 
               {pageNumbers.map((pg, pageIdx) => {
                 if (pg === '...') {
                   return (
-                    <span key={`dots-${pageIdx}`} className="px-0.5 text-gray-400 text-[10px]">
+                    <span key={`dots-${pageIdx}`} className="px-0.5 text-gray-400 text-xs">
                       ...
                     </span>
                   );
@@ -233,9 +227,9 @@ export default function ProductsTable({
                   <button
                     key={pg}
                     onClick={() => onPageChange && onPageChange(pg)}
-                    className={`w-6 h-6 flex items-center justify-center rounded text-[10px] cursor-pointer transition-colors ${
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs cursor-pointer transition-colors ${
                       isCurrent
-                        ? 'font-semibold btn-agri-primary shadow-2xs'
+                        ? 'font-bold btn-agri-primary shadow-2xs'
                         : 'font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
@@ -247,9 +241,9 @@ export default function ProductsTable({
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => onPageChange && onPageChange(currentPage + 1)}
-                className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 cursor-pointer text-[10px]"
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 cursor-pointer text-xs"
               >
-                <ChevronRight className="w-3 h-3" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -257,7 +251,7 @@ export default function ProductsTable({
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange && onPageSizeChange(Number(e.target.value))}
-              className="h-6 px-1.5 bg-white border border-gray-200 hover:border-[#047857] rounded text-[11px] text-gray-700 font-semibold focus:outline-none focus:border-[#047857] focus:ring-2 focus:ring-emerald-500/20 cursor-pointer transition-colors"
+              className="h-7 px-2 bg-white border border-gray-200 hover:border-[#047857] rounded-lg text-xs text-gray-700 font-semibold focus:outline-none focus:border-[#047857] focus:ring-2 focus:ring-emerald-500/20 cursor-pointer transition-colors"
             >
               <option value={10}>10 / page</option>
               <option value={20}>20 / page</option>
@@ -269,8 +263,8 @@ export default function ProductsTable({
       </div>
 
       {/* Bottom Tip Banner */}
-      <div className="p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-2 text-[11px] text-emerald-900">
-        <Info className="w-3.5 h-3.5 text-[#047857] shrink-0" />
+      <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-900">
+        <Info className="w-4 h-4 text-[#047857] shrink-0" />
         <span className="leading-tight">
           <strong>Tip:</strong> You can add, edit or delete products. Batch & expiry details are optional and can be managed in Stock Entry.
         </span>

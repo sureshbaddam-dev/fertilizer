@@ -12,8 +12,11 @@ import {
   updateBatch,
 } from './controllers/product.controller.js';
 import { uploadProductImageMiddleware } from '../../middlewares/upload.middleware.js';
+import { protect } from '../../middlewares/auth.middleware.js';
 
 const router = Router();
+
+router.use(protect);
 
 router.get('/', getProducts);
 router.get('/top-selling', getTopSellingProducts);

@@ -30,14 +30,15 @@ export const purchaseRepository = {
     return await query.exec();
   },
 
-  async findByIdPopulated(id) {
-    const purchase = await Purchase.findById(id).populate('supplierId', 'name companyName mobile gstin').exec();
+  async findByIdPopulated(id, userId) {
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    const purchase = await Purchase.findOne(filter).populate('supplierId', 'name companyName mobile gstin').exec();
     if (!purchase) return null;
 
     const { SupplierLedger } = await import('../../suppliers/models/supplierLedger.model.js');
 
     const [items, payments] = await Promise.all([
-      PurchaseItem.find({ purchaseId: id })
+      PurchaseItem.find({ purchaseId: id, ...(userId ? { userId } : {}) })
         .populate({
           path: 'productId',
           select: 'name image brandId categoryId defaultUnitId defaultPurchaseRate defaultSellingPrice defaultMrp',
@@ -49,7 +50,7 @@ export const purchaseRepository = {
         })
         .populate('batchId', 'batchNumber mfgDate expiryDate currentStock')
         .exec(),
-      SupplierLedger.find({ purchaseId: id, transactionType: 'PAYMENT', isDeleted: { $ne: true } })
+      SupplierLedger.find({ purchaseId: id, transactionType: 'PAYMENT', isDeleted: { $ne: true }, ...(userId ? { userId } : {}) })
         .sort({ date: 1, createdAt: 1 })
         .exec(),
     ]);

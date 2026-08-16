@@ -14,9 +14,12 @@ import {
   ChevronRight,
   ArrowLeft,
   Archive,
+  ShieldCheck,
+  User,
 } from 'lucide-react';
 
 const SETTINGS_TABS = [
+  { name: 'User Profile', path: '/settings/user-profile', icon: User },
   { name: 'Shop Profile', path: '/settings/shop', icon: Store },
   { name: 'Shop Discount', path: '/settings/shop-discount', icon: Tag },
   { name: 'Taxes & GST', path: '/settings/taxes', icon: Receipt },
@@ -24,7 +27,6 @@ const SETTINGS_TABS = [
   { name: 'Preferences', path: '/settings/preferences', icon: Sliders },
   { name: 'Master Data', path: '/settings/master-data', icon: Database },
   { name: 'Notifications', path: '/settings/notifications', icon: Bell },
-  { name: 'Archived Purchases', path: '/settings/deleted-purchases', icon: Archive },
 ];
 
 export default function SettingsHubLayout() {

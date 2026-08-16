@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Search,
   ShoppingBag,
+  MessageSquare,
 } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { customerService } from '../../services/customerService';
@@ -18,6 +19,8 @@ import { productService } from '../../services/productService';
 import { invoiceService } from '../../services/invoiceService';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
+import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import AddCustomerModal from '../customers/AddCustomerModal';
 
 export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
@@ -131,9 +134,12 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Consume Live Shop Settings from Shared Context (Single Source of Truth)
   const { settings: shopSettingsData } = useSettings();
+  const shopSettings = useMemo(() => shopSettingsData || {}, [shopSettingsData]);
   const isGstEnabled = shopSettingsData?.isGstEnabled !== false;
   const defaultGstRate = Number(shopSettingsData?.defaultGst ?? 18);
   const gstType = shopSettingsData?.gstType || 'CGST_SGST';
+
+  const [lastSavedInvoice, setLastSavedInvoice] = useState(null);
 
   const isSelectingProdRef = useRef(false);
 
@@ -149,6 +155,21 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     const pUnit = (product.defaultUnitId?.shortName) || product.defaultUnitId?.name || product.unit || 'Bag';
     const pBrand = (product.brandId?.name) || product.brand || 'Vedixa';
     const pStock = Number(product.totalStock ?? product.currentStock ?? product.stock ?? 0);
+
+    // Resolve discount from active batch or product basic
+    const activeBatch = Array.isArray(product.batches)
+      ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0 && (b.discount || b.gstRate)) || product.batches[0]
+      : null;
+
+    const discVal = Number(
+      product.discountVal !== undefined && product.discountVal !== null
+        ? product.discountVal
+        : (activeBatch?.discount !== undefined && activeBatch?.discount !== null && activeBatch?.discount !== '' && Number(activeBatch?.discount) !== 0
+            ? activeBatch.discount
+            : (product.discount ?? 0))
+    );
+
+    const discType = product.discountType || activeBatch?.discountType || product.discountType || 'Percentage';
 
     setItems((prev) => {
       const existingIdx = prev.findIndex((i) => i.id === pId);
@@ -169,11 +190,15 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           brand: pBrand,
           qty: 1,
           price: pPrice,
-          disc: 0,
+          discVal: discVal > 0 ? discVal : 0,
+          discType: discVal > 0 ? discType : 'Percentage',
           unit: pUnit,
           image: product.image,
           currentStock: pStock,
           totalStock: pStock,
+          batches: product.batches,
+          discount: product.discount,
+          discountType: product.discountType,
         },
       ];
     });
@@ -183,7 +208,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setIsDrawerProdDropdownOpen(false);
     setSelectedProdIndex(-1);
 
-    // Focus search input ONLY if requested (e.g. user selected item from search dropdown)
     if (options.focusSearch && drawerProdInputRef.current) {
       drawerProdInputRef.current.value = '';
       drawerProdInputRef.current.focus();
@@ -194,7 +218,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }, 150);
   };
 
-  // Keyboard navigation handler for Product Search input
   const handleProdSearchKeyDown = (e) => {
     if (!isDrawerProdDropdownOpen || drawerProductOptions.length === 0) return;
 
@@ -219,7 +242,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   const lastProcessedProductRef = useRef(null);
 
-  // Quick Add product from Left Dashboard click (Do NOT focus search input or open dropdown)
   useEffect(() => {
     if (quickAddedProduct && lastProcessedProductRef.current !== quickAddedProduct) {
       lastProcessedProductRef.current = quickAddedProduct;
@@ -227,7 +249,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
   }, [quickAddedProduct]);
 
-  // Keyboard shortcut (Escape or F2 key listener)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' || e.key === 'Esc' || e.key === 'F2') {
@@ -241,7 +262,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, items.length]);
 
-  // Confirmation prompt triggered ONLY on explicit close button, ESC key, or cancel
   const handleExplicitClose = () => {
     if (items.length > 0) {
       if (window.confirm('Cart contains items. Are you sure you want to close the billing drawer?')) {
@@ -252,7 +272,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
   };
 
-  // Cart Operations
   const handleUpdateQty = (id, delta) => {
     setItems((prev) =>
       prev
@@ -299,9 +318,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setManualDiscountValue('');
     setPaidAmountInput('');
     setIsPaidAmountCustom(false);
+    setLastSavedInvoice(null);
   };
 
-  // State to hold authoritative backend FIFO preview result
   const [fifoPreview, setFifoPreview] = useState(null);
 
   useEffect(() => {
@@ -336,8 +355,8 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     };
   }, [items]);
 
-  // Authoritative displayItems derived from backend FIFO preview
   const displayItems = useMemo(() => {
+    let baseList = [];
     if (fifoPreview && Array.isArray(fifoPreview.items) && fifoPreview.items.length > 0) {
       const itemMap = new Map();
       items.forEach((i) => {
@@ -345,7 +364,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         if (idStr) itemMap.set(idStr, i);
       });
 
-      return fifoPreview.items.map((pi) => {
+      baseList = fifoPreview.items.map((pi) => {
         const pIdStr = (pi.productId || pi.originalProductId)?.toString();
         const parentItem = itemMap.get(pIdStr) || {};
         return {
@@ -358,82 +377,119 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           image: pi.image || parentItem.image || '',
           qty: pi.quantity || pi.qty,
           price: pi.unitPrice || pi.price,
+          discVal: parentItem.discVal || pi.discVal || 0,
+          discType: parentItem.discType || pi.discType || 'Percentage',
         };
       });
+    } else {
+      const expanded = [];
+      items.forEach((item) => {
+        const itemQty = Number(item.qty) || 0;
+        const batches = Array.isArray(item.batches)
+          ? item.batches.filter((b) => Number(b.currentStock || b.quantityRemaining || 0) > 0)
+          : [];
+
+        if (batches.length <= 1 || itemQty <= 0) {
+          expanded.push(item);
+          return;
+        }
+
+        const sortedBatches = [...batches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+        let remainingToAlloc = itemQty;
+        const batchGroups = [];
+
+        for (const batch of sortedBatches) {
+          if (remainingToAlloc <= 0) break;
+          const bStock = Number(batch.currentStock || batch.quantityRemaining || 0);
+          if (bStock <= 0) continue;
+
+          const alloc = Math.min(bStock, remainingToAlloc);
+          const bPrice = Number(batch.sellingPrice || item.price || 0);
+          const bDisc = Number(batch.discount !== undefined && batch.discount !== null && batch.discount !== '' && Number(batch.discount) !== 0 ? batch.discount : (item.discVal || 0));
+          const bDiscType = batch.discountType || item.discType || 'Percentage';
+
+          batchGroups.push({
+            batchNumber: batch.batchNumber,
+            qty: alloc,
+            price: bPrice,
+            discVal: bDisc,
+            discType: bDiscType,
+          });
+
+          remainingToAlloc -= alloc;
+        }
+
+        if (remainingToAlloc > 0) {
+          batchGroups.push({
+            batchNumber: '',
+            qty: remainingToAlloc,
+            price: item.price,
+            discVal: item.discVal || 0,
+            discType: item.discType || 'Percentage',
+          });
+        }
+
+        const distinctPrices = new Set(batchGroups.map((g) => g.price));
+        if (distinctPrices.size <= 1) {
+          expanded.push(item);
+        } else {
+          batchGroups.forEach((group, idx) => {
+            expanded.push({
+              ...item,
+              id: `${item.id}-batch-${group.batchNumber || idx}`,
+              originalProductId: item.id,
+              batchNumber: group.batchNumber,
+              qty: group.qty,
+              price: group.price,
+              discVal: group.discVal,
+              discType: group.discType,
+              isFifoSplit: true,
+              fifoSplitNotice: idx > 0
+                ? `Taken from next batch at ₹${group.price} (Previous batch contained ${batchGroups[0].qty} ${item.unit}s @ ₹${batchGroups[0].price})`
+                : undefined,
+            });
+          });
+        }
+      });
+      baseList = expanded;
     }
 
-    const expanded = [];
-    items.forEach((item) => {
-      const itemQty = Number(item.qty) || 0;
-      const batches = Array.isArray(item.batches)
-        ? item.batches.filter((b) => Number(b.currentStock || b.quantityRemaining || 0) > 0)
-        : [];
+    return baseList.map((pi) => {
+      const q = Number(pi.qty || pi.quantity) || 0;
+      const basePrice = Number(pi.price || pi.unitPrice) || 0;
+      const dVal = Number(pi.discVal || pi.discountVal || 0);
+      const dType = pi.discType || pi.discountType || 'Percentage';
 
-      if (batches.length <= 1 || itemQty <= 0) {
-        expanded.push(item);
-        return;
+      let discPerUnit = 0;
+      let effectivePrice = basePrice;
+      let discLabel = '';
+
+      if (dVal > 0) {
+        if (dType === 'Percentage') {
+          discPerUnit = (basePrice * dVal / 100);
+          discLabel = `${dVal}% OFF`;
+        } else {
+          discPerUnit = dVal;
+          discLabel = `₹${dVal} OFF`;
+        }
+        effectivePrice = Math.max(0, basePrice - discPerUnit);
       }
 
-      const sortedBatches = [...batches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-      let remainingToAlloc = itemQty;
-      const batchGroups = [];
-
-      for (const batch of sortedBatches) {
-        if (remainingToAlloc <= 0) break;
-        const bStock = Number(batch.currentStock || batch.quantityRemaining || 0);
-        if (bStock <= 0) continue;
-
-        const alloc = Math.min(bStock, remainingToAlloc);
-        const bPrice = Number(batch.sellingPrice || item.price || 0);
-
-        batchGroups.push({
-          batchNumber: batch.batchNumber,
-          qty: alloc,
-          price: bPrice,
-        });
-
-        remainingToAlloc -= alloc;
-      }
-
-      if (remainingToAlloc > 0) {
-        batchGroups.push({
-          batchNumber: '',
-          qty: remainingToAlloc,
-          price: item.price,
-        });
-      }
-
-      const distinctPrices = new Set(batchGroups.map((g) => g.price));
-      if (distinctPrices.size <= 1) {
-        expanded.push(item);
-      } else {
-        batchGroups.forEach((group, idx) => {
-          expanded.push({
-            ...item,
-            id: `${item.id}-batch-${group.batchNumber || idx}`,
-            originalProductId: item.id,
-            batchNumber: group.batchNumber,
-            qty: group.qty,
-            price: group.price,
-            isFifoSplit: true,
-            fifoSplitNotice: idx > 0
-              ? `Taken from next batch at ₹${group.price} (Previous batch contained ${batchGroups[0].qty} ${item.unit}s @ ₹${batchGroups[0].price})`
-              : undefined,
-          });
-        });
-      }
+      return {
+        ...pi,
+        discountVal: dVal,
+        discountType: dType,
+        discLabel,
+        discPerUnit,
+        effectivePrice,
+        lineTotal: q * effectivePrice,
+      };
     });
-
-    return expanded;
   }, [items, fifoPreview]);
 
-  // Subtotal calculation derived authoritatively from backend preview or displayItems
   const subtotal = useMemo(() => {
-    if (fifoPreview && fifoPreview.subtotal > 0) {
-      return Number(fifoPreview.subtotal);
-    }
-    return displayItems.reduce((acc, i) => acc + (Number(i.qty || i.quantity) || 0) * (Number(i.price || i.unitPrice) || 0), 0);
-  }, [displayItems, fifoPreview]);
+    return displayItems.reduce((acc, i) => acc + (i.lineTotal || 0), 0);
+  }, [displayItems]);
   const perItemDiscountTotal = useMemo(() => displayItems.reduce((acc, i) => acc + (Number(i.disc) || 0), 0), [displayItems]);
 
   // DISCOUNT PRIORITY ENGINE (#2, #3, #4):
@@ -610,6 +666,177 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     };
 
     createInvoiceMutation.mutate(payload);
+  };
+
+  const [isWhatsAppProcessing, setIsWhatsAppProcessing] = useState(false);
+
+  const handleWhatsAppFlow = async () => {
+    if (createInvoiceMutation.isPending || isSubmittingRef.current || isWhatsAppProcessing) return;
+
+    if (items.length === 0) {
+      alert('Cart is empty. Please add items before sending WhatsApp statement.');
+      return;
+    }
+
+    // Frontend Stock Check
+    for (const item of items) {
+      if (item.currentStock !== undefined && item.currentStock !== null && Number(item.currentStock) > 0) {
+        const available = Math.max(0, Number(item.currentStock));
+        if (item.qty > available) {
+          alert(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
+          return;
+        }
+      }
+    }
+
+    let customerData = null;
+    let isAddedCust = false;
+
+    if (customerMode === 'general') {
+      if (!generalName.trim()) {
+        alert('Please enter General Customer Name.');
+        return;
+      }
+      customerData = { name: generalName.trim(), mobile: generalMobile.trim() };
+      isAddedCust = false;
+    } else {
+      if (!selectedCustomer) {
+        alert('Please search and select a customer.');
+        return;
+      }
+      customerData = selectedCustomer;
+      isAddedCust = true;
+    }
+
+    const custMobile = (customerData.mobile || '').trim();
+    if (!custMobile) {
+      alert('Customer mobile number is missing. Please add a valid mobile/WhatsApp number to send statement.');
+      return;
+    }
+
+    setIsWhatsAppProcessing(true);
+    isSubmittingRef.current = true;
+
+    try {
+      let savedInvoice = lastSavedInvoice;
+
+      if (!savedInvoice) {
+        const idempotencyKey = `IDEMP-WA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const payload = {
+          customer: customerData,
+          customerId: isAddedCust ? selectedCustomer?._id : null,
+          customerType: isAddedCust ? 'ADDED' : 'GENERAL',
+          customerName: customerData.name,
+          customerMobile: customerData.mobile,
+          items: displayItems.map((i) => ({
+            productId: i.originalProductId || i.id || i._id,
+            name: i.name,
+            qty: i.qty,
+            price: i.price,
+            unitPrice: i.price,
+            batchNumber: i.batchNumber || '',
+            gstAmount: isGstEnabled ? (i.qty * i.price * defaultGstRate) / 100 : 0,
+          })),
+          subtotal,
+          discountAmount: totalDiscount,
+          taxAmount: gstCalculation.gstAmount,
+          totalAmount: grandTotal,
+          paidAmount: effectivePaidAmount,
+          paymentMode: selectedPaymentMode,
+          notes: notes.trim(),
+          idempotencyKey,
+        };
+
+        const savedRes = await invoiceService.createInvoice(payload);
+        savedInvoice = savedRes?.data?.invoice || savedRes?.invoice || savedRes?.data || savedRes || {};
+        setLastSavedInvoice(savedInvoice);
+
+        queryClient.invalidateQueries(['sales-invoices']);
+        queryClient.invalidateQueries(['products-list']);
+        queryClient.invalidateQueries(['customer-ledger-profile']);
+        queryClient.invalidateQueries(['general-customers-list']);
+        queryClient.invalidateQueries(['dashboard-stats']);
+      }
+
+      // 2. Re-fetch fresh Customer Ledger directly from database
+      const targetCustomerId = isAddedCust ? selectedCustomer?._id : (savedInvoice.customerId || savedInvoice.customer?._id || savedInvoice.customer);
+      let freshTransactions = [];
+      let freshCustomer = customerData;
+
+      if (targetCustomerId) {
+        try {
+          const ledgerRes = await customerService.getCustomerById(targetCustomerId);
+          const ledgerData = ledgerRes?.data?.data || ledgerRes?.data || ledgerRes || {};
+          if (Array.isArray(ledgerData.transactions)) {
+            freshTransactions = ledgerData.transactions;
+          }
+          if (ledgerData.customer) {
+            freshCustomer = ledgerData.customer;
+          }
+        } catch (err) {
+          console.warn('Could not fetch fresh customer ledger for WhatsApp statement:', err);
+        }
+      }
+
+      // Fallback for general customer without prior DB transactions
+      if (freshTransactions.length === 0 && savedInvoice) {
+        freshTransactions = [
+          {
+            type: 'Invoice',
+            date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+            createdAt: new Date().toISOString(),
+            invoiceNumber: savedInvoice.invoiceNumber || 'INV',
+            items: savedInvoice.items || displayItems,
+            debit: grandTotal,
+            credit: effectivePaidAmount > 0 ? effectivePaidAmount : 0,
+          },
+        ];
+      }
+
+      const now = new Date();
+      const defaultMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      // 3. Centralized Authoritative Statement Calculation
+      const monthlyData = calculateCustomerStatement({
+        transactions: freshTransactions,
+        customer: freshCustomer,
+        statementType: 'MONTHLY',
+        selectedMonth: defaultMonthStr,
+      });
+
+      // 4. Generate Monthly Statement PDF
+      generateMonthlyStatementPdf(freshCustomer, shopSettings, monthlyData);
+
+      // 5. Open WhatsApp Redirect
+      const cleanPhone = custMobile.replace(/\D/g, '');
+      const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+
+      const waMsg = buildWhatsAppStatementMessage({
+        monthLabel: monthlyData.monthLabel,
+        openingBalance: monthlyData.openingBalance,
+        newPurchases: grandTotal,
+        totalPurchases: monthlyData.newPurchases,
+        payments: monthlyData.payments,
+        due: monthlyData.closingDue,
+        shopSettings,
+        isFromBillDrawer: true,
+      });
+
+      const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(waMsg)}`;
+      window.open(waUrl, '_blank');
+
+      setItems([]);
+      setManualDiscountValue('');
+      setPaidAmountInput('');
+      setIsPaidAmountCustom(false);
+      setNotes('');
+      onClose();
+    } catch (err) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to save bill or generate WhatsApp statement.');
+    } finally {
+      setIsWhatsAppProcessing(false);
+      isSubmittingRef.current = false;
+    }
   };
 
   if (!isOpen) return null;
@@ -941,6 +1168,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                       <span className="text-[10px] text-gray-500 font-medium truncate block">
                         {item.brand}{item.batchNumber ? ` • Batch: ${item.batchNumber}` : ''}
                       </span>
+                      {item.discountVal > 0 && (
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 block w-fit mt-0.5">
+                          Discount: {item.discountType === 'Percentage' ? `${item.discountVal}%` : `₹${item.discountVal}`}
+                        </span>
+                      )}
                       {item.isFifoSplit && item.fifoSplitNotice && (
                         <span className="text-[9.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded block mt-0.5 leading-tight">
                           ✨ {item.fifoSplitNotice}
@@ -988,9 +1220,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                     />
                   </div>
 
-                  {/* 4. Line Amount = Qty x Selling Price */}
+                  {/* 4. Line Amount = Qty x Effective Selling Price */}
                   <div className="w-20 text-right font-mono font-extrabold text-gray-900 text-xs shrink-0">
-                    ₹ {(item.qty * item.price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹ {(item.lineTotal || (item.qty * item.price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
 
                   {/* 5. Delete Button */}
@@ -1180,23 +1412,39 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
             type="button"
             disabled={items.length === 0}
             onClick={() => window.print()}
-            className="col-span-4 py-2.5 px-2 text-xs font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-xl flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+            className="col-span-3 py-2.5 px-1.5 text-[11px] font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-xl flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
           >
-            <Printer className="w-4 h-4" />
+            <Printer className="w-3.5 h-3.5" />
             <span>Print Bill</span>
           </button>
 
           <button
             type="button"
-            disabled={items.length === 0 || createInvoiceMutation.isPending}
-            onClick={handleSubmitBill}
-            className="col-span-8 py-2.5 px-3 text-xs font-extrabold text-white bg-[#047857] hover:bg-[#00783C] rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            disabled={items.length === 0 || createInvoiceMutation.isPending || isWhatsAppProcessing}
+            onClick={handleWhatsAppFlow}
+            className="col-span-4 py-2.5 px-1 text-[11px] font-bold text-white bg-[#047857] hover:bg-[#036448] rounded-xl shadow-2xs flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
           >
-            {createInvoiceMutation.isPending ? (
-              <span>Saving Bill...</span>
+            {isWhatsAppProcessing ? (
+              <span className="text-[10px] animate-pulse">Saving &amp; WhatsApp...</span>
             ) : (
               <>
-                <Check className="w-4 h-4 stroke-[3]" />
+                <MessageSquare className="w-3.5 h-3.5 text-white" />
+                <span>WhatsApp</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            disabled={items.length === 0 || createInvoiceMutation.isPending || isWhatsAppProcessing}
+            onClick={handleSubmitBill}
+            className="col-span-5 py-2.5 px-1.5 text-[11px] font-extrabold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {createInvoiceMutation.isPending ? (
+              <span>Saving...</span>
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
                 <span>Submit &amp; Save Bill</span>
               </>
             )}

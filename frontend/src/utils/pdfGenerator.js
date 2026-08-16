@@ -140,74 +140,71 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
   doc.text('Outstanding Balance:', 114, 54);
   doc.text(formatCurrency(dueVal), 198, 54, { align: 'right' });
 
-  // 4. LEDGER TRANSACTIONS TABLE (194mm Total Width, 8mm Left Margin, 5 Columns, No Borders, Alternating Row Colors, All Centered)
+  // 4. LEDGER TRANSACTIONS TABLE (5 COLUMNS: DATE | PARTICULARS | DEBIT | CREDIT | BALANCE)
+  const formatNumOnly = (val) => {
+    const num = Number(val || 0);
+    if (num === 0) return '—';
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  };
+
+  const formatBalOnly = (val) => {
+    const num = Number(val || 0);
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  };
+
   const tableData = [];
   const txList = Array.isArray(filteredTransactions) ? filteredTransactions : [];
 
   if (txList.length === 0) {
-    tableData.push(['-', 'No ledger transactions found', '-', '-', '-']);
+    tableData.push(['-', 'No ledger transactions found', '—', '—', '—']);
   } else {
     txList.forEach((tx) => {
       if (!tx) return;
 
       const dateStr = tx.dateFormatted || tx.date || (tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
-      const timeStr = tx.timeFormatted || tx.time || '';
-      const dateDisplay = timeStr ? `${dateStr}\n${timeStr}` : dateStr;
+      const isInvoice = tx.type === 'Invoice' || tx.debit > 0;
+      const isPayment = tx.type === 'Payment' || (tx.credit > 0 && !tx.debit);
+      const isAdvance = tx.type === 'Advance';
 
       let particularsLines = [];
-      let rateLines = [];
-      let qtyLines = [];
-      let totalLines = [];
 
-      const txType = tx.type || (tx.credit > 0 ? 'Payment' : 'Invoice');
-      const isPayment = txType === 'Payment' || (tx.credit > 0 && !tx.debit);
-      const isAdvance = txType === 'Advance' || (tx.particulars && tx.particulars.toLowerCase().includes('advance'));
+      if (isInvoice) {
+        let rawInv = (tx.invoiceNumber || tx.docNo || tx.refNo || '').replace(/^Bill\s*#?\s*/i, '').trim();
+        const items = Array.isArray(tx.items) ? tx.items : [];
+        const count = items.length;
 
-      if (isAdvance) {
-        const pMode = tx.paymentMode || tx.mode || 'Cash';
-        const advNote = tx.notes || tx.remarks;
-        particularsLines.push(`Advance Payment — ${pMode}`);
-        if (advNote) particularsLines.push(`Note: ${advNote}`);
-        rateLines.push('-');
-        qtyLines.push('-');
-        const advTotal = Number(tx.amount || tx.credit || tx.paidAmount || 0);
-        totalLines.push(formatCurrency(advTotal));
-      } else if (isPayment) {
-        const pMode = tx.paymentMode || tx.mode || 'Cash';
-        const payNote = tx.notes || tx.remarks;
-        particularsLines.push(`Payment — ${pMode}`);
-        if (payNote) particularsLines.push(`Note: ${payNote}`);
-        rateLines.push('-');
-        qtyLines.push('-');
-        const payTotal = Number(tx.amount || tx.credit || tx.paidAmount || 0);
-        totalLines.push(formatCurrency(payTotal));
-      } else if (Array.isArray(tx.items) && tx.items.length > 0) {
-        tx.items.forEach((it) => {
-          const pName = it.productName || it.name || 'Agri Product';
-          const qty = Number(it.quantity || it.qty || 1);
-          const unit = it.unit || it.unitName || 'Bag';
-          const price = getItemUnitPrice(it);
-          const lineTotal = Number(it.totalAmount || it.total || (qty * price));
+        const headerTitle = count === 1
+          ? (rawInv ? `Purchase - 1 Item, ${rawInv}` : 'Purchase - 1 Item')
+          : (rawInv ? `Purchase - ${count || 1} Items, ${rawInv}` : `Purchase - ${count || 1} Items`);
 
-          particularsLines.push(`${pName} × ${qty} ${unit}`);
-          rateLines.push(formatCurrency(price));
-          qtyLines.push(`${qty} ${unit}`);
-          totalLines.push(formatCurrency(lineTotal));
-        });
+        particularsLines.push(headerTitle);
+
+        if (count > 0) {
+          items.forEach((it) => {
+            const name = (it.productName || it.name || 'Item').trim();
+            const qty = Number(it.quantity || it.qty || 1);
+            const price = Number(it.unitPrice || it.price || (qty > 0 ? (it.total || 0) / qty : 0));
+            const formattedPrice = price > 0 ? price.toLocaleString('en-IN') : '0';
+
+            particularsLines.push(`${name}       ${qty}       ${formattedPrice}`);
+          });
+        }
+      } else if (isPayment || isAdvance) {
+        particularsLines.push('Payment');
       } else {
-        particularsLines.push(tx.particulars || tx.description || 'Sales Invoice Purchase');
-        rateLines.push('-');
-        qtyLines.push(`${tx.itemCount || 1} Item(s)`);
-        const invTotal = Number(tx.debit || tx.totalAmount || tx.grandTotal || tx.amount || 0);
-        totalLines.push(formatCurrency(invTotal));
+        particularsLines.push(tx.particulars || tx.description || 'Transaction');
       }
 
+      const debitStr = tx.debit > 0 ? formatNumOnly(tx.debit) : '—';
+      const creditStr = tx.credit > 0 ? formatNumOnly(tx.credit) : '—';
+      const balanceStr = formatBalOnly(tx.balance ?? (tx.runningBalance || 0));
+
       tableData.push([
-        dateDisplay,
+        dateStr,
         particularsLines.join('\n'),
-        rateLines.join('\n'),
-        qtyLines.join('\n'),
-        totalLines.join('\n'),
+        debitStr,
+        creditStr,
+        balanceStr,
       ]);
     });
   }
@@ -215,7 +212,7 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
   autoTable(doc, {
     startY: 63,
     margin: { left: 8, right: 8, top: 10, bottom: 14 },
-    head: [['DATE & TIME', 'PARTICULARS', 'RATE', 'QUANTITY', 'TOTAL']],
+    head: [['DATE', 'PARTICULARS', 'DEBIT', 'CREDIT', 'BALANCE']],
     body: tableData,
     theme: 'striped',
     showHead: 'everyPage',
@@ -237,15 +234,15 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
       cellPadding: 3.5,
       textColor: [30, 41, 59],
       valign: 'middle',
-      halign: 'center',
+      halign: 'left',
       overflow: 'linebreak',
     },
     columnStyles: {
-      0: { cellWidth: 35, halign: 'center' },
-      1: { cellWidth: 74, halign: 'center', fontStyle: 'bold' },
-      2: { cellWidth: 27, halign: 'center', fontStyle: 'bold' },
-      3: { cellWidth: 23, halign: 'center', fontStyle: 'bold' },
-      4: { cellWidth: 35, halign: 'center', fontStyle: 'bold' },
+      0: { cellWidth: 28, halign: 'center' },
+      1: { cellWidth: 92, halign: 'left', fontStyle: 'bold' },
+      2: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+      3: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+      4: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
     },
     didDrawPage: (data) => {
       const pageCount = doc.internal.getNumberOfPages();
@@ -253,7 +250,7 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(120, 120, 120);
       doc.text(
-        `Computer Generated Ledger Statement • No Signature Required • Generated by VEDIXA ERP`,
+        `Computer Generated Ledger Statement • No Signature Required • Generated by ${shopName}`,
         8,
         287
       );
@@ -282,6 +279,295 @@ export function generateLedgerPdf(customer, shopSettings, filteredTransactions, 
  */
 export function printLedgerPdf(customer, shopSettings, filteredTransactions, totals, periodStr) {
   const doc = buildLedgerPdfDoc(customer, shopSettings, filteredTransactions, totals, periodStr);
+  const blobUrl = doc.output('bloburl');
+
+  let iframe = document.getElementById('vedixa-pdf-print-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'vedixa-pdf-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+  }
+
+  iframe.src = blobUrl;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (err) {
+      console.error('Print iframe error:', err);
+    }
+  };
+}
+
+/**
+ * Single Unified Vector jsPDF Generator for Customer Monthly Account Statement.
+ * Includes Opening Balance, New Purchases, Payments, and Closing Due (highlighted in RED).
+ */
+export function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettingsArg = {}, monthlyDataArg = {}) {
+  const doc = new jsPDF();
+
+  const customer = customerArg || {};
+  const shopSettings = shopSettingsArg || {};
+  const monthlyData = monthlyDataArg || {};
+
+  const shopName = (shopSettings.shopName || shopSettings.name || 'Agri Solutions Store').trim();
+  const address = (shopSettings.address || '').trim();
+  const mobile = (shopSettings.mobile || shopSettings.phone || '').trim();
+  const gstin = (shopSettings.gstNumber || shopSettings.gstin || '').trim();
+  const email = (shopSettings.email || '').trim();
+
+  const custName = customer?.name || customer?.customerName || 'Valued Customer';
+  const custMobile = customer?.mobile || customer?.phone || 'N/A';
+  const custVillage = customer?.village || customer?.area || '';
+  const custMandal = customer?.mandal || '';
+  const custDistrict = customer?.district || '';
+  const custState = customer?.state || 'Andhra Pradesh';
+  const addressParts = [customer?.address, custVillage, custMandal, custDistrict, custState].filter(Boolean);
+  const custAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+
+  const monthLabel = (monthlyData.monthLabel || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })).toUpperCase();
+
+  const formatCurrency = (val) =>
+    `Rs. ${Number(val || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const openBal = Number(monthlyData.openingBalance || 0);
+  const newPurchases = Number(monthlyData.newPurchases || 0);
+  const payments = Number(monthlyData.payments || 0);
+  const closingDue = Number(monthlyData.closingDue ?? (openBal + newPurchases - payments));
+
+  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
+  let textLeftX = 8;
+
+  if (logoUrl) {
+    try {
+      doc.addImage(logoUrl, 8, 8, 30, 16);
+      textLeftX = 42;
+    } catch (e) {
+      console.warn('Could not render logo in PDF:', e);
+      textLeftX = 8;
+    }
+  }
+
+  // 1. SHOP DETAILS HEADER
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87); // #047857
+  doc.text(shopName, textLeftX, 14);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(70, 70, 70);
+  doc.text(`${address}`, textLeftX, 20);
+
+  const contactParts = [];
+  if (mobile) contactParts.push(`Phone: ${mobile}`);
+  if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
+  if (email) contactParts.push(`Email: ${email}`);
+  doc.text(contactParts.join(' | '), textLeftX, 25);
+
+  doc.setLineWidth(0.6);
+  doc.setDrawColor(4, 120, 87);
+  doc.line(8, 28, 202, 28);
+
+  // 2. DOCUMENT TITLE & CUSTOMER DETAILS
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('CUSTOMER ACCOUNT STATEMENT', 8, 35);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+  doc.text(`Customer Name  : ${custName}`, 8, 42);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Customer Phone : ${custMobile}`, 8, 47);
+  doc.text(`Customer Address: ${custAddress}`, 8, 52);
+  doc.text(`Statement Month: ${monthLabel}`, 8, 57);
+
+  // 3. SUMMARY BOX (OPENING BALANCE, NEW PURCHASES, PAYMENTS, DUE IN RED)
+  doc.setFillColor(248, 250, 248);
+  doc.roundedRect(108, 32, 94, 30, 2, 2, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(108, 32, 94, 30, 2, 2, 'S');
+
+  // Summary Metrics - All Bold, DUE in Red
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+
+  // Row 1: Opening Balance
+  doc.setTextColor(71, 85, 105);
+  doc.text('OPENING BALANCE:', 112, 38);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatCurrency(openBal), 198, 38, { align: 'right' });
+
+  // Row 2: New Purchases
+  doc.setTextColor(71, 85, 105);
+  doc.text('NEW PURCHASES:', 112, 44);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatCurrency(newPurchases), 198, 44, { align: 'right' });
+
+  // Row 3: Payments
+  doc.setTextColor(71, 85, 105);
+  doc.text('PAYMENTS:', 112, 50);
+  doc.setTextColor(4, 120, 87);
+  doc.text(formatCurrency(payments), 198, 50, { align: 'right' });
+
+  // Row 4: DUE (Highlight Label & Value in RED #DC2626)
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(220, 38, 38); // RED COLOR
+  doc.text('DUE / CLOSING BALANCE:', 112, 57);
+  doc.text(formatCurrency(closingDue), 198, 57, { align: 'right' });
+
+  // 4. MONTHLY TRANSACTIONS TABLE (5 COLUMNS: DATE | PARTICULARS | DEBIT | CREDIT | BALANCE)
+  const formatNumOnly = (val) => {
+    const num = Number(val || 0);
+    if (num === 0) return '—';
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  };
+
+  const formatBalOnly = (val) => {
+    const num = Number(val || 0);
+    return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  };
+
+  const tableRows = [];
+  const txList = monthlyData.monthlyTransactions || monthlyData.transactions || [];
+
+  if (txList.length === 0) {
+    tableRows.push(['-', 'No transactions in this month', '—', '—', formatBalOnly(closingDue)]);
+  } else {
+    txList.forEach((tx) => {
+      if (!tx) return;
+
+      const dateStr = tx.date || (tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
+      const isInvoice = tx.type === 'Invoice' || tx.debit > 0;
+      const isPayment = tx.type === 'Payment' || (tx.credit > 0 && !tx.debit);
+      const isAdvance = tx.type === 'Advance';
+
+      let particularsLines = [];
+
+      if (isInvoice) {
+        let rawInv = (tx.invoiceNumber || tx.docNo || tx.refNo || '').replace(/^Bill\s*#?\s*/i, '').trim();
+        const items = Array.isArray(tx.items) ? tx.items : [];
+        const count = items.length;
+
+        const headerTitle = count === 1
+          ? (rawInv ? `Purchase - 1 Item, ${rawInv}` : 'Purchase - 1 Item')
+          : (rawInv ? `Purchase - ${count || 1} Items, ${rawInv}` : `Purchase - ${count || 1} Items`);
+
+        particularsLines.push(headerTitle);
+
+        if (count > 0) {
+          items.forEach((it) => {
+            const name = (it.productName || it.name || 'Item').trim();
+            const qty = Number(it.quantity || it.qty || 1);
+            const price = Number(it.unitPrice || it.price || (qty > 0 ? (it.total || 0) / qty : 0));
+            const formattedPrice = price > 0 ? price.toLocaleString('en-IN') : '0';
+
+            particularsLines.push(`${name}       ${qty}       ${formattedPrice}`);
+          });
+        }
+      } else if (isPayment || isAdvance) {
+        particularsLines.push('Payment');
+      } else {
+        particularsLines.push(tx.particulars || tx.description || 'Transaction');
+      }
+
+      const debitStr = tx.debit > 0 ? formatNumOnly(tx.debit) : '—';
+      const creditStr = tx.credit > 0 ? formatNumOnly(tx.credit) : '—';
+      const balanceStr = formatBalOnly(tx.balance);
+
+      tableRows.push([
+        dateStr,
+        particularsLines.join('\n'),
+        debitStr,
+        creditStr,
+        balanceStr,
+      ]);
+    });
+  }
+
+  autoTable(doc, {
+    startY: 66,
+    margin: { left: 8, right: 8, top: 10, bottom: 14 },
+    head: [['DATE', 'PARTICULARS', 'DEBIT', 'CREDIT', 'BALANCE']],
+    body: tableRows,
+    theme: 'striped',
+    showHead: 'everyPage',
+    tableLineWidth: 0,
+    headStyles: {
+      fillColor: [4, 120, 87],
+      textColor: 255,
+      fontSize: 9,
+      fontStyle: 'bold',
+      cellPadding: 3.5,
+      halign: 'center',
+      valign: 'middle',
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 248],
+    },
+    bodyStyles: {
+      fontSize: 8.5,
+      cellPadding: 3.5,
+      textColor: [30, 41, 59],
+      valign: 'middle',
+      halign: 'left',
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { cellWidth: 28, halign: 'center' },
+      1: { cellWidth: 92, halign: 'left', fontStyle: 'bold' },
+      2: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+      3: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
+      4: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+    },
+    didDrawPage: (data) => {
+      const pageCount = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `Computer Generated Monthly Statement • Generated by ${shopName}`,
+        8,
+        287
+      );
+      doc.text(`Page ${data.pageNumber} of ${pageCount}`, 180, 287);
+    },
+  });
+
+  return doc;
+}
+
+/**
+ * Downloads Monthly Customer Account Statement PDF.
+ */
+export function generateMonthlyStatementPdf(customer, shopSettings, monthlyData) {
+  const doc = buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
+  const custName = (customer?.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
+  const monthStr = (monthlyData?.monthLabel || 'Statement').replace(/[^a-zA-Z0-9]/g, '_');
+  const filename = `Statement_${custName}_${monthStr}.pdf`;
+  doc.save(filename);
+  return filename;
+}
+
+/**
+ * Prints Monthly Customer Account Statement PDF via hidden iframe.
+ */
+export function printMonthlyStatementPdf(customer, shopSettings, monthlyData) {
+  const doc = buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
   const blobUrl = doc.output('bloburl');
 
   let iframe = document.getElementById('vedixa-pdf-print-iframe');
@@ -624,9 +910,9 @@ export function printInvoicePdf(invoice, shopSettings) {
 export function generatePaymentReceiptPdf(payment, customer, shopSettings) {
   const doc = new jsPDF();
 
-  const shopName = shopSettings.shopName || 'VEDIXA AGRI SOLUTIONS';
-  const address = shopSettings.address || 'Main Road, Guntur Market Yard, Andhra Pradesh - 522001';
-  const mobile = shopSettings.mobile || '9848081875';
+  const shopName = shopSettings.shopName || shopSettings.businessName || shopSettings.name || 'Agri Store';
+  const address = shopSettings.address || '';
+  const mobile = shopSettings.mobile || shopSettings.phone || '';
 
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
@@ -670,7 +956,7 @@ export function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSetti
     format: 'a4',
   });
 
-  const shopName = shopSettings.shopName || shopSettings.name || 'VEDIXA AGRI SOLUTIONS';
+  const shopName = shopSettings.shopName || shopSettings.businessName || shopSettings.name || 'Agri Store';
   const address = shopSettings.address || 'Main Road, Guntur Market Yard, Andhra Pradesh - 522001';
   const mobile = shopSettings.mobile || shopSettings.phone || '9848081875';
   const gstin = shopSettings.gstNumber || shopSettings.gstin || '';
@@ -878,3 +1164,311 @@ export function generateInvoiceHistoryPdf(invoices, summary, shopSettings, appli
   doc.save(filename);
   return filename;
 }
+
+/**
+ * Single Unified Vector jsPDF Generator for General Customers Directory.
+ * Programmatically constructs an A4 portrait report matching the Customer Ledger PDF statement reference.
+ */
+export function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {}, filterInfo = {}) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const shopName = shopSettings.shopName || shopSettings.businessName || shopSettings.name || 'Agri Solutions Store';
+  const rawAddr = buildFullShopAddress(shopSettings);
+  const address = rawAddr !== '-' ? rawAddr : (shopSettings.address || '');
+  const mobile = shopSettings.mobile || shopSettings.phone || '';
+  const gstin = shopSettings.gstNumber || shopSettings.gstin || '';
+  const email = shopSettings.email || '';
+
+  const todayFormatted = new Date().toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
+  let textLeftX = 10;
+
+  if (logoUrl) {
+    try {
+      doc.addImage(logoUrl, 10, 8, 28, 16);
+      textLeftX = 42;
+    } catch (e) {
+      console.warn('Could not render logo in General Customers PDF:', e);
+      textLeftX = 10;
+    }
+  }
+
+  // 1. SHOP DETAILS HEADER
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87); // Emerald brand color #047857
+  doc.text(shopName.toUpperCase(), textLeftX, 14);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(70, 70, 70);
+
+  const contactParts = [];
+  if (mobile) contactParts.push(`Phone: ${mobile}`);
+  if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
+  if (email) contactParts.push(`Email: ${email}`);
+  const contactLine = contactParts.join(' | ');
+
+  if (address) {
+    doc.text(address, textLeftX, 19.5);
+    if (contactLine) {
+      doc.text(contactLine, textLeftX, 24.5);
+    }
+  } else if (contactLine) {
+    doc.text(contactLine, textLeftX, 19.5);
+  }
+
+  // Top Separator Line (Left 10mm, Right 200mm -> Width 190mm)
+  doc.setLineWidth(0.6);
+  doc.setDrawColor(4, 120, 87);
+  doc.line(10, 27, 200, 27);
+
+  // 2. DOCUMENT TITLE & CUSTOMER DIRECTORY METADATA (Left side, X=10mm)
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('GENERAL CUSTOMERS DIRECTORY STATEMENT', 10, 33);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+
+  const activeFilterLabel = filterInfo.activeFilterLabel || filterInfo.activeFilter || 'All Customers';
+  doc.text(`Report Filter : ${activeFilterLabel}`, 10, 39);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  if (filterInfo.searchQuery && filterInfo.searchQuery.trim()) {
+    doc.text(`Active Search : "${filterInfo.searchQuery.trim()}"`, 10, 44);
+    doc.text(`Generated Date: ${todayFormatted} | Records: ${customersList.length}`, 10, 49);
+  } else {
+    doc.text(`Generated Date: ${todayFormatted} | Total Records: ${customersList.length}`, 10, 44);
+  }
+
+  const formatCurrency = (val) =>
+    `Rs. ${Number(val || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+  // 3. COMPUTATIONS FOR ACCOUNT SUMMARY & TABLE ROWS
+  let totalCustomersCount = customersList.length;
+  let totalBillsCount = 0;
+  let totalPurchaseVal = 0;
+  let totalPaidVal = 0;
+  let totalOutstandingVal = 0;
+
+  const tableRows = (customersList || []).map((cust, idx) => {
+    const dueVal = Number(cust.outstandingBalance || 0);
+    const totalPurchases = Number(cust.totalPurchases || 0);
+    const totalPaid = Number(cust.totalPaid || (totalPurchases - dueVal));
+    const billsCount = Number(cust.totalBillsCount || 1);
+    const statusStr = dueVal === 0 ? 'PAID' : 'DUE';
+
+    totalBillsCount += billsCount;
+    totalPurchaseVal += totalPurchases;
+    totalPaidVal += totalPaid;
+    totalOutstandingVal += dueVal;
+
+    const lastDateFormatted = cust.updatedAt || cust.createdAt
+      ? new Date(cust.updatedAt || cust.createdAt).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })
+      : 'N/A';
+
+    return [
+      idx + 1,
+      cust.name || 'Valued Customer',
+      cust.mobile || 'N/A',
+      billsCount,
+      formatCurrency(totalPurchases),
+      formatCurrency(totalPaid),
+      formatCurrency(dueVal),
+      lastDateFormatted,
+      statusStr,
+    ];
+  });
+
+  // 4. TOP-RIGHT ACCOUNT SUMMARY BOX (A4 Portrait Position: X=110mm, Y=29mm, Width=90mm, Height=27mm, Right edge=200mm)
+  doc.setFillColor(248, 250, 248);
+  doc.roundedRect(110, 29, 90, 27, 2, 2, 'F');
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(110, 29, 90, 27, 2, 2, 'S');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87);
+  doc.text('ACCOUNT SUMMARY', 114, 33.5);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+
+  doc.text('Total Customers:', 114, 38);
+  doc.text('Total Bills:', 114, 42);
+  doc.text('Total Purchase:', 114, 46);
+  doc.text('Total Payments:', 114, 50);
+  doc.text('Outstanding Bal:', 114, 54);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${totalCustomersCount}`, 196, 38, { align: 'right' });
+  doc.text(`${totalBillsCount}`, 196, 42, { align: 'right' });
+  doc.text(formatCurrency(totalPurchaseVal), 196, 46, { align: 'right' });
+
+  doc.setTextColor(4, 120, 87);
+  doc.text(formatCurrency(totalPaidVal), 196, 50, { align: 'right' });
+
+  if (totalOutstandingVal > 0) {
+    doc.setTextColor(220, 38, 38);
+  } else {
+    doc.setTextColor(4, 120, 87);
+  }
+  doc.text(formatCurrency(totalOutstandingVal), 196, 54, { align: 'right' });
+
+  // 5. GENERAL CUSTOMERS DIRECTORY TABLE (9 Columns, startY = 58mm, Printable Width = 190mm)
+  const footRow = [
+    '',
+    'GRAND TOTAL',
+    '',
+    totalBillsCount,
+    formatCurrency(totalPurchaseVal),
+    formatCurrency(totalPaidVal),
+    formatCurrency(totalOutstandingVal),
+    '',
+    '',
+  ];
+
+  autoTable(doc, {
+    startY: 58,
+    margin: { left: 10, right: 10, top: 10, bottom: 16 },
+    head: [[
+      '#',
+      'CUSTOMER NAME',
+      'MOBILE',
+      'BILLS',
+      'PURCHASE VALUE',
+      'TOTAL PAID',
+      'OUTSTANDING',
+      'LAST BILL DATE',
+      'STATUS',
+    ]],
+    body: tableRows.length > 0
+      ? tableRows
+      : [['-', 'No customer records available for the selected filter.', '-', '-', '-', '-', '-', '-', '-']],
+    foot: tableRows.length > 0 ? [footRow] : undefined,
+    theme: 'striped',
+    showHead: 'everyPage',
+    showFoot: 'lastPage',
+    tableLineWidth: 0,
+    headStyles: {
+      fillColor: [4, 120, 87],
+      textColor: 255,
+      fontSize: 7.5,
+      fontStyle: 'bold',
+      cellPadding: 2.5,
+      halign: 'center',
+      valign: 'middle',
+    },
+    footStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [15, 23, 42],
+      fontSize: 7.5,
+      fontStyle: 'bold',
+      cellPadding: 2.5,
+      halign: 'center',
+      valign: 'middle',
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 248],
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      cellPadding: 2.5,
+      textColor: [30, 41, 59],
+      halign: 'center',
+      valign: 'middle',
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 42, halign: 'center', fontStyle: 'bold' },
+      2: { cellWidth: 28, halign: 'center' },
+      3: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+      4: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+      5: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
+      6: { cellWidth: 21, halign: 'center', fontStyle: 'bold' },
+      7: { cellWidth: 21, halign: 'center' },
+      8: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+    },
+    didDrawPage: (data) => {
+      const pageCount = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `Computer Generated Statement • No Signature Required • Generated by ${shopName}`,
+        10,
+        287
+      );
+      doc.text(`Page ${data.pageNumber} of ${pageCount}`, 200, 287, { align: 'right' });
+    },
+  });
+
+  return doc;
+}
+
+/**
+ * Downloads the General Customers Directory PDF.
+ */
+export function generateGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
+  const doc = buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const filename = `VEDIXA-General-Customers-${todayStr}.pdf`;
+  doc.save(filename);
+  return filename;
+}
+
+/**
+ * Triggers native browser print dialog for the General Customers Directory PDF via hidden iframe.
+ */
+export function printGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
+  const doc = buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
+  const blobUrl = doc.output('bloburl');
+
+  let iframe = document.getElementById('vedixa-pdf-print-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'vedixa-pdf-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+  }
+
+  iframe.src = blobUrl;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (err) {
+      console.error('Print iframe error:', err);
+    }
+  };
+}
+
+

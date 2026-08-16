@@ -5,7 +5,8 @@ import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 export const dashboardController = {
   async getDashboardSummary(req, res, next) {
     try {
-      const summary = await dashboardService.getDashboardSummary();
+      const userId = req.user._id;
+      const summary = await dashboardService.getDashboardSummary(userId);
       return sendSuccess(res, 'Dashboard summary retrieved successfully', summary, HTTP_STATUS.OK);
     } catch (err) {
       next(err);
@@ -13,7 +14,8 @@ export const dashboardController = {
   },
   async getNotifications(req, res, next) {
     try {
-      const notifications = await dashboardService.getNotifications();
+      const userId = req.user._id;
+      const notifications = await dashboardService.getNotifications(userId);
       return sendSuccess(res, 'Notifications retrieved successfully', notifications, HTTP_STATUS.OK);
     } catch (err) {
       next(err);

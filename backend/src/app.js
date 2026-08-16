@@ -48,9 +48,12 @@ app.use(
   })
 );
 
-// Body Parsers
+import cookieParser from 'cookie-parser';
+
+// Body Parsers & Cookie Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 
 // Security Middlewares (CORS, Helmet, Rate Limiter, Compression, Mongo Sanitize)
 configureSecurityMiddlewares(app);
@@ -93,6 +96,15 @@ app.use(`${envConfig.apiPrefix}/dashboard`, dashboardRoutes);
 
 // Reports Routes
 app.use(`${envConfig.apiPrefix}/reports`, reportsRoutes);
+
+import supportRoutes from './modules/support/support.routes.js';
+import subscriptionRoutes from './modules/subscription/subscription.routes.js';
+
+// Support & Ticket Routes
+app.use(`${envConfig.apiPrefix}/support`, supportRoutes);
+
+// SaaS Subscription Routes
+app.use(`${envConfig.apiPrefix}/subscriptions`, subscriptionRoutes);
 
 // 404 Not Found Handler
 app.use(notFoundHandler);

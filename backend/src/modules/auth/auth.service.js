@@ -97,6 +97,11 @@ export const authService = {
     const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
+    // Save active session for Refresh Token Rotation & 7-Day Sliding Expiry
+    const sessionKey = `refresh_token:${user._id}`;
+    await redisService.set(sessionKey, { refreshToken, userId: user._id, role: user.role }, 7 * 24 * 60 * 60);
+    await User.findByIdAndUpdate(user._id, { $set: { currentRefreshToken: refreshToken } });
+
     return {
       user: {
         id: user._id,
@@ -110,13 +115,19 @@ export const authService = {
   },
 
   async login({ mobile, password }) {
+    if (!mobile || !password) {
+      throw new AppError('Mobile number and password are required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const cleanMobile = mobile.toString().trim();
+
     // 1. Find user in MongoDB
-    const user = await User.findOne({ mobile }).select('+passwordHash');
+    const user = await User.findOne({ mobile: cleanMobile }).select('+passwordHash');
     if (!user) {
       throw new AppError('Invalid mobile number or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    if (!user.isActive) {
+    if (user.isActive === false) {
       throw new AppError('Account is deactivated. Please contact support.', HTTP_STATUS.FORBIDDEN);
     }
 
@@ -130,9 +141,15 @@ export const authService = {
     const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
+    // Save active session for Refresh Token Rotation & 7-Day Sliding Expiry
+    const sessionKey = `refresh_token:${user._id}`;
+    await redisService.set(sessionKey, { refreshToken, userId: user._id, role: user.role }, 7 * 24 * 60 * 60);
+    await User.findByIdAndUpdate(user._id, { $set: { currentRefreshToken: refreshToken } });
+
     return {
       user: {
         id: user._id,
+        _id: user._id,
         ownerName: user.ownerName,
         mobile: user.mobile,
         role: user.role,
@@ -140,6 +157,72 @@ export const authService = {
       accessToken,
       refreshToken,
     };
+  },
+
+  async refreshToken(providedToken) {
+    if (!providedToken) {
+      throw new AppError('Refresh token required. Please log in.', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    let decoded;
+    try {
+      decoded = verifyRefreshToken(providedToken);
+    } catch (_err) {
+      throw new AppError('Invalid or expired refresh token. Please log in again.', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const userId = decoded.id;
+    const user = await User.findById(userId).select('+currentRefreshToken');
+    if (!user || user.isActive === false) {
+      throw new AppError('User belonging to this session no longer exists or is inactive.', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const sessionKey = `refresh_token:${userId}`;
+    const activeSession = await redisService.get(sessionKey);
+    const validToken = activeSession?.refreshToken || user.currentRefreshToken;
+
+    if (!validToken || validToken !== providedToken) {
+      await redisService.del(sessionKey);
+      await User.findByIdAndUpdate(userId, { $set: { currentRefreshToken: null } });
+      throw new AppError('Refresh token has been revoked or expired. Please log in again.', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    // Issue NEW 24-hour Access Token & NEW 7-day Refresh Token
+    const newAccessToken = generateAccessToken(user._id, user.role);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    // SLIDING EXPIRY + ROTATION: Update session store with new 7 days window (604800 seconds)
+    await redisService.set(sessionKey, { refreshToken: newRefreshToken, userId: user._id, role: user.role }, 7 * 24 * 60 * 60);
+    await User.findByIdAndUpdate(user._id, { $set: { currentRefreshToken: newRefreshToken } });
+
+    return {
+      user: {
+        id: user._id,
+        _id: user._id,
+        ownerName: user.ownerName,
+        mobile: user.mobile,
+        role: user.role,
+      },
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    };
+  },
+
+  async logout(providedToken, userId) {
+    let targetId = userId;
+    if (!targetId && providedToken) {
+      try {
+        const decoded = verifyRefreshToken(providedToken);
+        targetId = decoded.id;
+      } catch (_err) {
+        // Token invalid, ignore
+      }
+    }
+    if (targetId) {
+      await redisService.del(`refresh_token:${targetId}`);
+      await User.findByIdAndUpdate(targetId, { $set: { currentRefreshToken: null } });
+    }
+    return true;
   },
 
   async forgotPassword({ mobile }) {
@@ -190,5 +273,29 @@ export const authService = {
     await redisService.del(redisKey);
 
     return { message: 'Password updated successfully. Please login with your new password.' };
+  },
+
+  async getProfile(userId) {
+    const user = await User.findById(userId).select('-passwordHash');
+    if (!user) {
+      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+    }
+    return user;
+  },
+
+  async updateProfile(userId, updateData) {
+    const allowedUpdates = ['ownerName', 'email', 'profilePicUrl'];
+    const updateObj = {};
+    for (const key of allowedUpdates) {
+      if (updateData[key] !== undefined) {
+        updateObj[key] = updateData[key];
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(userId, { $set: updateObj }, { new: true }).select('-passwordHash');
+    if (!user) {
+      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+    }
+    return user;
   },
 };

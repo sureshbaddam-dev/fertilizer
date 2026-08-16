@@ -398,51 +398,65 @@ export default function EditInvoicePage() {
               placeholder="Search by name, brand, barcode, category..."
               className="w-full px-3 py-1.5 border border-gray-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
             />
-            {isDropdownOpen && searchResults.length > 0 && prodSearch.trim() && (
+            {isDropdownOpen && prodSearch.trim() && (
               <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-2xl z-30 max-h-72 overflow-y-auto divide-y divide-gray-100 border-t-2 border-t-[#047857]">
-                {searchResults.map((p, idx) => {
-                  const price = getItemUnitPrice(p);
-                  const stock = p.stock !== undefined ? p.stock : (p.quantity !== undefined ? p.quantity : (p.stockQuantity !== undefined ? p.stockQuantity : 'N/A'));
-                  const unit = p.unit || 'Bag';
-                  const brand = p.brand || p.company || p.manufacturer || p.category || '';
-                  const isSelected = idx === selectedIndex;
+                {searchResults.length > 0 ? (
+                  searchResults.map((p, idx) => {
+                    const price = getItemUnitPrice(p);
+                    const stock = p.stock !== undefined ? p.stock : (p.quantity !== undefined ? p.quantity : (p.stockQuantity !== undefined ? p.stockQuantity : 'N/A'));
+                    const unit = p.unit || 'Bag';
+                    const brand = p.brand || p.company || p.manufacturer || p.category || '';
+                    const isSelected = idx === selectedIndex;
 
-                  return (
-                    <button
-                      key={p._id || idx}
-                      type="button"
-                      onClick={() => handleAddItem(p)}
-                      onMouseEnter={() => setSelectedIndex(idx)}
-                      className={`w-full text-left p-2.5 flex justify-between items-center cursor-pointer transition-colors ${
-                        isSelected ? 'bg-emerald-50 text-emerald-950 border-l-4 border-[#047857]' : 'hover:bg-gray-50 text-gray-900'
-                      }`}
-                    >
-                      <div className="space-y-0.5 max-w-[70%]">
-                        <div className="font-extrabold text-xs text-gray-900 leading-tight">
-                          <HighlightText text={p.name || p.productName} query={debouncedSearch} />
-                        </div>
-                        <div className="flex items-center gap-2 text-[10.5px] text-gray-500 font-medium">
-                          {brand && (
-                            <span className="font-semibold text-gray-700">
-                              <HighlightText text={brand} query={debouncedSearch} />
+                    return (
+                      <button
+                        key={p._id || idx}
+                        type="button"
+                        onClick={() => handleAddItem(p)}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={`w-full text-left p-2.5 flex justify-between items-center cursor-pointer transition-colors ${
+                          isSelected ? 'bg-emerald-50 text-emerald-950 border-l-4 border-[#047857]' : 'hover:bg-gray-50 text-gray-900'
+                        }`}
+                      >
+                        <div className="space-y-0.5 max-w-[70%]">
+                          <div className="font-extrabold text-xs text-gray-900 leading-tight">
+                            <HighlightText text={p.name || p.productName} query={debouncedSearch} />
+                          </div>
+                          <div className="flex items-center gap-2 text-[10.5px] text-gray-500 font-medium">
+                            {brand && (
+                              <span className="font-semibold text-gray-700">
+                                <HighlightText text={brand} query={debouncedSearch} />
+                              </span>
+                            )}
+                            <span className={`px-1.5 py-0.2 rounded-md font-mono text-[9.5px] font-bold ${
+                              Number(stock) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
+                            }`}>
+                              Stock: {stock} {unit}
                             </span>
-                          )}
-                          <span className={`px-1.5 py-0.2 rounded-md font-mono text-[9.5px] font-bold ${
-                            Number(stock) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
-                          }`}>
-                            Stock: {stock} {unit}
-                          </span>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="text-right space-y-0.5 font-mono">
-                        <div className="text-xs font-black text-[#047857]">
-                          ₹{price.toLocaleString('en-IN')} <span className="text-[10px] text-gray-500 font-normal">/ {unit}</span>
+                        <div className="text-right space-y-0.5 font-mono">
+                          <div className="text-xs font-black text-[#047857]">
+                            ₹{price.toLocaleString('en-IN')} <span className="text-[10px] text-gray-500 font-normal">/ {unit}</span>
+                          </div>
                         </div>
-                      </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="p-3 text-center space-y-2">
+                    <p className="text-[12px] text-gray-500 font-medium">No matching product found</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/products')}
+                      className="w-full p-2 bg-[#ECFDF5] hover:bg-[#D1FAE5] border border-[#A7F3D0] rounded-xl text-[#047857] font-bold text-[12px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 text-[#047857]" />
+                      <span>+ Add Product "{prodSearch.trim()}"</span>
                     </button>
-                  );
-                })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -476,8 +490,10 @@ export default function EditInvoicePage() {
                       <input
                         type="number"
                         min="1"
-                        value={it.quantity}
+                        onFocus={(e) => e.target.select()}
+                        value={it.quantity === 0 || it.quantity === '0' || !it.quantity ? '' : it.quantity}
                         onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                        placeholder="1"
                         className="w-16 text-center font-bold px-1.5 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                       />
                     </td>
@@ -485,8 +501,10 @@ export default function EditInvoicePage() {
                       <input
                         type="number"
                         min="0"
-                        value={it.unitPrice}
+                        onFocus={(e) => e.target.select()}
+                        value={it.unitPrice === 0 || it.unitPrice === '0' || !it.unitPrice ? '' : it.unitPrice}
                         onChange={(e) => handleItemChange(idx, 'unitPrice', e.target.value)}
+                        placeholder="0.00"
                         className="w-24 text-right font-mono font-bold px-1.5 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                       />
                     </td>

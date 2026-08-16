@@ -79,11 +79,8 @@ export default function SupplierInvoiceForm({
                 options={suppliers}
                 value={supplierId}
                 onChange={setSupplierId}
-                onAddNew={async (typedName) => {
-                  if (onOpenAddSupplier) onOpenAddSupplier(typedName);
-                  return null;
-                }}
-                placeholder="Select Supplier..."
+                placeholder="Add Supplier"
+                showSearchInput={false}
               />
             </div>
             <button
@@ -139,18 +136,18 @@ export default function SupplierInvoiceForm({
           </span>
         </div>
 
-        {/* Paid Amount (Defaults to 0.00, Editable) */}
+        {/* Paid Amount */}
         <div className="p-2 bg-white border border-gray-300 rounded-lg space-y-0.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-gray-500 font-normal block">Paid Amount</span>
-            <span className="text-[10px] text-gray-400 font-normal">(Default ₹0.00)</span>
           </div>
           <input
             type="number"
             step="0.01"
-            value={paidAmount}
+            onFocus={(e) => e.target.select()}
+            value={paidAmount === 0 || paidAmount === '0' || !paidAmount ? '' : paidAmount}
             onChange={(e) => setPaidAmount(e.target.value)}
-            placeholder="0.00"
+            placeholder="Enter amount"
             className="w-full h-6 text-xs font-medium text-gray-900 border-b border-gray-200 focus:border-[#00783C] focus:outline-none bg-transparent"
           />
         </div>

@@ -11,11 +11,14 @@ import QuickAddProductDrawer from '../../components/purchases/QuickAddProductDra
 import PageLayout from '../../components/ui/PageLayout';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
+import { authService } from '../../services/authService';
 import { getAgriCategoryColor } from '../../theme/agriTheme';
 
 export default function ProductsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   // Active Category Tab Filter state
   const [activeTab, setActiveTab] = useState('All Products');
@@ -39,8 +42,9 @@ export default function ProductsPage() {
 
   // Fetch Masters for Brand, Category & Unit Dropdowns
   const { data: mastersData } = useQuery({
-    queryKey: ['masters-all'],
+    queryKey: ['masters-all', currentUserId],
     queryFn: masterService.getAllMasters,
+    enabled: !!currentUserId,
   });
 
   const suppliers = React.useMemo(() => mastersData?.data?.suppliers || [], [mastersData]);
@@ -50,10 +54,11 @@ export default function ProductsPage() {
 
   // Fetch Products List API
   const { data: productsApiData } = useQuery({
-    queryKey: ['products', activeTab, searchQuery, currentPage, pageSize],
+    queryKey: ['products', currentUserId, activeTab, searchQuery, currentPage, pageSize],
     queryFn: () => productService.getProducts({ search: searchQuery, category: activeTab !== 'All Products' ? activeTab : undefined }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    enabled: !!currentUserId,
   });
 
   // Fetch Single Product Details API when selectedProductId changes
@@ -87,16 +92,16 @@ export default function ProductsPage() {
   }).length;
   const outOfStockCount = displayProductsList.filter((p) => (p.totalStock ?? p.currentStock ?? 0) <= 0).length;
 
-  const dynamicCategoryCounts = {
-    all: totalProducts,
-    fertilizers: displayProductsList.filter((p) => (p.categoryId?.name || p.category || '').toLowerCase().includes('fertilizer')).length,
-    seeds: displayProductsList.filter((p) => (p.categoryId?.name || p.category || '').toLowerCase().includes('seed')).length,
-    pesticides: displayProductsList.filter((p) => (p.categoryId?.name || p.category || '').toLowerCase().includes('pesticide')).length,
-    others: displayProductsList.filter((p) => {
-      const c = (p.categoryId?.name || p.category || '').toLowerCase();
-      return !c.includes('fertilizer') && !c.includes('seed') && !c.includes('pesticide');
-    }).length,
-  };
+  const dynamicCategoryCounts = React.useMemo(() => {
+    const counts = { all: totalProducts, 'All Products': totalProducts };
+    displayProductsList.forEach((p) => {
+      const catName = (p.categoryId?.name || p.category || '').trim();
+      if (catName) {
+        counts[catName] = (counts[catName] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [displayProductsList, totalProducts]);
 
   // Completely Dynamic Category Distribution from Database Products
   const categoryDistribution = React.useMemo(() => {
@@ -260,13 +265,14 @@ export default function ProductsPage() {
         <ProductsHeaderBar
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          categories={categories}
           filterCounts={dynamicCategoryCounts}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenFilterModal={() => {}}
         />
 
-        <div className="flex flex-col items-start gap-4 lg:flex-row">
+        <div className="flex flex-col items-start gap-3.5 lg:flex-row">
           <div className="w-full min-w-0 flex-1">
             <ProductsTable
               products={filteredProducts}

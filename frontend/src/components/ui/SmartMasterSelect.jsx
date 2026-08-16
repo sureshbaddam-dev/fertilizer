@@ -10,6 +10,7 @@ export default function SmartMasterSelect({
   placeholder = 'Select option...',
   isLoading = false,
   error,
+  showSearchInput = true,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,18 +80,20 @@ export default function SmartMasterSelect({
       {/* Dropdown Menu */}
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden space-y-1 p-1.5 animate-in fade-in duration-150">
-          {/* Live Search Input */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Type to search..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
-              autoFocus
-            />
-          </div>
+          {/* Live Search Input (Optional) */}
+          {showSearchInput && (
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Type to search..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+                autoFocus
+              />
+            </div>
+          )}
 
           {/* Options List */}
           <div className="max-h-48 overflow-y-auto space-y-0.5 pt-1">
@@ -139,7 +142,7 @@ export default function SmartMasterSelect({
                 ) : (
                   <Plus className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
                 )}
-                <span>Add "{searchQuery.trim()}"</span>
+                <span>+ Add "{searchQuery.trim()}"</span>
               </button>
             )}
           </div>

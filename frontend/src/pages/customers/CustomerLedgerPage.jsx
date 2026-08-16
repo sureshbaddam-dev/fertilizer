@@ -30,7 +30,8 @@ import {
 import { customerService } from '../../services/customerService';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
-import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentReceiptPdf } from '../../utils/pdfGenerator';
+import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentReceiptPdf, generateMonthlyStatementPdf, printMonthlyStatementPdf, buildMonthlyStatementPdfDoc } from '../../utils/pdfGenerator';
+import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import PdfCanvasViewer from '../../components/PdfCanvasViewer';
 
 // Record Payment Modal Dialog Component
@@ -121,6 +122,7 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
             <input
               type="number"
               required
+              onFocus={(e) => e.target.select()}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="e.g. 2500"
@@ -273,6 +275,7 @@ function RecordAdvanceModal({ isOpen, onClose, customer }) {
             <input
               type="number"
               required
+              onFocus={(e) => e.target.select()}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="e.g. 1500"
@@ -337,7 +340,17 @@ export default function CustomerLedgerPage() {
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [isWhatsappLedgerPreviewOpen, setIsWhatsappLedgerPreviewOpen] = useState(false);
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('Last 30 Days');
+  const defaultMonthStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const [statementType, setStatementType] = useState('MONTHLY'); // 'MONTHLY' | 'CUSTOM' | 'FULL'
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonthStr);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  const [selectedPeriod, setSelectedPeriod] = useState('Monthly Statement');
   const [editableLedgerMsg, setEditableLedgerMsg] = useState('');
   const [attachLedgerPdf, setAttachLedgerPdf] = useState(true);
   const [includeLedgerQr, setIncludeLedgerQr] = useState(true);
@@ -440,6 +453,16 @@ export default function CustomerLedgerPage() {
     return [];
   }, [apiResponse]);
 
+  // Authoritative Centralized Statement Calculation
+  const monthlyCalculation = useMemo(() => {
+    return calculateCustomerStatement({
+      transactions: rawTransactions,
+      customer,
+      statementType: 'MONTHLY',
+      selectedMonth: selectedMonth || defaultMonthStr,
+    });
+  }, [rawTransactions, customer, selectedMonth, defaultMonthStr]);
+
   // Filtered Transactions
   const filteredTransactions = useMemo(() => {
     const list = Array.isArray(rawTransactions) ? rawTransactions : [];
@@ -468,13 +491,32 @@ export default function CustomerLedgerPage() {
     });
   }, [rawTransactions, appliedTxType, appliedRefType]);
 
-  const totalEntries = filteredTransactions.length;
+  const displayTransactions = useMemo(() => {
+    let list = filteredTransactions;
+
+    if (statementType === 'MONTHLY') {
+      list = monthlyCalculation.monthlyTransactions;
+    } else if (statementType === 'CUSTOM') {
+      if (fromDate || toDate) {
+        const start = fromDate ? new Date(`${fromDate}T00:00:00`) : new Date(0);
+        const end = toDate ? new Date(`${toDate}T23:59:59`) : new Date();
+        list = filteredTransactions.filter((tx) => {
+          const d = new Date(tx.rawDate || tx.date || tx.createdAt);
+          return d >= start && d <= end;
+        });
+      }
+    }
+
+    return list;
+  }, [statementType, monthlyCalculation, filteredTransactions, fromDate, toDate]);
+
+  const totalEntries = displayTransactions.length;
   const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize));
 
   const paginatedTransactions = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredTransactions.slice(start, start + pageSize);
-  }, [filteredTransactions, currentPage, pageSize]);
+    return displayTransactions.slice(start, start + pageSize);
+  }, [displayTransactions, currentPage, pageSize]);
 
   // Consume Shop Settings from Shared Context
   const { settings: shopSettingsContext } = useSettings();
@@ -564,11 +606,49 @@ export default function CustomerLedgerPage() {
   }), [customer]);
 
   const handlePrintLedger = () => {
-    printLedgerPdf(customer, shopSettings, filteredTransactions, totals, selectedPeriod);
+    if (statementType === 'MONTHLY') {
+      printMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
+    } else {
+      printLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+    }
   };
 
   const handleDownloadLedgerPdf = () => {
-    generateLedgerPdf(customer, shopSettings, filteredTransactions, totals, selectedPeriod);
+    if (statementType === 'MONTHLY') {
+      generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
+    } else {
+      generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+    }
+  };
+
+  const handleWhatsAppStatement = () => {
+    const custMobile = (customer?.mobile || '').trim();
+    if (!custMobile) {
+      alert("Customer mobile number is missing. Please add the customer's mobile/WhatsApp number first.");
+      return;
+    }
+
+    if (statementType === 'MONTHLY') {
+      generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
+    } else {
+      generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+    }
+
+    const cleanPhone = custMobile.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+
+    const waMsg = buildWhatsAppStatementMessage({
+      monthLabel: monthlyCalculation?.monthLabel || 'Statement',
+      openingBalance: monthlyCalculation.openingBalance,
+      totalPurchases: monthlyCalculation.newPurchases,
+      payments: monthlyCalculation.payments,
+      due: monthlyCalculation.closingDue,
+      shopSettings,
+      isFromBillDrawer: false,
+    });
+
+    const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(waMsg)}`;
+    window.open(waUrl, '_blank');
   };
 
   const handleOpenEditPayment = (p) => {
@@ -656,6 +736,14 @@ export default function CustomerLedgerPage() {
           >
             <Download className="w-4 h-4 text-gray-600" />
             <span>Download Statement</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleWhatsAppStatement}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+          >
+            <MessageSquare className="w-4 h-4 text-white" />
+            <span>WhatsApp Statement</span>
           </button>
         </div>
       </div>
@@ -749,6 +837,96 @@ export default function CustomerLedgerPage() {
           {/* TAB 1: LEDGER VIEW & FILTERS */}
           {activeTab === 'Ledger' && (
             <div className="space-y-4">
+              {/* STATEMENT PERIOD SELECTOR BAR */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-gray-700">Statement Period:</span>
+                    <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setStatementType('MONTHLY')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          statementType === 'MONTHLY' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Monthly Statement ⭐
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatementType('CUSTOM')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          statementType === 'CUSTOM' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Custom Date
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatementType('FULL')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          statementType === 'FULL' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Full History
+                      </button>
+                    </div>
+                  </div>
+
+                  {statementType === 'MONTHLY' && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-gray-600">Select Month:</label>
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:border-[#047857]"
+                      />
+                    </div>
+                  )}
+
+                  {statementType === 'CUSTOM' && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="h-8 px-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800"
+                      />
+                      <span className="text-xs text-gray-400">to</span>
+                      <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="h-8 px-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* MONTHLY SUMMARY METRICS CARDS */}
+                {statementType === 'MONTHLY' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 border-t border-gray-100">
+                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Opening Balance</span>
+                      <span className="font-mono font-bold text-slate-800 text-sm">₹ {monthlyCalculation.openingBalance.toLocaleString('en-IN')}.00</span>
+                    </div>
+                    <div className="p-2.5 bg-blue-50/70 rounded-xl border border-blue-200/80">
+                      <span className="text-[10px] font-bold text-blue-600 uppercase block">New Purchases</span>
+                      <span className="font-mono font-bold text-blue-700 text-sm">₹ {monthlyCalculation.newPurchases.toLocaleString('en-IN')}.00</span>
+                    </div>
+                    <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80">
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase block">Payments</span>
+                      <span className="font-mono font-bold text-emerald-700 text-sm">₹ {monthlyCalculation.payments.toLocaleString('en-IN')}.00</span>
+                    </div>
+                    <div className="p-2.5 bg-red-50/80 rounded-xl border border-red-200">
+                      <span className="text-[10px] font-extrabold text-red-600 uppercase block">Closing Due</span>
+                      <span className="font-mono font-black text-red-600 text-base">₹ {monthlyCalculation.closingDue.toLocaleString('en-IN')}.00</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* FILTER CONTROLS ROW */}
               <div className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-2xs flex flex-wrap items-end justify-between gap-3 text-xs">
                 <div className="flex flex-wrap items-center gap-3 flex-1">

@@ -3,6 +3,12 @@ import { softDeletePlugin } from '../../../common/softDelete.plugin.js';
 
 const productSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Product name is required'],
@@ -48,7 +54,16 @@ const productSchema = new mongoose.Schema(
     },
     gstRate: {
       type: Number,
-      default: 18,
+      default: 0,
+    },
+    discount: {
+      type: Number,
+      default: 0,
+    },
+    discountType: {
+      type: String,
+      enum: ['Percentage', 'Amount'],
+      default: 'Percentage',
     },
     minimumStockAlert: {
       type: Number,

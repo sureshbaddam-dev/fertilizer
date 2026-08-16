@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const purchaseItemSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true,
+    },
     purchaseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Purchase',
@@ -78,10 +84,21 @@ const purchaseItemSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+purchaseItemSchema.index({ userId: 1, purchaseId: 1, isDeleted: 1 });
 
 export const PurchaseItem = mongoose.model('PurchaseItem', purchaseItemSchema);

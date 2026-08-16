@@ -2,6 +2,14 @@ import mongoose from 'mongoose';
 
 const shopSettingsSchema = new mongoose.Schema(
   {
+    // Tenant Ownership
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      unique: true,
+      index: true,
+    },
     // 1. Shop Information
     shopName: { type: String, default: '' },
     ownerName: { type: String, default: '' },

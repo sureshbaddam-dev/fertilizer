@@ -6,11 +6,13 @@ const baseRepo = createBaseMasterRepository(Category);
 export const categoryRepository = {
   ...baseRepo,
 
-  async findByName(name) {
-    return await Category.findOne({ name: new RegExp(`^${name}$`, 'i') }).exec();
+  async findByName(name, userId = null) {
+    const filter = userId ? { userId, name: new RegExp(`^${name}$`, 'i') } : { name: new RegExp(`^${name}$`, 'i') };
+    return await Category.findOne(filter).exec();
   },
 
-  async findBySlug(slug) {
-    return await Category.findOne({ slug }).exec();
+  async findBySlug(slug, userId = null) {
+    const filter = userId ? { userId, slug } : { slug };
+    return await Category.findOne(filter).exec();
   },
 };

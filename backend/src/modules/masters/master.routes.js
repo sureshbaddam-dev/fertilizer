@@ -37,8 +37,13 @@ import {
   restoreBrand,
 } from './controllers/brand.controller.js';
 import { brandService } from './services/brand.service.js';
+import { companyService } from './services/company.service.js';
+
+import { protect } from '../../middlewares/auth.middleware.js';
 
 const router = Router();
+
+router.use(protect);
 
 // Brand Logo Upload Route
 router.post(
@@ -56,11 +61,23 @@ router.post(
 // Batch Fetch All Active Masters (For Transaction Dropdowns)
 router.get(
   '/all',
-  asyncHandler(async (_req, res) => {
-    const { suppliers } = await supplierService.getAllSuppliers({ status: 'active' });
-    const { brands } = await brandService.getAllBrands({ isActive: 'true' });
-    const { categories } = await categoryService.getAllCategories({ isActive: 'true' });
-    const { units } = await unitService.getAllUnits({ isActive: 'true' });
+  asyncHandler(async (req, res) => {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const [suppliersRes, brandsRes, categoriesRes, unitsRes] = await Promise.all([
+      supplierService.getAllSuppliers({ status: 'active' }, userId).catch(() => ({ suppliers: [] })),
+      brandService.getAllBrands({ isActive: 'true' }, userId).catch(() => ({ brands: [] })),
+      categoryService.getAllCategories({ isActive: 'true' }, userId).catch(() => ({ categories: [] })),
+      unitService.getAllUnits({ isActive: 'true' }, userId).catch(() => ({ units: [] })),
+    ]);
+
+    const suppliers = suppliersRes?.suppliers || [];
+    const brands = brandsRes?.brands || [];
+    const categories = categoriesRes?.categories || [];
+    const units = unitsRes?.units || [];
 
     return sendSuccess(
       res,

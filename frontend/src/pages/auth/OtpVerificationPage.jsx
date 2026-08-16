@@ -54,7 +54,7 @@ export default function OtpVerificationPage() {
         const response = await authService.verifySignupOtp({ mobile: mobileNumber, otp });
         if (response.success) {
           // Flow: Account Created -> Redirect to Login
-          navigate('/login', { state: { successMessage: 'Account created successfully! Please login.' } });
+          navigate('/login', { state: { successMessage: 'Registration successful! Please log in.' } });
         }
       }
     } catch (error) {
