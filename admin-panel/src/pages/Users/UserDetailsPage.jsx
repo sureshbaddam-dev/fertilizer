@@ -18,6 +18,14 @@ import {
   Copy,
   Check,
   Fingerprint,
+  CreditCard,
+  UserX,
+  UserCheck,
+  ShoppingBag,
+  Users,
+  FileText,
+  PackageCheck,
+  Receipt,
 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import GrantSubscriptionModal from '../../components/GrantSubscriptionModal';
@@ -78,12 +86,45 @@ export default function UserDetailsPage() {
     }
   }, [targetTicketId, details]);
 
-  // Action Triggers for Type To Confirm Modal
+  // User Deactivate / Reactivate Triggers (No Hard Delete)
+  const triggerDeactivateUserModal = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Deactivate User Account',
+      description: `This will suspend account access for ${details?.user?.ownerName}. Historical business data, subscriptions, and records will remain completely intact.`,
+      requiredText: 'DEACTIVATE',
+      confirmButtonLabel: 'Deactivate Account',
+      isDestructive: true,
+      onConfirm: async () => {
+        await adminApiService.toggleUserStatus(userId, false);
+        alert('User account deactivated successfully.');
+        fetchUserDetails();
+      },
+    });
+  };
+
+  const triggerReactivateUserModal = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Reactivate User Account',
+      description: `This will restore full login and access for ${details?.user?.ownerName}.`,
+      requiredText: 'REACTIVATE',
+      confirmButtonLabel: 'Reactivate Account',
+      isDestructive: false,
+      onConfirm: async () => {
+        await adminApiService.toggleUserStatus(userId, true);
+        alert('User account reactivated successfully.');
+        fetchUserDetails();
+      },
+    });
+  };
+
+  // Subscription Action Triggers
   const triggerPauseModal = () => {
     setConfirmConfig({
       isOpen: true,
       title: 'Pause Subscription',
-      description: `This will temporarily pause subscription access for ${details.user.ownerName}.`,
+      description: `This will temporarily pause subscription access for ${details?.user?.ownerName}.`,
       requiredText: 'PAUSE',
       confirmButtonLabel: 'Pause Subscription',
       isDestructive: false,
@@ -99,7 +140,7 @@ export default function UserDetailsPage() {
     setConfirmConfig({
       isOpen: true,
       title: 'Resume Subscription',
-      description: `This will restore active subscription access for ${details.user.ownerName}.`,
+      description: `This will restore active subscription access for ${details?.user?.ownerName}.`,
       requiredText: 'RESUME',
       confirmButtonLabel: 'Resume Subscription',
       isDestructive: false,
@@ -115,7 +156,7 @@ export default function UserDetailsPage() {
     setConfirmConfig({
       isOpen: true,
       title: 'Cancel Subscription',
-      description: `This will remove active subscription access for ${details.user.ownerName}. Historical subscription records will be preserved.`,
+      description: `This will remove active subscription access for ${details?.user?.ownerName}. Historical subscription records will be preserved.`,
       requiredText: 'CANCEL',
       confirmButtonLabel: 'Confirm Cancellation',
       isDestructive: true,
@@ -131,7 +172,7 @@ export default function UserDetailsPage() {
     setConfirmConfig({
       isOpen: true,
       title: 'Revoke Demo Subscription',
-      description: `This will revoke the trial access for ${details.user.ownerName}. Demo history will remain intact.`,
+      description: `This will revoke trial access for ${details?.user?.ownerName}. Demo history will remain intact.`,
       requiredText: 'REVOKE',
       confirmButtonLabel: 'Confirm Revocation',
       isDestructive: true,
@@ -147,17 +188,17 @@ export default function UserDetailsPage() {
     return (
       <div className="p-12 text-center text-slate-400 font-medium">
         <Activity className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />
-        <p className="text-xs">Loading User Profile & Complete Context...</p>
+        <p className="text-xs">Loading User Profile & Business Context...</p>
       </div>
     );
   }
 
-  const { user, shop, subscription, subHistory = [], tickets = [], counts = {} } = details;
+  const { user, shop, subscription, subHistory = [], tickets = [], counts = {}, paymentSummary = {} } = details;
   const currentSubStatus = (subscription?.status || (subscription?.planName ? 'ACTIVE' : 'NO_SUBSCRIPTION')).toUpperCase();
 
   return (
     <div className="space-y-6 font-sans antialiased text-slate-800">
-      {/* Back & Top Actions Header */}
+      {/* Back Button & Top Action Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <button
           onClick={() => navigate('/admin/users')}
@@ -167,15 +208,34 @@ export default function UserDetailsPage() {
           <span>Back to All Users</span>
         </button>
 
-        <div className="flex items-center gap-3 relative">
-          {/* Action Menu Dropdown */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* User Account Status Toggle (No Hard Delete) */}
+          {user.isActive ? (
+            <button
+              onClick={triggerDeactivateUserModal}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <UserX className="w-4 h-4" />
+              <span>Deactivate Account</span>
+            </button>
+          ) : (
+            <button
+              onClick={triggerReactivateUserModal}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Reactivate Account</span>
+            </button>
+          )}
+
+          {/* Subscription Action Menu Dropdown */}
           <div className="relative">
             <button
               onClick={() => setIsManageMenuOpen(!isManageMenuOpen)}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition"
             >
               <Sparkles className="w-4 h-4" />
-              <span>+ Manage Subscription</span>
+              <span>Manage Subscription</span>
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
 
@@ -310,9 +370,12 @@ export default function UserDetailsPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">{user.ownerName}</h1>
-              <StatusBadge status={user.isActive ? 'ACTIVE' : 'BLOCKED'} />
+              <StatusBadge status={user.isActive ? 'ACTIVE' : 'DEACTIVATED'} />
             </div>
-            <p className="text-xs text-emerald-700 font-bold mt-0.5">{shop?.shopName || 'Shop Not Configured Yet'}</p>
+
+            <p className="text-xs text-emerald-700 font-bold mt-0.5">
+              {shop?.shopName && shop.shopName.trim() ? shop.shopName.trim() : 'No data'}
+            </p>
 
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 flex items-center gap-1.5">
@@ -325,12 +388,12 @@ export default function UserDetailsPage() {
                   setCopiedUserId(true);
                   setTimeout(() => setCopiedUserId(false), 2500);
                 }}
-                title="Copy Canonical User ID to Clipboard"
+                title="Copy User ID to Clipboard"
                 className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 rounded-lg border border-slate-200 transition cursor-pointer flex items-center gap-1 text-[11px] font-bold"
               >
                 {copiedUserId ? (
                   <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" /> User ID copied
+                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Copied
                   </span>
                 ) : (
                   <>
@@ -343,21 +406,22 @@ export default function UserDetailsPage() {
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2 font-medium">
               <span className="flex items-center gap-1.5 font-mono font-bold text-slate-700">
-                <Phone className="w-3.5 h-3.5 text-slate-400" />{user.mobile || 'N/A'}
+                <Phone className="w-3.5 h-3.5 text-slate-400" />
+                {user.mobile && user.mobile.trim() ? user.mobile.trim() : 'No data'}
               </span>
-              {user.email && (
-                <span className="flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-slate-400" />{user.email}
-                </span>
-              )}
               <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />Reg: {new Date(user.createdAt).toLocaleDateString('en-IN')}
+                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                {user.email && user.email.trim() ? user.email.trim() : 'No data'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                Reg: {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN') : 'No data'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* CURRENT SUBSCRIPTION CARD WITH STATUS-AWARE ACTIONS */}
+        {/* CURRENT SUBSCRIPTION SUMMARY CARD */}
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 min-w-[280px]">
           <div className="flex items-center justify-between border-b border-slate-200/80 pb-1.5">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Current Subscription</span>
@@ -368,154 +432,113 @@ export default function UserDetailsPage() {
               <span className="text-slate-500">Plan:</span>
               <span className="font-bold text-slate-900">{subscription?.planName || 'No Active Plan'}</span>
             </div>
-            {subscription?.durationLabel && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Duration:</span>
-                <span className="font-semibold text-slate-700">{subscription.durationLabel}</span>
-              </div>
-            )}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Duration:</span>
+              <span className="font-semibold text-slate-700">{subscription?.durationLabel || 'No data'}</span>
+            </div>
             <div className="flex items-center justify-between font-mono">
               <span className="text-slate-500">Expiry:</span>
               <span className="font-bold text-emerald-700">
-                {subscription?.expiryDate ? new Date(subscription.expiryDate).toLocaleDateString('en-IN') : 'N/A'}
+                {subscription?.expiryDate ? new Date(subscription.expiryDate).toLocaleDateString('en-IN') : 'No data'}
               </span>
             </div>
-            {subscription?.amountPaid !== undefined && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Amount:</span>
-                <span className="font-bold text-slate-900">₹{subscription.amountPaid}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-2">
-            {currentSubStatus === 'ACTIVE' && (
-              <>
-                <button
-                  onClick={() => {
-                    setModalMode('EXTEND');
-                    setIsSubModalOpen(true);
-                  }}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Extend</span>
-                </button>
-                <button
-                  onClick={triggerPauseModal}
-                  className="py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg border border-amber-200 cursor-pointer transition"
-                >
-                  Pause
-                </button>
-                <button
-                  onClick={triggerCancelModal}
-                  className="py-1.5 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-lg border border-red-200 cursor-pointer transition"
-                >
-                  Unsubscribe
-                </button>
-              </>
-            )}
-
-            {currentSubStatus === 'PAUSED' && (
-              <>
-                <button
-                  onClick={triggerResumeModal}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition"
-                >
-                  <PlayCircle className="w-3.5 h-3.5" />
-                  <span>Resume</span>
-                </button>
-                <button
-                  onClick={triggerCancelModal}
-                  className="py-1.5 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-lg border border-red-200 cursor-pointer transition"
-                >
-                  Unsubscribe
-                </button>
-              </>
-            )}
-
-            {(currentSubStatus === 'NO_SUBSCRIPTION' || currentSubStatus === 'EXPIRED' || currentSubStatus === 'CANCELLED') && (
-              <>
-                <button
-                  onClick={() => {
-                    setModalMode('GRANT');
-                    setIsSubModalOpen(true);
-                  }}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>+ Grant Plan</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setModalMode('DEMO');
-                    setIsSubModalOpen(true);
-                  }}
-                  className="py-1.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg border border-amber-200 cursor-pointer transition"
-                >
-                  + Grant Demo
-                </button>
-              </>
-            )}
-
-            {currentSubStatus === 'DEMO' && (
-              <>
-                <button
-                  onClick={() => {
-                    setModalMode('GRANT');
-                    setIsSubModalOpen(true);
-                  }}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1 cursor-pointer transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Grant Paid</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setModalMode('DEMO');
-                    setIsSubModalOpen(true);
-                  }}
-                  className="py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg border border-amber-200 cursor-pointer transition"
-                >
-                  Extend Demo
-                </button>
-                <button
-                  onClick={triggerRevokeDemoModal}
-                  className="py-1.5 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-lg border border-red-200 cursor-pointer transition"
-                >
-                  Revoke
-                </button>
-              </>
-            )}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500">Plan Amount:</span>
+              <span className="font-bold text-slate-900">
+                {subscription?.amountPaid !== undefined && subscription?.amountPaid !== null ? `₹${subscription.amountPaid}` : 'No data'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 5 BUSINESS DATA COUNTS */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Customers</span>
-          <p className="text-2xl font-extrabold text-emerald-700">{counts.customers || 0}</p>
-        </div>
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Suppliers</span>
-          <p className="text-2xl font-extrabold text-blue-700">{counts.suppliers || 0}</p>
-        </div>
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Products</span>
-          <p className="text-2xl font-extrabold text-teal-700">{counts.products || 0}</p>
-        </div>
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Purchases</span>
-          <p className="text-2xl font-extrabold text-purple-700">{counts.purchases || 0}</p>
-        </div>
-        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1 col-span-2 sm:col-span-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Sales Invoices</span>
-          <p className="text-2xl font-extrabold text-amber-700">{counts.invoices || 0}</p>
+      {/* PAYMENT SUMMARY SECTION (REQUIREMENT 3 & 4) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-emerald-600" />
+          <span>Payment Summary</span>
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-1">
+            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Total Amount Paid</span>
+            <p className="text-2xl font-extrabold text-emerald-700">
+              ₹ {(paymentSummary?.totalAmountPaid || 0).toLocaleString('en-IN')}
+            </p>
+            <span className="text-[10px] font-semibold text-emerald-600 block">Calculated from payment records</span>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Successful Payments</span>
+            <p className="text-2xl font-extrabold text-slate-900">
+              {paymentSummary?.successfulPaymentCount || 0}
+            </p>
+            <span className="text-[10px] font-semibold text-slate-400 block">Completed subscription transactions</span>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Last Payment Date</span>
+            <p className="text-lg font-bold font-mono text-slate-800">
+              {paymentSummary?.lastPaymentDate ? new Date(paymentSummary.lastPaymentDate).toLocaleDateString('en-IN') : 'No data'}
+            </p>
+            <span className="text-[10px] font-semibold text-slate-400 block">Most recent payment timestamp</span>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Plan Amount</span>
+            <p className="text-2xl font-extrabold text-blue-700">
+              {paymentSummary?.currentSubscriptionAmount !== undefined && paymentSummary?.currentSubscriptionAmount !== null
+                ? `₹${paymentSummary.currentSubscriptionAmount}`
+                : 'No data'}
+            </p>
+            <span className="text-[10px] font-semibold text-slate-400 block">Active subscription cost</span>
+          </div>
         </div>
       </div>
 
-      {/* SUPPORT TICKETS SECTION (HIGHLIGHTED IF CLICKED FROM DASHBOARD) */}
+      {/* BUSINESS SUMMARY COUNTS (REQUIREMENT 2 & 6) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <Database className="w-4 h-4 text-blue-600" />
+          <span>Business Summary</span>
+        </h3>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-[11px] font-bold uppercase">Total Products</span>
+              <PackageCheck className="w-4 h-4 text-teal-600" />
+            </div>
+            <p className="text-2xl font-extrabold text-teal-700">{counts.products || 0}</p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-[11px] font-bold uppercase">Total Customers</span>
+              <Users className="w-4 h-4 text-emerald-600" />
+            </div>
+            <p className="text-2xl font-extrabold text-emerald-700">{counts.customers || 0}</p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-[11px] font-bold uppercase">Total Bills (Sales)</span>
+              <FileText className="w-4 h-4 text-amber-600" />
+            </div>
+            <p className="text-2xl font-extrabold text-amber-700">{counts.invoices || 0}</p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <div className="flex items-center justify-between text-slate-500">
+              <span className="text-[11px] font-bold uppercase">Total Purchases</span>
+              <ShoppingBag className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="text-2xl font-extrabold text-purple-700">{counts.purchases || 0}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* SUPPORT TICKETS SECTION */}
       <div ref={ticketRef} className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between">
           <span className="flex items-center gap-2">
@@ -563,7 +586,7 @@ export default function UserDetailsPage() {
         )}
       </div>
 
-      {/* SUBSCRIPTION HISTORY TABLE */}
+      {/* SUBSCRIPTION & GRANT HISTORY TABLE */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
           <Award className="w-4 h-4 text-emerald-600" />
@@ -590,10 +613,10 @@ export default function UserDetailsPage() {
                 {subHistory.map((sh) => (
                   <tr key={sh._id} className="hover:bg-slate-50">
                     <td className="p-3 font-bold text-slate-900">{sh.planName}</td>
-                    <td className="p-3 font-semibold">{sh.durationLabel}</td>
-                    <td className="p-3 font-mono">{new Date(sh.startDate).toLocaleDateString('en-IN')}</td>
-                    <td className="p-3 font-mono">{new Date(sh.expiryDate).toLocaleDateString('en-IN')}</td>
-                    <td className="p-3 font-bold text-emerald-700">₹{sh.amountPaid}</td>
+                    <td className="p-3 font-semibold">{sh.durationLabel || 'No data'}</td>
+                    <td className="p-3 font-mono">{sh.startDate ? new Date(sh.startDate).toLocaleDateString('en-IN') : 'No data'}</td>
+                    <td className="p-3 font-mono">{sh.expiryDate ? new Date(sh.expiryDate).toLocaleDateString('en-IN') : 'No data'}</td>
+                    <td className="p-3 font-bold text-emerald-700">{sh.amountPaid !== undefined ? `₹${sh.amountPaid}` : 'No data'}</td>
                     <td className="p-3"><StatusBadge status={sh.source} /></td>
                     <td className="p-3 font-medium text-slate-500">{sh.grantedByAdminName || 'Online System'}</td>
                   </tr>
@@ -614,7 +637,7 @@ export default function UserDetailsPage() {
         onSuccess={() => fetchUserDetails()}
       />
 
-      {/* Type To Confirm Modal for Destructive / Important Actions */}
+      {/* Type To Confirm Modal for Account Status Toggle or Sub Cancel */}
       <TypeToConfirmModal
         isOpen={confirmConfig.isOpen}
         onClose={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}

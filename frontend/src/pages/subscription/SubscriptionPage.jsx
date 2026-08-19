@@ -45,18 +45,6 @@ export default function SubscriptionPage() {
   const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
-  // Demo Request Mutation
-  const demoRequestMutation = useMutation({
-    mutationFn: (requestedPlan) => subscriptionService.requestFreeDemo(requestedPlan),
-    onSuccess: () => {
-      setSuccessMessage('Your Free Demo Request has been submitted!');
-      queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
-    },
-    onError: (err) => {
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to submit demo request.');
-    },
-  });
-
   // Default features
   const defaultFeatures = [
     'Complete Fertilizer & Agri ERP Access',
@@ -405,15 +393,6 @@ export default function SubscriptionPage() {
                           : hasActiveSub
                           ? `Upgrade (₹${plan.price})`
                           : `Get Started (₹${plan.price})`}
-                      </button>
-
-                      <button
-                        onClick={() => demoRequestMutation.mutate(plan.code)}
-                        disabled={demoRequestMutation.isPending || hasActiveSub}
-                        className="w-full py-1 text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition flex items-center justify-center space-x-1 disabled:opacity-50 cursor-pointer"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{demoRequestMutation.isPending ? 'Requesting...' : 'Request Free Demo'}</span>
                       </button>
                     </div>
                   </div>

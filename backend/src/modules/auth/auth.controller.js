@@ -99,6 +99,30 @@ export const refreshToken = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Token refreshed successfully.', clientData, HTTP_STATUS.OK);
 });
 
+export const googleAuth = asyncHandler(async (req, res) => {
+  const result = await authService.googleAuth(req.body);
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Google authentication evaluated.', clientData, HTTP_STATUS.OK);
+});
+
+export const completeGoogleProfile = asyncHandler(async (req, res) => {
+  const result = await authService.completeGoogleSignup(req.body);
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Account profile completed successfully.', clientData, HTTP_STATUS.CREATED);
+});
+
 export const getProfile = asyncHandler(async (req, res) => {
   const user = await authService.getProfile(req.user._id);
   return sendSuccess(res, 'User profile retrieved successfully.', user, HTTP_STATUS.OK);
@@ -107,4 +131,21 @@ export const getProfile = asyncHandler(async (req, res) => {
 export const updateProfile = asyncHandler(async (req, res) => {
   const user = await authService.updateProfile(req.user._id, req.body);
   return sendSuccess(res, 'User profile updated successfully.', user, HTTP_STATUS.OK);
+});
+
+export const emailPasswordSignup = asyncHandler(async (req, res) => {
+  const result = await authService.emailPasswordSignup(req.body);
+  return sendSuccess(res, result.message, result, HTTP_STATUS.CREATED);
+});
+
+export const verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+  const result = await authService.verifyEmailToken(token);
+  return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+});
+
+export const resendVerificationEmail = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const result = await authService.resendVerificationEmail(email);
+  return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
 });

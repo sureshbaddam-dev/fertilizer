@@ -19,6 +19,18 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
+      lowercase: true,
+      index: true,
+    },
+    googleId: {
+      type: String,
+      default: null,
+      sparse: true,
+      index: true,
+    },
+    isProfileComplete: {
+      type: Boolean,
+      default: true,
     },
     profilePicUrl: {
       type: String,
@@ -26,12 +38,25 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: {
       type: String,
-      required: [true, 'Password is required'],
       select: false,
     },
     isMobileVerified: {
       type: Boolean,
       default: false,
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      default: null,
+      select: false,
     },
     role: {
       type: String,

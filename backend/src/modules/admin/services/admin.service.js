@@ -288,6 +288,37 @@ export const adminService = {
     const purchasesCount = await Purchase.countDocuments({ userId });
     const invoicesCount = await SalesInvoice.countDocuments({ userId });
 
+    // Payment Summary Calculation from MongoDB Subscription & Payment History
+    const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+    const paymentAgg = await SubscriptionHistory.aggregate([
+      { $match: { userId: userObjectId } },
+      {
+        $group: {
+          _id: null,
+          totalAmountPaid: { $sum: { $ifNull: ['$amountPaid', 0] } },
+          successfulPaymentCount: { $sum: 1 },
+          lastPaymentDate: { $max: '$createdAt' },
+        },
+      },
+    ]);
+
+    let totalAmountPaid = paymentAgg[0]?.totalAmountPaid || 0;
+    let successfulPaymentCount = paymentAgg[0]?.successfulPaymentCount || 0;
+    let lastPaymentDate = paymentAgg[0]?.lastPaymentDate || null;
+
+    if (successfulPaymentCount === 0 && subscription && subscription.amountPaid) {
+      totalAmountPaid = subscription.amountPaid;
+      successfulPaymentCount = 1;
+      lastPaymentDate = subscription.updatedAt || subscription.createdAt || null;
+    }
+
+    const paymentSummary = {
+      totalAmountPaid,
+      successfulPaymentCount,
+      lastPaymentDate: lastPaymentDate ? lastPaymentDate.toISOString() : null,
+      currentSubscriptionAmount: subscription?.amountPaid !== undefined ? subscription.amountPaid : null,
+    };
+
     const auditLogs = await AdminAuditLog.find({ targetId: String(userId) }).sort({ createdAt: -1 }).limit(10).lean();
 
     // Support tickets for User 360 Context
@@ -298,7 +329,7 @@ export const adminService = {
       user,
       shop: shop || null,
       subscription: subscription || null,
-      subHistory,
+      subHistory: subHistory || [],
       tickets: tickets || [],
       counts: {
         customers: customersCount,
@@ -307,6 +338,7 @@ export const adminService = {
         purchases: purchasesCount,
         invoices: invoicesCount,
       },
+      paymentSummary,
       activities: auditLogs,
     };
   },

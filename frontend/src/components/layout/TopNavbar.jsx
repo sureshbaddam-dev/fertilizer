@@ -73,7 +73,14 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'b.suresh';
   const userMobile = userProfile.mobile || currentUser.mobile || 'Not added';
   const userEmail = userProfile.email || currentUser.email || 'Not added';
-  const shopName = settings?.shopName?.trim() ? settings.shopName : 'Not added';
+
+  const rawShopName =
+    userProfile?.shopName ||
+    userProfile?.shopSettings?.shopName ||
+    settings?.shopName ||
+    currentUser?.shopName;
+
+  const shopName = rawShopName && rawShopName.trim() ? rawShopName.trim() : 'Not added';
   const userProfilePic = userProfile.profilePicUrl || currentUser.profilePicUrl || settings?.logoUrl || settings?.shopLogo || null;
 
   const getInitials = (name) => {

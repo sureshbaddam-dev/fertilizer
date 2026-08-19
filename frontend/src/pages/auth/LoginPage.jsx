@@ -1,47 +1,195 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Lock, Phone, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Lock, Phone, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
 import { authService } from '../../services/authService';
-import { subscriptionService } from '../../services/subscriptionService';
 import BrandLogo from '../../components/common/BrandLogo';
 
-const loginSchema = z.object({
-  mobile: z
-    .string()
-    .regex(/^[6-9]\d{9}$/, 'Please enter a valid 10-digit mobile number'),
-  password: z.string().min(1, 'Password is required'),
-  rememberMe: z.boolean().optional(),
-});
+// Google OAuth Client ID Sanitizer
+const getGoogleClientId = () => {
+  let clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  if (typeof clientId === 'string') {
+    clientId = clientId.replace(/^["']|["']$/g, '').trim();
+  }
+  return clientId;
+};
+
+const ensureGoogleGisScript = () => {
+  return new Promise((resolve) => {
+    if (window.google?.accounts?.id || window.google?.accounts?.oauth2) {
+      resolve(true);
+      return;
+    }
+    const existingScript = document.getElementById('google-gis-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(true), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'google-gis-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  });
+};
 
 export default function LoginPage() {
   const navigate = useNavigate();
+
+  // Form State
+  const [mobile, setMobile] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Status State
   const [serverError, setServerError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      mobile: '',
-      password: '',
-      rememberMe: false,
-    },
-  });
+  // SINGLE-FLIGHT IN-FLIGHT GUARD & DUPLICATE CREDENTIAL PROTECTION
+  const isGoogleAuthInProgressRef = useRef(false);
+  const processedTokensRef = useRef(new Set());
 
-  const onSubmit = async (data) => {
+  useEffect(() => {
+    let isMounted = true;
+    const initGis = async () => {
+      await ensureGoogleGisScript();
+      const clientId = getGoogleClientId();
+      if (clientId && window.google?.accounts?.id && isMounted) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+          });
+        } catch (_e) {}
+      }
+    };
+    initGis();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleGoogleCredentialResponse = async (response) => {
+    if (!response || (!response.credential && !response.access_token)) return;
+    const token = response.credential || response.access_token;
+
+    if (isGoogleAuthInProgressRef.current) return;
+    if (processedTokensRef.current.has(token)) return;
+
+    isGoogleAuthInProgressRef.current = true;
+    processedTokensRef.current.add(token);
+
     setIsLoading(true);
     setServerError('');
     try {
-      const response = await authService.login({ mobile: data.mobile, password: data.password });
+      const res = await authService.googleAuth(token);
+      if (res.success) {
+        if (res.data?.isProfileComplete) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          navigate('/signup', { replace: true });
+        }
+      } else {
+        setServerError(res.message || 'Google authentication failed. Please try again.');
+      }
+    } catch (err) {
+      setServerError(err.message || 'Google authentication failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+      isGoogleAuthInProgressRef.current = false;
+    }
+  };
+
+  const handleContinueWithGoogle = async () => {
+    if (isGoogleAuthInProgressRef.current) return;
+    setServerError('');
+    const clientId = getGoogleClientId();
+
+    if (!clientId) {
+      setServerError('Google OAuth Web Client ID is not configured in frontend/.env as VITE_GOOGLE_CLIENT_ID.');
+      return;
+    }
+
+    isGoogleAuthInProgressRef.current = true;
+    setIsLoading(true);
+    await ensureGoogleGisScript();
+
+    try {
+      if (window.google?.accounts?.oauth2) {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'openid email profile',
+          callback: async (tokenResponse) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              isGoogleAuthInProgressRef.current = false;
+              handleGoogleCredentialResponse({ access_token: tokenResponse.access_token });
+            } else {
+              setIsLoading(false);
+              isGoogleAuthInProgressRef.current = false;
+            }
+          },
+          error_callback: () => {
+            setIsLoading(false);
+            isGoogleAuthInProgressRef.current = false;
+            setServerError('Google Sign-In was cancelled.');
+          },
+        });
+        client.requestAccessToken();
+      } else if (window.google?.accounts?.id) {
+        window.google.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            setIsLoading(false);
+            isGoogleAuthInProgressRef.current = false;
+          }
+        });
+      } else {
+        setIsLoading(false);
+        isGoogleAuthInProgressRef.current = false;
+        setServerError('Unable to load Google Identity Services SDK.');
+      }
+    } catch (err) {
+      setIsLoading(false);
+      isGoogleAuthInProgressRef.current = false;
+      setServerError(err.message || 'Failed to initialize Google Sign-In.');
+    }
+  };
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setServerError('');
+
+    if (!mobile || !mobile.trim()) {
+      setServerError('Please enter your mobile number or email address.');
+      setIsLoading(false);
+      return;
+    }
+    if (!password) {
+      setServerError('Please enter your password.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const isEmailInput = mobile.includes('@');
+      const payload = isEmailInput
+        ? { email: mobile.trim(), password }
+        : { mobile: mobile.trim(), password };
+
+      const response = await authService.login(payload);
       if (response.success) {
-        navigate('/dashboard');
+        const u = response.data?.user || authService.getCurrentUser() || {};
+        if (!u.shopName || !u.shopName.trim()) {
+          navigate('/shop-setup', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      } else {
+        setServerError(response.message || 'Login failed. Please check your credentials.');
       }
     } catch (error) {
       setServerError(error.message || 'Login failed. Please check your credentials.');
@@ -68,23 +216,53 @@ export default function LoginPage() {
         </div>
       )}
 
+      {/* Google Sign In Button */}
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={handleContinueWithGoogle}
+          disabled={isLoading}
+          className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-60"
+        >
+          {isLoading && isGoogleAuthInProgressRef.current ? (
+            <Loader2 className="w-4 h-4 animate-spin text-slate-600" />
+          ) : (
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+          )}
+          <span>Continue with Google</span>
+        </button>
+      </div>
+
+      {/* Separator */}
+      <div className="relative flex items-center justify-center py-0.5">
+        <div className="border-t border-slate-200 w-full"></div>
+        <span className="bg-white px-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">OR</span>
+        <div className="border-t border-slate-200 w-full"></div>
+      </div>
+
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {/* Mobile Number Input */}
+      <form onSubmit={handleLoginSubmit} className="space-y-4">
+        {/* Mobile Number / Email Input */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700 block">Mobile Number</label>
+          <label className="text-xs font-bold text-slate-700 block">Mobile Number or Email</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <Phone className="w-4 h-4 text-emerald-600" />
             </div>
             <input
-              type="tel"
-              {...register('mobile')}
-              placeholder="Enter 10-digit mobile number"
+              type="text"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+              placeholder="Enter mobile number or email"
               className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+              required
             />
           </div>
-          {errors.mobile && <p className="text-[11px] text-rose-600 font-semibold">{errors.mobile.message}</p>}
         </div>
 
         {/* Password Input */}
@@ -96,9 +274,11 @@ export default function LoginPage() {
             </div>
             <input
               type={showPassword ? 'text' : 'password'}
-              {...register('password')}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
               className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+              required
             />
             <button
               type="button"
@@ -108,7 +288,6 @@ export default function LoginPage() {
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {errors.password && <p className="text-[11px] text-rose-600 font-semibold">{errors.password.message}</p>}
         </div>
 
         {/* Remember me & Forgot Password */}
@@ -116,7 +295,8 @@ export default function LoginPage() {
           <label className="flex items-center gap-2 text-slate-600 font-semibold cursor-pointer select-none">
             <input
               type="checkbox"
-              {...register('rememberMe')}
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
               className="w-4 h-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500/20 cursor-pointer"
             />
             <span>Remember Me</span>
@@ -132,7 +312,7 @@ export default function LoginPage() {
           disabled={isLoading}
           className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-extrabold text-base rounded-xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer disabled:opacity-50"
         >
-          {isLoading ? (
+          {isLoading && !isGoogleAuthInProgressRef.current ? (
             <span>Signing In...</span>
           ) : (
             <>

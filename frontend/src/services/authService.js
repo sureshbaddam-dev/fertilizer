@@ -22,6 +22,12 @@ const saveTokens = (data) => {
     localStorage.setItem('vedixa_user', JSON.stringify(data.user));
     localStorage.setItem('mandhi_user', JSON.stringify(data.user));
   }
+  try {
+    queryClient.invalidateQueries(['user-profile']);
+    queryClient.invalidateQueries(['shop-settings-global']);
+    queryClient.invalidateQueries(['shop-settings-profile']);
+    queryClient.invalidateQueries(['my-subscription']);
+  } catch (_e) {}
 };
 
 const clearTokens = () => {
@@ -52,6 +58,36 @@ export const authService = {
 
   async signup(data) {
     return await apiClient.post('/auth/signup', data);
+  },
+
+  async signupEmail(data) {
+    return await apiClient.post('/auth/signup/email', data);
+  },
+
+  async verifyEmail(token) {
+    return await apiClient.post('/auth/verify-email', { token });
+  },
+
+  async resendVerification(email) {
+    return await apiClient.post('/auth/resend-verification', { email });
+  },
+
+  async googleAuth(idToken) {
+    const response = await apiClient.post('/auth/google', { idToken });
+    if (response.success && response.data?.accessToken) {
+      saveTokens(response.data);
+      notifyListeners();
+    }
+    return response;
+  },
+
+  async completeGoogleSignup(data) {
+    const response = await apiClient.post('/auth/google/complete-profile', data);
+    if (response.success && response.data?.accessToken) {
+      saveTokens(response.data);
+      notifyListeners();
+    }
+    return response;
   },
 
   async verifySignupOtp(data) {

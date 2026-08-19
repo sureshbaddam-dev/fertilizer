@@ -6,6 +6,7 @@ import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../pages/auth/LoginPage';
 import SignUpPage from '../pages/auth/SignUpPage';
 import OtpVerificationPage from '../pages/auth/OtpVerificationPage';
+import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 import HomePage from '../pages/dashboard/HomePage';
@@ -32,6 +33,8 @@ import InventoryPage from '../pages/inventory/InventoryPage';
 import ReportsPage from '../pages/reports/ReportsPage';
 import SupportPage from '../pages/support/SupportPage';
 import FullScreenSubscriptionPage from '../pages/subscription/FullScreenSubscriptionPage';
+
+import ShopSetupPage from '../pages/auth/ShopSetupPage';
 
 export const appRouter = createBrowserRouter([
   {
@@ -71,8 +74,17 @@ export const appRouter = createBrowserRouter([
         ),
       },
       { path: 'verify-otp', element: <OtpVerificationPage /> },
+      { path: 'verify-email', element: <VerifyEmailPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
+      {
+        path: 'shop-setup',
+        element: (
+          <ProtectedRoute>
+            <ShopSetupPage />
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
   {

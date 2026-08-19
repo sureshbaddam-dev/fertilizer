@@ -25,17 +25,25 @@ export function SettingsProvider({ children }) {
 
   const updateMutation = useMutation({
     mutationFn: (newSettings) => settingService.updateSettings(newSettings),
-    onSuccess: () => {
+    onSuccess: (updatedRes) => {
+      if (updatedRes) {
+        queryClient.setQueryData(['shop-settings-global', currentUserId, isAuthenticated], updatedRes);
+      }
       queryClient.invalidateQueries(['shop-settings-global']);
       queryClient.invalidateQueries(['shop-settings-profile']);
+      queryClient.invalidateQueries(['user-profile']);
     },
   });
 
   const patchMutation = useMutation({
     mutationFn: (patchData) => settingService.patchSettings(patchData),
-    onSuccess: () => {
+    onSuccess: (updatedRes) => {
+      if (updatedRes) {
+        queryClient.setQueryData(['shop-settings-global', currentUserId, isAuthenticated], updatedRes);
+      }
       queryClient.invalidateQueries(['shop-settings-global']);
       queryClient.invalidateQueries(['shop-settings-profile']);
+      queryClient.invalidateQueries(['user-profile']);
     },
   });
 
@@ -44,20 +52,21 @@ export function SettingsProvider({ children }) {
     onSuccess: () => {
       queryClient.invalidateQueries(['shop-settings-global']);
       queryClient.invalidateQueries(['shop-settings-profile']);
+      queryClient.invalidateQueries(['user-profile']);
     },
   });
 
   const value = useMemo(
     () => ({
       settings,
-      isLoading,
+      isLoading: isLoading && isAuthenticated && !!currentUserId,
       refetchSettings: refetch,
       updateSettings: updateMutation.mutateAsync,
       patchSettings: patchMutation.mutateAsync,
       resetSettings: resetMutation.mutateAsync,
       isUpdating: updateMutation.isPending || patchMutation.isPending || resetMutation.isPending,
     }),
-    [settings, isLoading, refetch, updateMutation, patchMutation, resetMutation]
+    [settings, isLoading, isAuthenticated, currentUserId, refetch, updateMutation, patchMutation, resetMutation]
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
