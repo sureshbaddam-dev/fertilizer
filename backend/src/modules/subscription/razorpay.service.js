@@ -67,10 +67,10 @@ export const razorpayService = {
       .update(`${razorpayOrderId}|${razorpayPaymentId}`)
       .digest('hex');
 
+    const isDevEnv = process.env.NODE_ENV !== 'production';
     const isValid =
       generatedSignature === razorpaySignature ||
-      razorpaySignature === 'test_signature' ||
-      razorpaySignature.startsWith('test_sig_');
+      (isDevEnv && (razorpaySignature === 'test_signature' || razorpaySignature.startsWith('test_sig_')));
 
     if (isValid) {
       logger.info(`✅ Razorpay Payment Signature verified for Order: ${razorpayOrderId}`);
