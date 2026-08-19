@@ -56,7 +56,6 @@ export default function HomePage() {
       {/* 1. Available Products Section */}
       <MostSellingProducts
         onQuickAdd={onQuickAddProduct}
-        showCategoryTabs={isBillingOpen}
         hasActiveSub={hasActiveSub}
       />
 
