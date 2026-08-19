@@ -99,7 +99,7 @@ export default function TransactionsPage() {
       key: 'amountPaid',
       render: (row) => (
         <span className="font-extrabold text-slate-900">
-          ₹{row.amountPaid !== undefined ? row.amountPaid : row.amount || 199}
+          ₹{row.amountPaid ?? row.amount ?? 0}
         </span>
       ),
     },

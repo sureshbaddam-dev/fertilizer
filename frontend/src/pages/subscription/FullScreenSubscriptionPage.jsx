@@ -117,23 +117,25 @@ export default function FullScreenSubscriptionPage() {
             rzpInstanceRef.current = null;
           }
 
+          const targetPlanCode = orderData.planCode || checkoutPlan?.code;
+
           const options = {
             key: orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || '',
             amount: orderData.amount,
             currency: orderData.currency || 'INR',
             name: 'VEDIXA ERP',
-            description: `${orderData.planName || orderData.planCode || checkoutPlan?.code} Plan Subscription`,
+            description: `${orderData.planName || targetPlanCode} Plan Subscription`,
             order_id: orderData.orderId,
             handler: async function (response) {
               isInitializingPaymentRef.current = false;
-              setCheckoutPlan(null);
               verifyMutation.mutate({
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
-                planCode: checkoutPlan?.code,
+                planCode: targetPlanCode,
                 couponCode: couponCodeToUse,
               });
+              setCheckoutPlan(null);
             },
             theme: {
               color: '#047857',
@@ -358,6 +360,8 @@ export default function FullScreenSubscriptionPage() {
               ];
 
               const theme = cardThemes[index % cardThemes.length];
+              const currentSubPlanCode = (currentSub?.planCode || '').toUpperCase();
+              const isCurrentPlan = hasActiveSub && currentSubPlanCode === plan.code.toUpperCase();
 
               return (
                 <div key={plan.code} className="flex flex-col h-full relative group">
@@ -429,10 +433,16 @@ export default function FullScreenSubscriptionPage() {
                     <div className="pt-4 mt-auto space-y-2">
                       <button
                         onClick={() => handleOpenCheckout(plan)}
-                        disabled={!isSystemActive || hasActiveSub}
+                        disabled={!isSystemActive || isCurrentPlan}
                         className={`w-full py-2.5 px-4 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${theme.btnStyle}`}
                       >
-                        {!isSystemActive ? 'System Disabled' : `Get Started (₹${plan.price})`}
+                        {!isSystemActive
+                          ? 'System Disabled'
+                          : isCurrentPlan
+                          ? 'Current Plan'
+                          : hasActiveSub
+                          ? `Upgrade (₹${plan.price})`
+                          : `Get Started (₹${plan.price})`}
                       </button>
 
                       <button

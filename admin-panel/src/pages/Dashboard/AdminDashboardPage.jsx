@@ -30,17 +30,20 @@ export default function AdminDashboardPage() {
 
   // State
   const [stats, setStats] = useState({
-    totalRegisteredUsers: 4,
-    activeUsers: 4,
-    activeSubscriptions: 4,
-    monthlyRevenue: 398,
-    totalRevenue: 398,
-    totalWebsiteVisitors: 4,
+    totalRegisteredUsers: 0,
+    activeUsers: 0,
+    activeSubscriptions: 0,
+    monthlyRevenue: 0,
+    totalRevenue: 0,
+    totalWebsiteVisitors: 0,
+    totalBusinesses: 0,
+    newUsers: 0,
   });
 
   const [recentUsers, setRecentUsers] = useState([]);
   const [demoRequests, setDemoRequests] = useState([]);
   const [supportTickets, setSupportTickets] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Quick Demo Grant Modal State
@@ -57,17 +60,19 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, usersRes, demoRes, ticketsRes] = await Promise.all([
+      const [statsRes, usersRes, demoRes, ticketsRes, analyticsRes] = await Promise.all([
         adminApiService.getDashboardStats(),
         adminApiService.getUsersList({ page: 1, limit: 6 }),
         adminApiService.getDemoRequests(),
         adminApiService.getSupportTickets({ status: 'ALL' }),
+        adminApiService.getDashboardAnalytics(),
       ]);
 
       if (statsRes) setStats(statsRes);
       if (usersRes?.users) setRecentUsers(usersRes.users);
       if (demoRes) setDemoRequests(demoRes);
       if (ticketsRes) setSupportTickets(ticketsRes);
+      if (analyticsRes) setAnalyticsData(analyticsRes);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -95,15 +100,12 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Recharts compact trend data
-  const revenueTrendData = [
-    { date: '11 Aug', revenue: 199, visitors: 12 },
-    { date: '12 Aug', revenue: 199, visitors: 18 },
-    { date: '13 Aug', revenue: 398, visitors: 24 },
-    { date: '14 Aug', revenue: 398, visitors: 19 },
-    { date: '15 Aug', revenue: 398, visitors: 31 },
-    { date: '16 Aug', revenue: 398, visitors: 28 },
-  ];
+  // Recharts dynamic revenue trend data from backend analytics
+  const revenueTrendData = (analyticsData?.monthlyRevenue || []).map((item) => ({
+    date: item._id?.month || 'N/A',
+    revenue: item.revenue || 0,
+    count: item.count || 0,
+  }));
 
   const pendingDemoCount = demoRequests.filter((r) => r.status === 'PENDING').length;
   const pendingTicketsCount = supportTickets.filter((t) => t.status === 'PENDING' || t.status === 'OPEN').length;
@@ -142,8 +144,8 @@ export default function AdminDashboardPage() {
         >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Users</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900">{stats.totalRegisteredUsers || 4}</span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">+12 new</span>
+            <span className="text-2xl font-black text-slate-900">{stats.totalRegisteredUsers ?? 0}</span>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">+{stats.newUsers ?? 0} today</span>
           </div>
           <span className="text-[10px] text-slate-500 font-medium block">Registered Accounts</span>
         </div>
@@ -155,8 +157,8 @@ export default function AdminDashboardPage() {
         >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Users</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900">{stats.activeUsers || 4}</span>
-            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">100% Verified</span>
+            <span className="text-2xl font-black text-slate-900">{stats.activeUsers ?? 0}</span>
+            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">Verified</span>
           </div>
           <span className="text-[10px] text-slate-500 font-medium block">Active Accounts</span>
         </div>
@@ -168,7 +170,7 @@ export default function AdminDashboardPage() {
         >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Subs</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-emerald-700">{stats.activeSubscriptions || 4}</span>
+            <span className="text-2xl font-black text-emerald-700">{stats.activeSubscriptions ?? 0}</span>
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">Active Access</span>
           </div>
           <span className="text-[10px] text-slate-500 font-medium block">Active Plans</span>
@@ -181,8 +183,8 @@ export default function AdminDashboardPage() {
         >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Monthly Revenue</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 font-mono">₹{stats.monthlyRevenue || 398}</span>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">+18.4%</span>
+            <span className="text-2xl font-black text-slate-900 font-mono">₹{(stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}</span>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">Online Payments</span>
           </div>
           <span className="text-[10px] text-slate-500 font-medium block">This Month</span>
         </div>
@@ -368,7 +370,7 @@ export default function AdminDashboardPage() {
               <CreditCard className="w-4 h-4 text-emerald-600" /> Revenue Sparkline
             </h3>
             <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              ₹{stats.monthlyRevenue || 398}
+              ₹{(stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}
             </span>
           </div>
 

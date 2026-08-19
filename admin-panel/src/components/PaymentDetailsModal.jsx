@@ -68,7 +68,7 @@ export default function PaymentDetailsModal({ isOpen, onClose, payment }) {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-medium">Amount Paid:</span>
-              <span className="font-extrabold text-slate-900 text-sm">₹{payment.amountPaid !== undefined ? payment.amountPaid : payment.amount || 199}</span>
+              <span className="font-extrabold text-slate-900 text-sm">₹{payment.amountPaid ?? payment.amount ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-medium">Payment Gateway:</span>

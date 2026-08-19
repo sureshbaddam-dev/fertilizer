@@ -82,11 +82,6 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
 
   const handleNavClick = (e, item) => {
     onCloseMobile?.();
-    if (isBillingOpen) {
-      e.preventDefault();
-      onBlockNav?.();
-      return;
-    }
     if (!item.isUnrestricted && !hasActiveSub) {
       e.preventDefault();
       setSubModalFeature(item.featureName || item.name);

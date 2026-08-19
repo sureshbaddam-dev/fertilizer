@@ -204,10 +204,16 @@ export const subscriptionService = {
 
     const config = await this.getSubscriptionConfig();
     let plan = config.plans.find((p) => p.code.toUpperCase() === String(planCode || '').toUpperCase());
-    if (!plan && config.plans.length > 0) plan = config.plans[0];
+    if (!plan && config.plans.length > 0) {
+      plan = config.plans[0];
+    }
 
-    const monthsToGrant = plan?.months || 1;
-    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan ? plan.price : 199);
+    if (!plan) {
+      throw new AppError('Subscription plan not found or disabled.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const monthsToGrant = plan.months || (plan.code === '3_MONTHS' ? 3 : plan.code === '6_MONTHS' ? 6 : 1);
+    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan.price);
 
     const startDate = new Date();
     const expiryDate = new Date();
@@ -215,8 +221,8 @@ export const subscriptionService = {
 
     let sub = await UserSubscription.findOne({ userId });
     if (sub) {
-      sub.planCode = plan ? plan.code : '1_MONTH';
-      sub.planName = plan ? plan.name : '1 Month';
+      sub.planCode = plan.code;
+      sub.planName = plan.name;
       sub.status = 'ACTIVE';
       sub.startDate = startDate;
       sub.expiryDate = expiryDate;
@@ -234,7 +240,6 @@ export const subscriptionService = {
     } else {
       sub = await UserSubscription.create({
         userId,
-        planId: plan._id,
         planCode: plan.code,
         planName: plan.name,
         status: 'ACTIVE',

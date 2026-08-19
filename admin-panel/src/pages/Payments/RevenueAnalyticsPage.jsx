@@ -92,7 +92,7 @@ export default function RevenueAnalyticsPage() {
     let totalRev = 0;
 
     payments.forEach((p) => {
-      const amt = Number(p.amountPaid !== undefined ? p.amountPaid : p.amount || 199);
+      const amt = Number(p.amountPaid ?? p.amount ?? 0);
       const pDate = new Date(p.createdAt || p.paymentDate || Date.now());
 
       totalRev += amt;
@@ -516,7 +516,7 @@ export default function RevenueAnalyticsPage() {
                       <span className="text-[10px] text-slate-500 font-mono font-bold">{p.userMobile || p.userId?.mobile || 'N/A'}</span>
                     </td>
                     <td className="py-2.5 font-bold text-emerald-700">{p.planName || 'Fertilizer ERP'}</td>
-                    <td className="py-2.5 font-extrabold text-slate-900">₹{p.amountPaid !== undefined ? p.amountPaid : p.amount || 199}</td>
+                    <td className="py-2.5 font-extrabold text-slate-900">₹{p.amountPaid ?? p.amount ?? 0}</td>
                     <td className="py-2.5">
                       <StatusBadge status={p.paymentStatus || p.status || 'SUCCESSFUL'} />
                     </td>

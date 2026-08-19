@@ -20,15 +20,9 @@ const productSchema = z.object({
   brandId: z.string().optional(),
   categoryId: z.string().min(1, 'Category is required'),
   unitId: z.string().min(1, 'Unit is required'),
-  defaultPurchaseRate: z.union([z.string(), z.number()]).optional(),
-  defaultMrp: z.union([z.string(), z.number()]).optional(),
-  defaultSellingPrice: z.union([z.string(), z.number()]).optional(),
   discount: z.union([z.string(), z.number()]).optional(),
   discountType: z.string().optional(),
-  hsnCode: z.string().optional(),
   gstRate: z.union([z.string(), z.number()]).optional(),
-  batchCode: z.string().optional(),
-  expiryDate: z.string().optional(),
   minStockAlert: z.union([z.string(), z.number()]).optional(),
 });
 
@@ -74,15 +68,9 @@ export default function QuickAddProductDrawer({
       brandId: '',
       categoryId: '',
       unitId: '',
-      defaultPurchaseRate: '',
-      defaultMrp: '',
-      defaultSellingPrice: '',
       discount: '',
       discountType: 'Percentage',
-      hsnCode: '',
       gstRate: '',
-      batchCode: '',
-      expiryDate: '',
       minStockAlert: '10',
     },
   });
@@ -104,15 +92,9 @@ export default function QuickAddProductDrawer({
         brandId: brandIdVal,
         categoryId: categoryIdVal,
         unitId: unitIdVal,
-        defaultPurchaseRate: toInputValue(editingProduct.defaultPurchaseRate),
-        defaultMrp: toInputValue(editingProduct.defaultMrp),
-        defaultSellingPrice: toInputValue(editingProduct.defaultSellingPrice),
         discount: toInputValue(editingProduct.discount),
         discountType: editingProduct.discountType || 'Percentage',
-        hsnCode: editingProduct.hsnCode || '',
         gstRate: toInputValue(editingProduct.gstRate),
-        batchCode: editingProduct.batchCode || '',
-        expiryDate: editingProduct.expiryDate ? new Date(editingProduct.expiryDate).toISOString().split('T')[0] : '',
         minStockAlert: toInputValue(editingProduct.minimumStockAlert || 10),
       });
     } else {
@@ -125,15 +107,9 @@ export default function QuickAddProductDrawer({
         brandId: brands[0]?._id || '',
         categoryId: categories[0]?._id || '',
         unitId: units[0]?._id || '',
-        defaultPurchaseRate: '',
-        defaultMrp: '',
-        defaultSellingPrice: '',
         discount: '',
         discountType: 'Percentage',
-        hsnCode: '',
         gstRate: '',
-        batchCode: '',
-        expiryDate: '',
         minStockAlert: '10',
       });
     }
@@ -170,9 +146,6 @@ export default function QuickAddProductDrawer({
   const onSubmit = (formData) => {
     const payload = {
       ...formData,
-      defaultPurchaseRate: formData.defaultPurchaseRate === '' || formData.defaultPurchaseRate === undefined ? 0 : Number(formData.defaultPurchaseRate),
-      defaultMrp: formData.defaultMrp === '' || formData.defaultMrp === undefined ? 0 : Number(formData.defaultMrp),
-      defaultSellingPrice: formData.defaultSellingPrice === '' || formData.defaultSellingPrice === undefined ? 0 : Number(formData.defaultSellingPrice),
       discount: formData.discount === '' || formData.discount === undefined ? 0 : Number(formData.discount),
       discountType: formData.discountType || 'Percentage',
       gstRate: formData.gstRate === '' || formData.gstRate === undefined ? 0 : Number(formData.gstRate),
@@ -242,7 +215,7 @@ export default function QuickAddProductDrawer({
           {errors.name && <p className="text-[10px] text-red-500 font-medium">{errors.name.message}</p>}
         </div>
 
-        {/* 4. Brand (Master) */}
+        {/* 3. Brand (Master) */}
         <Controller
           name="brandId"
           control={control}
@@ -296,70 +269,7 @@ export default function QuickAddProductDrawer({
           )}
         />
 
-        {/* 6, 7, 8. Pricing Row: Purchase Rate, MRP, Default Selling Price * */}
-        <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl">
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-gray-700 block">Purchase Rate (₹)</label>
-            <Controller
-              name="defaultPurchaseRate"
-              control={control}
-              render={({ field }) => (
-                <input
-                  type="number"
-                  step="0.01"
-                  onFocus={(e) => e.target.select()}
-                  value={toInputValue(field.value)}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                />
-              )}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-gray-700 block">MRP (₹)</label>
-            <Controller
-              name="defaultMrp"
-              control={control}
-              render={({ field }) => (
-                <input
-                  type="number"
-                  step="0.01"
-                  onFocus={(e) => e.target.select()}
-                  value={toInputValue(field.value)}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                />
-              )}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-medium text-emerald-800 block">Default Selling Price (₹) *</label>
-            <Controller
-              name="defaultSellingPrice"
-              control={control}
-              render={({ field }) => (
-                <input
-                  type="number"
-                  step="0.01"
-                  onFocus={(e) => e.target.select()}
-                  value={toInputValue(field.value)}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full px-2.5 py-1.5 bg-white border border-emerald-400 rounded-md text-xs font-medium text-emerald-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                />
-              )}
-            />
-            {errors.defaultSellingPrice && (
-              <p className="text-[9px] text-red-500 font-medium">{errors.defaultSellingPrice.message}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Discount & GST Row */}
+        {/* 6. Discount & GST Row */}
         <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl">
           <div className="space-y-1">
             <label className="text-[11px] font-medium text-gray-700 block">Discount</label>
@@ -421,46 +331,7 @@ export default function QuickAddProductDrawer({
           </div>
         </div>
 
-        {/* 9 & 10. HSN Code */}
-        <div className="space-y-1">
-          <label className="font-medium text-gray-700 block">HSN Code</label>
-          <input
-            type="text"
-            {...register('hsnCode')}
-            placeholder="e.g. 3105"
-            className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-mono text-[12px]"
-          />
-        </div>
-
-        {/* 11 & 12. Batch Code (Optional) & Expiry Date (Optional) */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <div className="space-y-1">
-            <label className="font-medium text-gray-700 block flex items-center justify-between">
-              <span>Batch Code</span>
-              <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
-            </label>
-            <input
-              type="text"
-              {...register('batchCode')}
-              placeholder="e.g. A120"
-              className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 font-mono uppercase text-[12px]"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="font-medium text-gray-700 block flex items-center justify-between">
-              <span>Expiry Date</span>
-              <span className="text-[10px] text-gray-400 font-normal">(Optional)</span>
-            </label>
-            <input
-              type="date"
-              {...register('expiryDate')}
-              className="w-full px-3 py-1.5 bg-gray-50/50 border border-gray-300 rounded-lg text-gray-800 text-[12px]"
-            />
-          </div>
-        </div>
-
-        {/* 13. Minimum Stock Alert */}
+        {/* 7. Minimum Stock Alert */}
         <div className="space-y-1">
           <label className="font-medium text-gray-700 block flex items-center justify-between">
             <span>Minimum Stock Alert</span>
@@ -481,7 +352,6 @@ export default function QuickAddProductDrawer({
             )}
           />
         </div>
-
 
         {/* Form Footer Action Buttons */}
         <div className="pt-4 flex items-center justify-end gap-2 border-t border-gray-100">

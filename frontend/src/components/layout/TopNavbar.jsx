@@ -595,10 +595,6 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                     <button
                       type="button"
                       onClick={() => {
-                        if (isBillingOpen) {
-                          onBlockNav?.();
-                          return;
-                        }
                         setIsProfileOpen(false);
                         navigate('/settings/user-profile');
                       }}

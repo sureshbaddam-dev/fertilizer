@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import PageLayout from '../components/layout/PageLayout';
 import PageTracker from '../components/PageTracker';
@@ -10,20 +10,8 @@ export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isBillingOpen, setIsBillingOpen] = useState(false);
   const [quickAddedProduct, setQuickAddedProduct] = useState(null);
-  const [navToastVisible, setNavToastVisible] = useState(false);
 
-  const toastTimeoutRef = useRef(null);
   const isDashboardRoute = location.pathname === '/' || location.pathname === '/dashboard';
-
-  const showNavBlockToast = () => {
-    setNavToastVisible(true);
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    toastTimeoutRef.current = setTimeout(() => {
-      setNavToastVisible(false);
-    }, 3500);
-  };
 
   // Open billing drawer + navigate to dashboard if triggered on another route
   const triggerGlobalBilling = () => {
@@ -40,13 +28,12 @@ export default function MainLayout() {
     }
   }, [isDashboardRoute, location.state]);
 
-  // Block route changes while Billing Drawer is open (keep user on /dashboard + show toast)
+  // Automatically close Billing Drawer whenever user navigates away from Dashboard
   useEffect(() => {
-    if (isBillingOpen && !isDashboardRoute) {
-      navigate('/dashboard', { replace: true });
-      showNavBlockToast();
+    if (!isDashboardRoute && isBillingOpen) {
+      setIsBillingOpen(false);
     }
-  }, [isBillingOpen, isDashboardRoute, navigate]);
+  }, [isDashboardRoute, isBillingOpen]);
 
   // Global F2 Key Listener
   useEffect(() => {
@@ -74,7 +61,6 @@ export default function MainLayout() {
 
   const handleCloseNewBill = () => {
     setIsBillingOpen(false);
-    setNavToastVisible(false);
   };
 
   const handleQuickAddProduct = (product) => {
@@ -92,8 +78,6 @@ export default function MainLayout() {
       onCloseNewBill={handleCloseNewBill}
       onQuickAddProduct={handleQuickAddProduct}
       quickAddedProduct={quickAddedProduct}
-      onBlockNav={showNavBlockToast}
-      navToastVisible={navToastVisible}
     >
       <PageTracker />
       <Outlet context={{ onOpenNewBill: handleOpenNewBill, onQuickAddProduct: handleQuickAddProduct, isBillingOpen }} />

@@ -117,7 +117,7 @@ export default function SubscriptionOverviewPage() {
       key: 'amountPaid',
       render: (row) => (
         <span className="font-bold text-slate-900">
-          ₹{row.amountPaid !== undefined ? row.amountPaid : row.amount !== undefined ? row.amount : (row.subscriptionStatus === 'DEMO' ? 0 : 199)}
+          ₹{row.amountPaid ?? row.amount ?? (row.subscriptionStatus === 'DEMO' ? 0 : 0)}
         </span>
       ),
     },

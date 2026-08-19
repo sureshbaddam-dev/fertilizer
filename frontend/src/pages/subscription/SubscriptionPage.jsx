@@ -101,23 +101,25 @@ export default function SubscriptionPage() {
             rzpInstanceRef.current = null;
           }
 
+          const targetPlanCode = orderData.planCode || checkoutPlan?.code;
+
           const options = {
             key: orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || '',
             amount: orderData.amount,
             currency: orderData.currency || 'INR',
             name: 'VEDIXA ERP',
-            description: `${orderData.planName || orderData.planCode || checkoutPlan?.code} Plan Subscription`,
+            description: `${orderData.planName || targetPlanCode} Plan Subscription`,
             order_id: orderData.orderId,
             handler: async function (response) {
               isInitializingPaymentRef.current = false;
-              setCheckoutPlan(null);
               verifyMutation.mutate({
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
-                planCode: checkoutPlan?.code,
+                planCode: targetPlanCode,
                 couponCode: couponCodeToUse,
               });
+              setCheckoutPlan(null);
             },
             theme: {
               color: '#047857',
@@ -323,11 +325,13 @@ export default function SubscriptionPage() {
               ];
 
               const theme = cardThemes[index % cardThemes.length];
+              const currentSubPlanCode = (currentSub?.planCode || '').toUpperCase();
+              const isCurrentPlan = hasActiveSub && currentSubPlanCode === plan.code.toUpperCase();
 
               return (
                 <div key={plan.code} className="flex flex-col h-full relative group">
                   
-                  {/* FLOATING MOST POPULAR BADGE - POSITIONED CLEANLY ABOVE TAB LABEL */}
+                  {/* FLOATING MOST POPULAR BADGE */}
                   {isPopular && (
                     <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-amber-400 text-slate-950 text-[10px] font-extrabold uppercase px-3 py-0.5 rounded-full shadow-md tracking-wider flex items-center gap-1 z-30 whitespace-nowrap border border-amber-300">
                       <Star className="w-3 h-3 fill-slate-950 text-slate-950 shrink-0" /> MOST POPULAR
@@ -341,7 +345,7 @@ export default function SubscriptionPage() {
                     </div>
                   </div>
 
-                  {/* WHITE ROUNDED CARD CONTAINER (BALANCED NATURAL HEIGHT) */}
+                  {/* WHITE ROUNDED CARD CONTAINER */}
                   <div
                     className={`bg-white rounded-3xl pt-7 pb-5 px-6 shadow-xl border flex flex-col justify-between h-full relative z-0 transition-all duration-300 ${
                       isPopular
@@ -391,10 +395,16 @@ export default function SubscriptionPage() {
                     <div className="pt-4 mt-auto space-y-2">
                       <button
                         onClick={() => handleOpenCheckout(plan)}
-                        disabled={!isSystemActive || hasActiveSub}
+                        disabled={!isSystemActive || isCurrentPlan}
                         className={`w-full py-2.5 px-4 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${theme.btnStyle}`}
                       >
-                        {!isSystemActive ? 'System Disabled' : `Get Started (₹${plan.price})`}
+                        {!isSystemActive
+                          ? 'System Disabled'
+                          : isCurrentPlan
+                          ? 'Current Plan'
+                          : hasActiveSub
+                          ? `Upgrade (₹${plan.price})`
+                          : `Get Started (₹${plan.price})`}
                       </button>
 
                       <button
