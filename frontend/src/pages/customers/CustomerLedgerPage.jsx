@@ -21,9 +21,6 @@ import {
   Eye,
   Edit3,
   Search,
-  Globe,
-  Building,
-  UserCheck,
   Calendar,
   Upload,
 } from 'lucide-react';
