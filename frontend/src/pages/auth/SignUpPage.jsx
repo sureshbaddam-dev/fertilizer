@@ -290,29 +290,29 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="space-y-4 font-sans">
+    <div className="space-y-2.5 font-sans">
       {/* Header with VEDIXA Logo */}
-      <div className="flex flex-col items-center justify-center text-center space-y-1.5 pb-1 border-b border-slate-100">
-        <BrandLogo textScale="lg" />
-        <h3 className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight">Create Your Business Account</h3>
+      <div className="flex flex-col items-center justify-center text-center space-y-1 pb-1 border-b border-slate-100">
+        <BrandLogo textScale="md" />
+        <h3 className="text-lg sm:text-xl font-extrabold text-gray-900 tracking-tight">Create Your Business Account</h3>
       </div>
 
       {/* Server Error Alert */}
       {serverError && (
-        <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
+        <div className="p-2 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
           <span>{serverError}</span>
         </div>
       )}
 
       {screenMode === 'signup' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Google Sign In Button */}
           <button
             type="button"
             onClick={handleContinueWithGoogle}
             disabled={isLoading}
-            className="w-full py-2.5 px-4 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 font-bold text-xs rounded-xl border border-gray-300 shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-60"
+            className="w-full py-2 px-4 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-700 font-bold text-xs rounded-xl border border-gray-300 shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-60"
           >
             {isLoading && isGoogleAuthInProgressRef.current ? (
               <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
@@ -335,9 +335,9 @@ export default function SignUpPage() {
           </div>
 
           {/* Form Fields: Email Address -> Owner Name -> Mobile Number -> Password -> Confirm Password */}
-          <form onSubmit={handleSignupSubmit} className="space-y-3">
+          <form onSubmit={handleSignupSubmit} className="space-y-2">
             {/* 1. Email Address (MUST appear BEFORE Owner Name) */}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-[11px] font-semibold text-gray-700 block">Email Address</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -348,14 +348,14 @@ export default function SignUpPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
               </div>
             </div>
 
             {/* 2. Owner Name */}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-[11px] font-semibold text-gray-700 block">Owner Name</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -366,14 +366,14 @@ export default function SignUpPage() {
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
                   placeholder="Enter your full name"
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
               </div>
             </div>
 
             {/* 3. Mobile Number */}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-[11px] font-semibold text-gray-700 block">Mobile Number</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -384,14 +384,14 @@ export default function SignUpPage() {
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
                   placeholder="Enter 10-digit mobile number"
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
               </div>
             </div>
 
             {/* 4. Password */}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-[11px] font-semibold text-gray-700 block">Password</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -402,7 +402,7 @@ export default function SignUpPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create password"
-                  className="w-full pl-9 pr-9 py-2 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  className="w-full pl-9 pr-9 py-1.5 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
                 <button
@@ -416,7 +416,7 @@ export default function SignUpPage() {
             </div>
 
             {/* 5. Confirm Password */}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <label className="text-[11px] font-semibold text-gray-700 block">Confirm Password</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -427,7 +427,7 @@ export default function SignUpPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
-                  className="w-full pl-9 pr-9 py-2 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  className="w-full pl-9 pr-9 py-1.5 text-xs bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   required
                 />
                 <button
@@ -444,7 +444,7 @@ export default function SignUpPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-emerald-800/20 flex items-center justify-center gap-2 transition-all cursor-pointer mt-2 disabled:opacity-50"
+              className="w-full py-2.5 px-4 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-emerald-800/20 flex items-center justify-center gap-2 transition-all cursor-pointer mt-1.5 disabled:opacity-50"
             >
               {isLoading && !isGoogleAuthInProgressRef.current ? (
                 <span>Creating Account...</span>
@@ -457,18 +457,19 @@ export default function SignUpPage() {
             </button>
           </form>
 
-          {/* Footer Link */}
-          <div className="text-center pt-1 border-t border-gray-100">
-            <p className="text-xs text-gray-600 font-medium">
+          {/* Footer Link Directly Below Create Account Button */}
+          <div className="text-center pt-1.5 pb-0.5">
+            <p className="text-xs text-gray-700 font-medium">
               Already have an account?{' '}
-              <Link to="/login" className="font-bold text-emerald-700 hover:underline">
-                Login
+              <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-0.5">
+                <span>Login here</span>
+                <span className="text-xs leading-none">→</span>
               </Link>
             </p>
           </div>
 
           {/* Security Badge */}
-          <div className="flex items-center justify-center gap-1 text-[10px] text-gray-400 font-medium pt-1">
+          <div className="flex items-center justify-center gap-1 text-[10px] text-gray-400 font-medium pt-0.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             <span>SSL Encrypted ERP Authentication</span>
           </div>
