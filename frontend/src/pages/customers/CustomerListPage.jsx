@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { VEDIXA_LOGO_BASE64 } from '../../utils/vedixaLogoBase64';
 import {
   Search,
   Filter,
@@ -509,6 +510,15 @@ export default function CustomerListPage() {
       } else if (contactLine) {
         doc.text(contactLine, textLeftX, 18);
       }
+
+      // Top-Right VEDIXA Branding System ([VEDIXA LOGO] + VEDIXA text underneath)
+      try {
+        doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', pageWidth - 22, 3, 13, 13);
+      } catch (err) {}
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('VEDIXA', pageWidth - 15.5, 20, { align: 'center' });
 
       // 2. Report Title
       doc.setTextColor(17, 24, 39);

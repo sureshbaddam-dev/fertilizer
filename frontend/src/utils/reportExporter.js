@@ -1,28 +1,39 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
 
 /**
  * Export Executive Analytics Report to PDF
  */
-export const exportReportToPDF = (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard') => {
+export const exportReportToPDF = (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard', shopSettings = {}) => {
   const doc = new jsPDF('p', 'mm', 'a4');
   const sales = biData?.sales || {};
   const purchases = biData?.purchases || {};
   const stock = biData?.stock || {};
+  const shopName = (shopSettings?.shopName || shopSettings?.name || 'Agri Solutions Store').trim();
 
   // Header Design
   doc.setFillColor(4, 120, 87); // #047857 Emerald Primary
   doc.rect(0, 0, 210, 24, 'F');
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('VEDIXA ERP - EXECUTIVE ANALYTICS REPORT', 14, 14);
+  doc.text(shopName.toUpperCase(), 14, 12);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Generated on: ${new Date().toLocaleString('en-IN')} | Period: ${dateRangeText}`, 14, 20);
+  doc.text(`${reportTitle} | Period: ${dateRangeText}`, 14, 18);
+
+  // VEDIXA Top-Right Branding System ([VEDIXA LOGO] + VEDIXA text underneath)
+  try {
+    doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', 188, 3, 12, 12);
+  } catch (err) {}
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('VEDIXA', 194, 19, { align: 'center' });
 
   // 1. Executive Key Performance Indicators
   doc.setTextColor(30, 41, 59);

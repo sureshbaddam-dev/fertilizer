@@ -51,6 +51,22 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const supportUploadDir = path.join(__dirname, '../../uploads/support');
+if (!fs.existsSync(supportUploadDir)) {
+  fs.mkdirSync(supportUploadDir, { recursive: true });
+}
+
+const supportStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, supportUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const uniqueName = `req-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
 export const uploadBrandLogoMiddleware = multer({
   storage: brandStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB Limit
@@ -60,6 +76,12 @@ export const uploadBrandLogoMiddleware = multer({
 export const uploadProductImageMiddleware = multer({
   storage: productStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB Limit
+  fileFilter,
+});
+
+export const uploadSupportAttachmentMiddleware = multer({
+  storage: supportStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB Limit
   fileFilter,
 });
 

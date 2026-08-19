@@ -30,6 +30,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { authService } from '../../services/authService';
 import { buildFullShopAddress, generateInvoicePdf, printInvoicePdf } from '../../utils/pdfGenerator';
 import { getItemUnitPrice } from '../../utils/pricing';
+import vedixaLogoImg from '../../assets/vedixa_logo.png';
 
 export default function InvoiceDetailsPage() {
   const { invoiceId } = useParams();
@@ -415,11 +416,25 @@ export default function InvoiceDetailsPage() {
             </p>
           </div>
 
-          <div className="sm:text-right space-y-1 bg-gray-50 p-3 sm:p-3.5 rounded-xl border border-gray-200/60 font-mono text-xs w-full sm:w-auto shrink-0">
-            <div className="text-gray-500 font-bold uppercase text-[10px]">Invoice Number</div>
-            <div className="text-base font-extrabold text-[#047857]">{invoice.invoiceNumber}</div>
-            <div className="text-gray-600 font-semibold pt-1 border-t border-gray-200 text-[11px]">
-              Date: {invoiceDateStr} • {invoiceTimeStr}
+          <div className="flex items-center gap-4 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
+            <div className="sm:text-right space-y-1 bg-gray-50 p-3 sm:p-3.5 rounded-xl border border-gray-200/60 font-mono text-xs flex-1 sm:flex-none">
+              <div className="text-gray-500 font-bold uppercase text-[10px]">Invoice Number</div>
+              <div className="text-base font-extrabold text-[#047857]">{invoice.invoiceNumber}</div>
+              <div className="text-gray-600 font-semibold pt-1 border-t border-gray-200 text-[11px]">
+                Date: {invoiceDateStr} • {invoiceTimeStr}
+              </div>
+            </div>
+
+            {/* Official VEDIXA Top-Right Branding */}
+            <div className="flex flex-col items-center justify-center text-center shrink-0 pl-1">
+              <img
+                src={vedixaLogoImg}
+                alt="VEDIXA"
+                className="h-10 w-auto object-contain select-none"
+              />
+              <span className="text-[9.5px] font-black text-[#047857] tracking-wider uppercase mt-0.5">
+                VEDIXA
+              </span>
             </div>
           </div>
         </div>
@@ -479,84 +494,86 @@ export default function InvoiceDetailsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium text-gray-800 font-sans">
-                {items.map((item, idx) => {
-                  const pName = item.productName || item.product?.name || item.name || 'Agri Item';
-                  const qty = Number(item.quantity || item.qty || 1);
-                  const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
-                  const rate = getItemUnitPrice(item);
-                  const disc = Number(item.discountAmount || item.discount || 0);
-                  const rowTotal = Number(item.totalAmount || (qty * rate - disc));
+                {(() => {
+                  const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
+                  const billDisc = Number(invoice.discountAmount || 0);
 
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-2 text-center font-sans text-gray-400 align-middle">{idx + 1}</td>
-                      <td className="py-2.5 px-3 text-center font-bold text-gray-900 align-middle break-words font-sans">{pName}</td>
-                      <td className="py-2.5 px-2 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">{qty} {unit}</td>
-                      <td className="py-2.5 px-3 text-center font-sans font-medium text-gray-900 align-middle whitespace-nowrap">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                      <td className="py-2.5 px-3 text-center font-sans text-gray-400 align-middle whitespace-nowrap">
-                        {disc > 0 ? `₹ ${disc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">
-                        ₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  );
-                })}
+                  return items.map((item, idx) => {
+                    const pName = item.productName || item.product?.name || item.name || 'Agri Item';
+                    const qty = Number(item.quantity || item.qty || 1);
+                    const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
+                    const rate = getItemUnitPrice(item);
+                    const itemGross = qty * rate;
+                    const disc = Number(item.discountAmount || item.discount || 0);
+                    const effectiveDisc = disc > 0
+                      ? disc
+                      : (billDisc > 0 && rawSubtotal > 0 ? Math.round((itemGross / rawSubtotal) * billDisc * 100) / 100 : 0);
+                    const rowTotal = Math.max(0, itemGross - effectiveDisc);
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/60">
+                        <td className="py-2.5 px-2 text-center font-sans text-gray-400 align-middle">{idx + 1}</td>
+                        <td className="py-2.5 px-3 text-center font-bold text-gray-900 align-middle break-words font-sans">{pName}</td>
+                        <td className="py-2.5 px-2 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">{qty} {unit}</td>
+                        <td className="py-2.5 px-3 text-center font-sans font-medium text-gray-900 align-middle whitespace-nowrap">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2.5 px-3 text-center font-sans font-bold text-[#047857] align-middle whitespace-nowrap">
+                          {effectiveDisc > 0 ? `₹ ${effectiveDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹ 0.00'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">
+                          ₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
 
-          {/* MOBILE RESPONSIVE PRODUCT CARDS (ONLY FOR MOBILE SCREENS, HIDDEN ON PRINT & DESKTOP) */}
-          <div className="block md:hidden print:hidden space-y-3">
-            {items.map((item, idx) => {
-              const pName = item.productName || item.product?.name || item.name || 'Agri Item';
-              const qty = Number(item.quantity || item.qty || 1);
-              const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
-              const rate = getItemUnitPrice(item);
-              const disc = Number(item.discountAmount || item.discount || 0);
-              const gst = Number(item.gstRate || 5);
-              const rowTotal = Number(item.totalAmount || (qty * rate - disc));
+          {/* MOBILE RESPONSIVE PRODUCT CARDS */}
+          <div className="block md:hidden print:hidden space-y-2.5">
+            {(() => {
+              const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
+              const billDisc = Number(invoice.discountAmount || 0);
 
-              return (
-                <div
-                  key={idx}
-                  className="bg-white border border-gray-200/90 rounded-2xl p-3.5 shadow-2xs space-y-2.5 font-sans"
-                >
-                  {/* Item Header: # and Product Name */}
-                  <div className="flex items-start justify-between border-b border-gray-100 pb-2 gap-2">
-                    <div className="flex items-start gap-1.5 min-w-0">
-                      <span className="text-xs font-bold font-mono text-gray-400 shrink-0 pt-0.5">#{idx + 1}</span>
-                      <span className="font-extrabold text-gray-900 text-xs leading-snug break-words">{pName}</span>
-                    </div>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-[#047857] border border-emerald-200 rounded-md text-[10px] font-bold shrink-0 font-mono">
-                      {gst}% GST
-                    </span>
-                  </div>
+              return items.map((item, idx) => {
+                const pName = item.productName || item.product?.name || item.name || 'Agri Item';
+                const qty = Number(item.quantity || item.qty || 1);
+                const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
+                const rate = getItemUnitPrice(item);
+                const itemGross = qty * rate;
+                const disc = Number(item.discountAmount || item.discount || 0);
+                const effectiveDisc = disc > 0
+                  ? disc
+                  : (billDisc > 0 && rawSubtotal > 0 ? Math.round((itemGross / rawSubtotal) * billDisc * 100) / 100 : 0);
+                const rowTotal = Math.max(0, itemGross - effectiveDisc);
 
-                  {/* Complete Specs Grid */}
-                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <div>
-                      <span className="text-[9.5px] text-gray-400 font-bold block uppercase tracking-wider font-sans">Qty / Unit</span>
-                      <span className="font-bold text-gray-900 block">{qty} {unit}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9.5px] text-gray-400 font-bold block uppercase tracking-wider font-sans">Rate</span>
-                      <span className="font-bold text-gray-900 block">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div>
-                      <span className="text-[9.5px] text-gray-400 font-bold block uppercase tracking-wider font-sans">Discount</span>
-                      <span className="font-medium text-gray-700 block">
-                        {disc > 0 ? `₹ ${disc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
+                return (
+                  <div key={idx} className="bg-white border border-gray-200/90 rounded-2xl p-3 shadow-2xs space-y-2 font-sans">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                      <span className="font-extrabold text-gray-900 text-xs">{pName}</span>
+                      <span className="font-mono font-black text-[#047857] text-xs">
+                        ₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[9.5px] text-gray-400 font-bold block uppercase tracking-wider font-sans">Total Amount</span>
-                      <span className="font-black text-[#047857] text-xs block">₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                      <div>
+                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Qty</span>
+                        <span className="font-bold text-gray-800">{qty} {unit}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Rate</span>
+                        <span className="font-bold text-gray-800">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Discount</span>
+                        <span className="font-bold text-[#047857]">₹ {effectiveDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
 

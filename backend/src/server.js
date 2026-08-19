@@ -18,8 +18,8 @@ const startServer = async () => {
     connectRedis();
 
     // 3. Start Server Listener
-    server = app.listen(envConfig.port, () => {
-      logger.info(`Server running on port ${envConfig.port}`);
+    server = app.listen(envConfig.port, '0.0.0.0', () => {
+      logger.info(`Server running on port ${envConfig.port} bound to 0.0.0.0`);
     });
   } catch (error) {
     logger.error({ error }, 'Failed to start MANDHI Backend ERP server');

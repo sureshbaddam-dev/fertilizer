@@ -54,12 +54,16 @@ export default function SubscriptionSettingsPage() {
     setIsSaving(true);
     setSuccessMsg('');
     try {
-      await adminApiService.updateSubscriptionSettings(settings);
+      const payload = {
+        ...settings,
+        isSubscriptionSystemActive: subscriptionSystemEnabled,
+      };
+      await adminApiService.updateSubscriptionSettings(payload);
       await adminApiService.updateSystemSetting('subscriptionSystemEnabled', subscriptionSystemEnabled);
       setSuccessMsg('Subscription plans & system settings updated successfully!');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
-      alert('Failed to save settings: ' + err.message);
+      alert('Failed to save settings: ' + (err?.response?.data?.message || err?.message || 'Error'));
     } finally {
       setIsSaving(false);
     }

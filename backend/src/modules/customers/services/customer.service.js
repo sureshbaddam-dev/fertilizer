@@ -86,32 +86,7 @@ export const customerService = {
 
     const customerGroupMap = {};
 
-    // First seed with General Customer master records
-    for (const master of generalMasterCusts) {
-      const mob = (master.mobile || '').trim();
-      if (mob && addedMobiles.has(mob)) continue;
-      const name = (master.name || 'General Customer').trim();
-      const key = `${name.toLowerCase()}_${mob}`;
-
-      customerGroupMap[key] = {
-        _id: master._id.toString(),
-        name,
-        mobile: mob || '-',
-        village: master.village || 'Narketpally',
-        district: master.district || 'Nalgonda',
-        customerType: 'GENERAL',
-        totalPurchases: Number(master.totalPurchases || 0),
-        totalPaid: Number(master.totalPaid || 0),
-        outstandingBalance: Number(master.outstandingBalance || 0),
-        totalBills: 0,
-        lastPurchaseDate: master.updatedAt || master.createdAt,
-        invoices: [],
-        createdAt: master.createdAt,
-        updatedAt: master.updatedAt,
-      };
-    }
-
-    // Next group and accumulate invoices
+    // 4. Group and accumulate general invoices directly from authoritative invoice totalAmount and paidAmount
     for (const inv of generalInvoices) {
       const mob = (inv.customerMobile || '').trim();
       if (mob && addedMobiles.has(mob)) continue;
@@ -139,14 +114,65 @@ export const customerService = {
       }
 
       const grp = customerGroupMap[key];
+      const invTotal = Number(inv.totalAmount) || 0;
+      const invPaid = Number(inv.paidAmount) || 0;
+      const invDue = Math.max(0, invTotal - invPaid);
+
       grp.totalBills += 1;
-      grp.totalPurchases += Number(inv.totalAmount) || 0;
-      grp.totalPaid += Number(inv.paidAmount) || 0;
-      grp.outstandingBalance += Math.max(0, (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0));
+      grp.totalPurchases += invTotal;
+      grp.totalPaid += invPaid;
+      grp.outstandingBalance += invDue;
       if (!grp.lastPurchaseDate || new Date(inv.date || inv.createdAt) > new Date(grp.lastPurchaseDate)) {
         grp.lastPurchaseDate = inv.date || inv.createdAt;
       }
       grp.invoices.push(inv);
+    }
+
+    // 5. Include any General Customer master records that have 0 invoices
+    for (const master of generalMasterCusts) {
+      const mob = (master.mobile || '').trim();
+      if (mob && addedMobiles.has(mob)) continue;
+      const name = (master.name || 'General Customer').trim();
+      const key = `${name.toLowerCase()}_${mob}`;
+
+      if (!customerGroupMap[key]) {
+        customerGroupMap[key] = {
+          _id: master._id.toString(),
+          name,
+          mobile: mob || '-',
+          village: master.village || 'Narketpally',
+          district: master.district || 'Nalgonda',
+          customerType: 'GENERAL',
+          totalPurchases: Number(master.totalPurchases || 0),
+          totalPaid: Number(master.totalPaid || 0),
+          outstandingBalance: Number(master.outstandingBalance || 0),
+          totalBills: 0,
+          lastPurchaseDate: master.updatedAt || master.createdAt,
+          invoices: [],
+          createdAt: master.createdAt,
+          updatedAt: master.updatedAt,
+        };
+      } else {
+        // Synchronize master document ID if available
+        customerGroupMap[key]._id = master._id.toString();
+        // Authoritative update of master document in DB if out of sync
+        if (
+          master.totalPurchases !== customerGroupMap[key].totalPurchases ||
+          master.totalPaid !== customerGroupMap[key].totalPaid ||
+          master.outstandingBalance !== customerGroupMap[key].outstandingBalance
+        ) {
+          Customer.updateOne(
+            { _id: master._id },
+            {
+              $set: {
+                totalPurchases: customerGroupMap[key].totalPurchases,
+                totalPaid: customerGroupMap[key].totalPaid,
+                outstandingBalance: customerGroupMap[key].outstandingBalance,
+              },
+            }
+          ).catch((err) => logger.warn(`Failed to sync general master customer balance: ${err.message}`));
+        }
+      }
     }
 
     const generalCustomers = Object.values(customerGroupMap);

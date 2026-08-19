@@ -268,9 +268,9 @@ export default function GeneralCustomersPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
                   {filteredCustomers.map((cust, idx) => {
-                    const dueVal = Number(cust.outstandingBalance || 0);
+                    const dueVal = Math.max(0, Number(cust.outstandingBalance || 0));
                     const totalPurchases = Number(cust.totalPurchases || 0);
-                    const totalPaid = Number(cust.totalPaid || (totalPurchases - dueVal));
+                    const totalPaid = Number(cust.totalPaid || 0);
                     const lastDateFormatted = cust.updatedAt || cust.createdAt
                       ? new Date(cust.updatedAt || cust.createdAt).toLocaleDateString('en-IN', {
                           day: '2-digit',
@@ -328,9 +328,9 @@ export default function GeneralCustomersPage() {
             {/* MOBILE CUSTOMER CARDS */}
             <div className="block md:hidden space-y-3 p-3">
               {filteredCustomers.map((cust) => {
-                const dueVal = Number(cust.outstandingBalance || 0);
+                const dueVal = Math.max(0, Number(cust.outstandingBalance || 0));
                 const totalPurchases = Number(cust.totalPurchases || 0);
-                const totalPaid = Number(cust.totalPaid || (totalPurchases - dueVal));
+                const totalPaid = Number(cust.totalPaid || 0);
                 const lastDateFormatted = cust.updatedAt || cust.createdAt
                   ? new Date(cust.updatedAt || cust.createdAt).toLocaleDateString('en-IN', {
                       day: '2-digit',
@@ -696,30 +696,36 @@ export default function GeneralCustomersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
-                      {(selectedInvoice.items && selectedInvoice.items.length > 0
-                        ? selectedInvoice.items
-                        : [
-                            {
-                              productName: 'Urea 45kg Bag',
-                              quantity: 2,
-                              sellingPrice: 270,
-                              discountAmount: 0,
-                              gstRate: 5,
-                              totalAmount: 540,
-                            },
-                          ]
-                      ).map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="py-2 px-3 font-bold text-gray-900">{item.productName || item.product?.name || 'Agri Product'}</td>
-                          <td className="py-2 px-3 text-center font-mono">{item.quantity || item.qty || 1}</td>
-                          <td className="py-2 px-3 text-right font-mono">₹ {(item.sellingPrice || item.price || 0).toLocaleString('en-IN')}</td>
-                          <td className="py-2 px-3 text-right font-mono text-gray-400">₹ {(item.discountAmount || 0).toLocaleString('en-IN')}</td>
-                          <td className="py-2 px-3 text-right font-mono text-gray-500">{item.gstRate || 5}%</td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
-                            ₹ {(item.totalAmount || (item.quantity * item.sellingPrice) || 0).toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        const invItems = selectedInvoice.items && selectedInvoice.items.length > 0 ? selectedInvoice.items : [];
+                        const billDisc = Number(selectedInvoice.discountAmount || 0);
+                        const rawSub = invItems.reduce((acc, i) => acc + (Number(i.quantity || i.qty || 1) * Number(i.sellingPrice || i.unitPrice || i.price || 0)), 0);
+
+                        return invItems.map((item, idx) => {
+                          const q = Number(item.quantity || item.qty || 1);
+                          const p = Number(item.sellingPrice || item.unitPrice || item.price || 0);
+                          const itemGross = q * p;
+                          const itemDisc = Number(item.discountAmount || 0) > 0
+                            ? Number(item.discountAmount)
+                            : (billDisc > 0 && rawSub > 0 ? Math.round((itemGross / rawSub) * billDisc * 100) / 100 : 0);
+                          const itemTotal = Math.max(0, itemGross - itemDisc);
+
+                          return (
+                            <tr key={idx}>
+                              <td className="py-2 px-3 font-bold text-gray-900">{item.productName || item.product?.name || 'Agri Product'}</td>
+                              <td className="py-2 px-3 text-center font-mono">{q}</td>
+                              <td className="py-2 px-3 text-right font-mono">₹ {p.toLocaleString('en-IN')}</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-[#047857]">
+                                ₹ {itemDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-gray-500">{item.gstRate || 5}%</td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
+                                ₹ {itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

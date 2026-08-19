@@ -1,6 +1,14 @@
 import axios from 'axios';
 
-const BACKEND_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const getBackendBase = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  return `http://${host}:5000`;
+};
+
+const BACKEND_BASE = getBackendBase();
 const API_BASE_URL = `${BACKEND_BASE}/api/v1/admin`;
 
 axios.defaults.withCredentials = true;
@@ -241,17 +249,55 @@ export const adminApiService = {
     return res.data?.data;
   },
 
-  // Support Tickets & Unread Notifications
-  getSupportTickets: async (status) => {
+  // Support Requests & Unread Notifications
+  getSupportTickets: async (queryArg = {}) => {
+    let opts = {};
+    if (typeof queryArg === 'string') {
+      opts = { status: queryArg };
+    } else if (queryArg && typeof queryArg === 'object') {
+      opts = queryArg;
+    }
+
+    const { status, priority, category, search } = opts;
     const backendRoot = API_BASE_URL.replace('/admin', '');
-    const res = await axios.get(`${backendRoot}/support/admin/tickets${status ? `?status=${status}` : ''}`, getAuthHeaders());
+    const params = new URLSearchParams();
+
+    if (status && status !== 'ALL') params.append('status', status);
+    if (priority && priority !== 'ALL') params.append('priority', priority);
+    if (category && category !== 'ALL') params.append('category', category);
+
+    if (search && typeof search === 'string' && search.trim()) {
+      params.append('search', search.trim());
+    }
+    
+    const queryString = params.toString();
+    const res = await axios.get(`${backendRoot}/support/admin/tickets${queryString ? `?${queryString}` : ''}`, getAuthHeaders());
     return res.data?.data?.tickets || [];
+  },
+
+  getSupportTicketById: async (ticketId) => {
+    const backendRoot = API_BASE_URL.replace('/admin', '');
+    const res = await axios.get(`${backendRoot}/support/admin/tickets/${ticketId}`, getAuthHeaders());
+    return res.data?.data?.ticket;
+  },
+
+  addAdminSupportReply: async (ticketId, message, status, attachments) => {
+    const backendRoot = API_BASE_URL.replace('/admin', '');
+    const res = await axios.post(`${backendRoot}/support/admin/tickets/${ticketId}/reply`, { message, status, attachments }, getAuthHeaders());
+    return res.data?.data?.ticket;
   },
 
   updateSupportTicketStatus: async (ticketId, status, adminReply) => {
     const backendRoot = API_BASE_URL.replace('/admin', '');
     const res = await axios.patch(`${backendRoot}/support/admin/tickets/${ticketId}/status`, { status, adminReply }, getAuthHeaders());
     return res.data?.data?.ticket;
+  },
+
+  uploadSupportAttachment: async (formData) => {
+    const backendRoot = API_BASE_URL.replace('/admin', '');
+    const headers = { ...getAuthHeaders().headers, 'Content-Type': 'multipart/form-data' };
+    const res = await axios.post(`${backendRoot}/support/upload-attachment`, formData, { headers });
+    return res.data?.data;
   },
 
   getUnreadSupportNotifications: async () => {

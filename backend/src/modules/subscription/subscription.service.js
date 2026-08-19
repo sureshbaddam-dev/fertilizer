@@ -5,99 +5,73 @@ import { User } from '../auth/user.model.js';
 import { AppError } from '../../utils/appError.js';
 import { HTTP_STATUS } from '../../common/httpStatuses.js';
 import { razorpayService } from './razorpay.service.js';
+import { SubscriptionSettings } from '../admin/models/subscriptionSettings.model.js';
+import { SystemSetting } from '../admin/models/systemSetting.model.js';
+import { getOrCreateSubscriptionSettings } from '../admin/services/admin.service.js';
 
 export const subscriptionService = {
   async seedInitialPlans() {
-    const plansData = [
-      {
-        code: 'STARTER',
-        name: 'STARTER',
-        price: 199,
-        originalPrice: 299,
-        billingPeriod: 'MONTHLY',
-        isPopular: false,
-        discountTokens: 5,
-        isActive: true,
-        features: [
-          'Dashboard',
-          'Product Management',
-          'Basic Inventory',
-          'Customer Management',
-          'General Customers',
-          'Basic Billing & Invoices',
-          'GST / Tax support',
-          'Supplier Management',
-          'Basic Supplier Ledger',
-          'Purchase Management',
-          'Basic Reports',
-          'Basic Support',
-        ],
-      },
-      {
-        code: 'PROFESSIONAL',
-        name: 'PROFESSIONAL',
-        price: 399,
-        originalPrice: 499,
-        billingPeriod: 'MONTHLY',
-        isPopular: true,
-        discountTokens: 15,
-        isActive: true,
-        features: [
-          'Everything in Starter +',
-          'Advanced Inventory',
-          'FIFO / Batch-wise Stock Management',
-          'Multi-batch Billing',
-          'Batch-wise Selling Prices',
-          'Supplier Ledger & Payments',
-          'Customer Ledger',
-          'Purchase Management',
-          'Advanced Reports',
-          'Stock Alerts',
-          'Dashboard Analytics',
-          'Invoice Printing / PDF',
-          'WhatsApp invoice sharing',
-          'Priority Support',
-        ],
-      },
-      {
-        code: 'PREMIUM',
-        name: 'PREMIUM',
-        price: 699,
-        originalPrice: 899,
-        billingPeriod: 'MONTHLY',
-        isPopular: false,
-        discountTokens: 30,
-        isActive: true,
-        features: [
-          'Everything in Professional +',
-          'Complete VEDIXA ERP',
-          'Advanced Reports & Analytics',
-          'Advanced Inventory Controls',
-          'Complete Supplier & Customer Financial Tracking',
-          'Advanced Billing',
-          'Batch / Pricing Management',
-          'Business Insights',
-          'Priority Customer Support',
-          'Discount / Offer benefits',
-          'Higher limits',
-          'Premium support',
-          'Future premium SaaS features',
-        ],
-      },
+    const subSettings = await getOrCreateSubscriptionSettings();
+    return subSettings;
+  },
+
+  async getSubscriptionConfig() {
+    const subSettings = await getOrCreateSubscriptionSettings();
+    const systemSettings = await SystemSetting.find().lean();
+    
+    let isSubscriptionSystemActive = true;
+    const sysSetting = systemSettings.find((s) => s.key === 'subscriptionSystemEnabled');
+    if (sysSetting && typeof sysSetting.value === 'boolean') {
+      isSubscriptionSystemActive = sysSetting.value;
+    }
+    if (typeof subSettings.isSubscriptionSystemActive === 'boolean') {
+      isSubscriptionSystemActive = isSubscriptionSystemActive && subSettings.isSubscriptionSystemActive;
+    }
+
+    const defaultFeatures = [
+      'Complete VEDIXA Fertilizer ERP',
+      'FIFO & Batch-wise Inventory Tracking',
+      'Barcode Scanning & Custom Thermal/A4 Printing',
+      'GST Billing & Tax Calculation',
+      'WhatsApp Invoice Sharing',
+      'Customer & Supplier Financial Ledgers',
+      'Real-Time Dashboard Analytics',
+      'Priority Customer Support',
     ];
 
-    for (const p of plansData) {
-      await SubscriptionPlan.findOneAndUpdate(
-        { code: p.code },
-        { $set: p },
-        { upsert: true, new: true }
-      );
-    }
+    const activePlans = (subSettings.durations || [])
+      .filter((d) => d.isEnabled !== false)
+      .map((d) => {
+        const hasOffer = d.offerPrice && Number(d.offerPrice) > 0 && Number(d.offerPrice) < Number(d.amount);
+        const effectivePrice = hasOffer ? Number(d.offerPrice) : Number(d.amount);
+        const originalPrice = hasOffer ? Number(d.amount) : null;
+
+        return {
+          code: d.code,
+          name: d.label,
+          billingPeriod: `${d.months} Month${d.months > 1 ? 's' : ''}`,
+          months: d.months,
+          amount: Number(d.amount),
+          offerPrice: d.offerPrice ? Number(d.offerPrice) : null,
+          price: effectivePrice,
+          originalPrice: originalPrice,
+          isPopular: d.months === 3 || d.code === '3_MONTHS',
+          discountTokens: d.months * 5,
+          isActive: true,
+          features: defaultFeatures,
+        };
+      });
+
+    return {
+      isSubscriptionSystemActive,
+      plans: activePlans,
+      rawSettings: subSettings,
+    };
   },
 
   async getAllPlans() {
-    await this.seedInitialPlans();
-    return await SubscriptionPlan.find({ isActive: true }).sort({ price: 1 });
+    const config = await this.getSubscriptionConfig();
+    return config.plans;
   },
 
   async getUserSubscription(userId) {
@@ -152,13 +126,25 @@ export const subscriptionService = {
    * Create Razorpay Order in Test Mode for subscription
    */
   async createRazorpayOrder(userId, { planCode, couponCode }) {
-    await this.seedInitialPlans();
-    const plan = await SubscriptionPlan.findOne({ code: planCode.toUpperCase(), isActive: true });
-    if (!plan) {
-      throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND);
+    const config = await this.getSubscriptionConfig();
+    if (!config.isSubscriptionSystemActive) {
+      throw new AppError('Subscriptions are temporarily unavailable.', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const { finalAmount, discountAmount, coupon } = await this.validateCoupon(couponCode, plan.price);
+    let plan = config.plans.find((p) => p.code.toUpperCase() === String(planCode || '').toUpperCase());
+    if (!plan && config.plans.length > 0) {
+      if (planCode?.toUpperCase() === 'STARTER') plan = config.plans[0];
+      else if (planCode?.toUpperCase() === 'PROFESSIONAL') plan = config.plans[1] || config.plans[0];
+      else if (planCode?.toUpperCase() === 'PREMIUM') plan = config.plans[config.plans.length - 1];
+      else plan = config.plans[0];
+    }
+
+    if (!plan) {
+      throw new AppError('Subscription plan not found or disabled.', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const basePrice = plan.price;
+    const { finalAmount, discountAmount, coupon } = await this.validateCoupon(couponCode, basePrice);
 
     const orderData = await razorpayService.createOrder({
       amountInRupees: finalAmount,
@@ -177,7 +163,9 @@ export const subscriptionService = {
       keyId: orderData.keyId,
       planCode: plan.code,
       planName: plan.name,
-      originalPrice: plan.price,
+      originalPrice: plan.originalPrice || plan.amount,
+      offerPrice: plan.offerPrice,
+      price: plan.price,
       discountAmount,
       finalAmount,
       couponCode: coupon ? coupon.code : null,
@@ -185,7 +173,7 @@ export const subscriptionService = {
   },
 
   /**
-   * Verify Razorpay Payment Signature & Activate Subscription (Idempotent / Duplicate Protected)
+   * Verify Razorpay Payment Signature & Activate Subscription
    */
   async verifyAndActivateSubscription(
     userId,
@@ -195,18 +183,15 @@ export const subscriptionService = {
       throw new AppError('Missing Razorpay payment parameters', HTTP_STATUS.BAD_REQUEST);
     }
 
-    // PART 8: Duplicate Payment Protection Check
     const existingPaymentSub = await UserSubscription.findOne({
       $or: [{ razorpayPaymentId }, { razorpayOrderId }],
       paymentStatus: 'SUCCESS',
     });
 
     if (existingPaymentSub) {
-      // Idempotent return without duplicate activation or date modification
       return existingPaymentSub;
     }
 
-    // Verify HMAC-SHA256 Signature
     const isValidSignature = razorpayService.verifySignature({
       razorpayOrderId,
       razorpayPaymentId,
@@ -217,24 +202,21 @@ export const subscriptionService = {
       throw new AppError('Razorpay payment signature verification failed', HTTP_STATUS.BAD_REQUEST);
     }
 
-    await this.seedInitialPlans();
-    const plan = await SubscriptionPlan.findOne({ code: planCode.toUpperCase(), isActive: true });
-    if (!plan) {
-      throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND);
-    }
+    const config = await this.getSubscriptionConfig();
+    let plan = config.plans.find((p) => p.code.toUpperCase() === String(planCode || '').toUpperCase());
+    if (!plan && config.plans.length > 0) plan = config.plans[0];
 
-    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan.price);
+    const monthsToGrant = plan?.months || 1;
+    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan ? plan.price : 199);
 
-    const durationDays = plan.billingPeriod === 'YEARLY' ? 365 : 30;
     const startDate = new Date();
     const expiryDate = new Date();
-    expiryDate.setDate(startDate.getDate() + durationDays);
+    expiryDate.setMonth(expiryDate.getMonth() + monthsToGrant);
 
     let sub = await UserSubscription.findOne({ userId });
     if (sub) {
-      sub.planId = plan._id;
-      sub.planCode = plan.code;
-      sub.planName = plan.name;
+      sub.planCode = plan ? plan.code : '1_MONTH';
+      sub.planName = plan ? plan.name : '1 Month';
       sub.status = 'ACTIVE';
       sub.startDate = startDate;
       sub.expiryDate = expiryDate;

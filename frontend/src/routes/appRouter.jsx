@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicOnlyRoute } from './ProtectedRoute';
+import SubscriptionGuard from '../components/common/SubscriptionGuard';
 import AuthLayout from '../layouts/AuthLayout';
 import MainLayout from '../layouts/MainLayout';
 import LoginPage from '../pages/auth/LoginPage';
@@ -13,11 +14,8 @@ import ShopDiscountPage from '../pages/settings/ShopDiscountPage';
 import ShopProfilePage from '../pages/settings/ShopProfilePage';
 import UserProfilePage from '../pages/settings/UserProfilePage';
 import MasterDataHubPage from '../pages/settings/MasterDataHubPage';
-import UsersRolesPage from '../pages/settings/UsersRolesPage';
 import TaxesGstPage from '../pages/settings/TaxesGstPage';
-import PrintersPage from '../pages/settings/PrintersPage';
 import NotificationsPage from '../pages/settings/NotificationsPage';
-import BackupRestorePage from '../pages/settings/BackupRestorePage';
 import SecurityPage from '../pages/settings/SecurityPage';
 import PreferencesPage from '../pages/settings/PreferencesPage';
 import SuppliersPage from '../pages/masters/SuppliersPage';
@@ -32,9 +30,7 @@ import CustomerLedgerPage from '../pages/customers/CustomerLedgerPage';
 import GeneralCustomersPage from '../pages/customers/GeneralCustomersPage';
 import InventoryPage from '../pages/inventory/InventoryPage';
 import ReportsPage from '../pages/reports/ReportsPage';
-import ArchivedPurchasesPage from '../pages/settings/ArchivedPurchasesPage';
 import SupportPage from '../pages/support/SupportPage';
-import AdminTicketsPage from '../pages/admin/AdminTicketsPage';
 import FullScreenSubscriptionPage from '../pages/subscription/FullScreenSubscriptionPage';
 
 export const appRouter = createBrowserRouter([
@@ -87,43 +83,108 @@ export const appRouter = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
+      // UNRESTRICTED ROUTES (Always accessible to logged-in users)
       { index: true, element: <HomePage /> },
       { path: 'dashboard', element: <HomePage /> },
-      
-      { path: 'billing', element: <Navigate to="/dashboard" replace /> },
+      { path: 'support', element: <SupportPage /> },
+      { path: 'subscription', element: <FullScreenSubscriptionPage /> },
+
+      // PROTECTED PAID ERP MODULE ROUTES (Wrapped with SubscriptionGuard)
+      {
+        path: 'billing',
+        element: <Navigate to="/dashboard" replace />,
+      },
+      // UNRESTRICTED MASTER DATA & CORE FEATURES (Accessible without subscription)
       { path: 'products', element: <ProductsPage /> },
-      
-      // Customers Module Routes
       { path: 'customers', element: <CustomerListPage /> },
       { path: 'general-customers', element: <GeneralCustomersPage /> },
       { path: 'customers/general', element: <GeneralCustomersPage /> },
       { path: 'customers/ledger', element: <CustomerLedgerPage /> },
       { path: 'customers/:customerId/ledger', element: <CustomerLedgerPage /> },
-
       { path: 'inventory', element: <InventoryPage /> },
-      { path: 'stock-entry', element: <NewPurchasePage /> },
-      
-      // Suppliers & Supplier Ledger Module Routes
       { path: 'suppliers', element: <SuppliersPage /> },
       { path: 'suppliers/:supplierId/ledger', element: <SupplierLedgerPage /> },
 
-      // Purchases Module
-      { path: 'purchases', element: <NewPurchasePage /> },
-      { path: 'purchases/new', element: <NewPurchasePage /> },
-      { path: 'purchases/ledger', element: <SupplierLedgerPage /> },
-      { path: 'purchases/ledger/:supplierId', element: <SupplierLedgerPage /> },
+      // PROTECTED FINANCIAL TRANSACTION ERP MODULES (Require Subscription)
+      {
+        path: 'stock-entry',
+        element: (
+          <SubscriptionGuard featureName="Purchases">
+            <NewPurchasePage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'purchases',
+        element: (
+          <SubscriptionGuard featureName="Purchases">
+            <NewPurchasePage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'purchases/new',
+        element: (
+          <SubscriptionGuard featureName="Purchases">
+            <NewPurchasePage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'purchases/ledger',
+        element: (
+          <SubscriptionGuard featureName="Purchases">
+            <SupplierLedgerPage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'purchases/ledger/:supplierId',
+        element: (
+          <SubscriptionGuard featureName="Purchases">
+            <SupplierLedgerPage />
+          </SubscriptionGuard>
+        ),
+      },
 
-      { path: 'invoices', element: <BillsHistoryPage /> },
-      { path: 'invoices/:invoiceId', element: <InvoiceDetailsPage /> },
-      { path: 'invoices/:invoiceId/edit', element: <EditInvoicePage /> },
-      { path: 'reports', element: <ReportsPage /> },
-      { path: 'support', element: <SupportPage /> },
-      { path: 'subscription', element: <FullScreenSubscriptionPage /> },
+      // Billing & Invoices (Financial Transactions)
+      {
+        path: 'invoices',
+        element: (
+          <SubscriptionGuard featureName="Billing & Invoices">
+            <BillsHistoryPage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'invoices/:invoiceId',
+        element: (
+          <SubscriptionGuard featureName="Billing & Invoices">
+            <InvoiceDetailsPage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'invoices/:invoiceId/edit',
+        element: (
+          <SubscriptionGuard featureName="Billing & Invoices">
+            <EditInvoicePage />
+          </SubscriptionGuard>
+        ),
+      },
+      {
+        path: 'reports',
+        element: (
+          <SubscriptionGuard featureName="Reports">
+            <ReportsPage />
+          </SubscriptionGuard>
+        ),
+      },
 
       // Redirect legacy /masters to unified /settings/master-data
       { path: 'masters/*', element: <Navigate to="/settings/master-data" replace /> },
 
-      // Unified Settings Hub Routes
+      // Unified Settings Hub Routes (Unlocked for account management)
       {
         path: 'settings',
         element: <SettingsHubLayout />,

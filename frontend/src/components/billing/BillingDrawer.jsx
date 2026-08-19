@@ -67,12 +67,13 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     return () => clearTimeout(timer);
   }, [drawerProdSearch]);
 
-  // Auto-focus Product Search input when drawer opens
+  // Reset product suggestions dropdown state on drawer open (suggestions remain HIDDEN initially)
   useEffect(() => {
-    if (isOpen && drawerProdInputRef.current) {
-      setTimeout(() => {
-        drawerProdInputRef.current?.focus();
-      }, 100);
+    if (isOpen) {
+      setIsDrawerProdDropdownOpen(false);
+      setDrawerProdSearch('');
+      setDebouncedDrawerProdSearch('');
+      setSelectedProdIndex(-1);
     }
   }, [isOpen]);
 
@@ -1069,7 +1070,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
           {/* Autocomplete Dropdown List */}
           {isDrawerProdDropdownOpen && (
-            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-72 overflow-y-auto p-1 divide-y divide-gray-100/80">
+            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-[180px] overflow-y-auto p-1 divide-y divide-gray-100/80 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
               {drawerProductOptions.length > 0 ? (
                 drawerProductOptions.map((p, idx) => {
                   const brandName = p.brandId?.name || p.companyId?.name || p.brand || 'Vedixa';

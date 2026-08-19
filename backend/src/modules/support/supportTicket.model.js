@@ -1,5 +1,28 @@
 import mongoose from 'mongoose';
 
+const messageSchema = new mongoose.Schema({
+  sender: {
+    type: String,
+    enum: ['USER', 'ADMIN'],
+    required: true,
+  },
+  senderName: {
+    type: String,
+    default: '',
+  },
+  message: {
+    type: String,
+    required: true,
+  },
+  attachments: [{
+    type: String,
+  }],
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 const supportTicketSchema = new mongoose.Schema(
   {
     ticketId: {
@@ -26,15 +49,23 @@ const supportTicketSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['Billing', 'Inventory', 'Supplier', 'Customer', 'General'],
       default: 'General',
+    },
+    priority: {
+      type: String,
+      enum: ['Low', 'Medium', 'High'],
+      default: 'Medium',
     },
     status: {
       type: String,
-      enum: ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'COMPLETED'],
+      enum: ['PENDING', 'IN_PROGRESS', 'WAITING_FOR_USER', 'COMPLETED', 'CLOSED'],
       default: 'PENDING',
       index: true,
     },
+    attachments: [{
+      type: String,
+    }],
+    messages: [messageSchema],
     adminReply: {
       type: String,
       default: '',
@@ -53,6 +84,15 @@ const supportTicketSchema = new mongoose.Schema(
       default: null,
     },
     completedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    closedAt: {
+      type: Date,
+      default: null,
+    },
+    closedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,

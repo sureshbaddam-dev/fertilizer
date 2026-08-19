@@ -4,8 +4,16 @@ import { HTTP_STATUS } from '../../common/httpStatuses.js';
 import { subscriptionService } from './subscription.service.js';
 
 export const getPlans = asyncHandler(async (_req, res) => {
-  const plans = await subscriptionService.getAllPlans();
-  return sendSuccess(res, 'Subscription plans retrieved.', { plans }, HTTP_STATUS.OK);
+  const config = await subscriptionService.getSubscriptionConfig();
+  return sendSuccess(
+    res,
+    'Subscription plans retrieved.',
+    {
+      isSubscriptionSystemActive: config.isSubscriptionSystemActive,
+      plans: config.plans,
+    },
+    HTTP_STATUS.OK
+  );
 });
 
 export const getUserSubscription = asyncHandler(async (req, res) => {

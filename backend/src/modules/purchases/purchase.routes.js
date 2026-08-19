@@ -3,10 +3,12 @@ import { getPurchases, getPurchaseById, createPurchase, deletePurchase, restoreP
 import { purchaseReturnController } from './controllers/purchaseReturn.controller.js';
 
 import { protect } from '../../middlewares/auth.middleware.js';
+import { requireActiveSubscription } from '../../middlewares/subscription.middleware.js';
 
 const router = Router();
 
 router.use(protect);
+router.use(requireActiveSubscription);
 
 // Supplier Return Routes
 router.get('/supplier-return/purchase-history', purchaseReturnController.getPurchaseHistoryForReturn);

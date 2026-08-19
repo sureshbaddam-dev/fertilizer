@@ -2,7 +2,15 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, Image as ImageIcon, X, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/apiClient';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  return `http://${host}:5000/api/v1`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 const SERVER_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 export default function ImageUpload({

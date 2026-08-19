@@ -20,6 +20,10 @@ const subscriptionSettingsSchema = new mongoose.Schema(
         isEnabled: { type: Boolean, default: true },
       },
     ],
+    isSubscriptionSystemActive: {
+      type: Boolean,
+      default: true,
+    },
     demoSettings: {
       isDemoAvailable: { type: Boolean, default: true },
       defaultDemoDays: { type: Number, default: 7 },

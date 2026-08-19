@@ -50,12 +50,9 @@ export const configureSecurityMiddlewares = (app) => {
     skip: (req) => {
       // Always skip OPTIONS preflight CORS requests
       if (req.method === 'OPTIONS') return true;
-      // Skip rate limiting in development mode or for localhost requests
+      // Skip rate limiting in development mode
       if (envConfig.env === 'development') {
-        const clientIp = req.ip || req.socket?.remoteAddress || '';
-        if (clientIp.includes('127.0.0.1') || clientIp.includes('::1') || clientIp.includes('localhost')) {
-          return true;
-        }
+        return true;
       }
       return false;
     },

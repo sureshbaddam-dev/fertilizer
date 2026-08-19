@@ -148,7 +148,7 @@ export default function UserProfilePage() {
               </div>
               <div>
                 <h2 className="text-base font-black text-slate-900 tracking-tight">Account Subscription & Plan</h2>
-                <p className="text-xs text-slate-500 font-medium">Your active VEDIXA ERP SaaS subscription details.</p>
+                <p className="text-xs text-slate-500 font-medium">Your active VEDIXA subscription details.</p>
               </div>
             </div>
             <button

@@ -68,7 +68,7 @@ export default function RecentBills({ billsData }) {
         </div>
       ) : (
         <div className="p-6 text-center text-sm text-gray-400 bg-gray-50/50 rounded-xl border border-gray-100 font-medium">
-          No Recent Bills Found
+          No recent bills
         </div>
       )}
     </div>

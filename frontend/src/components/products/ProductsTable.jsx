@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit, MoreVertical, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { Edit, MoreVertical, ChevronLeft, ChevronRight, Info, Eye } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 
 export default function ProductsTable({
@@ -104,14 +104,122 @@ export default function ProductsTable({
     if (currentStock <= lowStockAlert) return 'text-amber-600 font-bold';
     return 'text-[#047857] font-bold';
   };
+
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalCount);
 
   return (
     <div className="space-y-3 w-full">
-      {/* Table / Cards Container */}
+      {/* Table / Mobile Cards Container */}
       <div className="bg-white border border-gray-200/80 rounded-2xl overflow-hidden shadow-2xs w-full">
-        {/* DESKTOP PRODUCTS TABLE */}
+        
+        {/* 1. MOBILE PRODUCTS CARD LIST (Visible strictly on mobile screens) */}
+        <div className="block md:hidden divide-y divide-gray-100 p-2.5 space-y-2.5">
+          {products.length > 0 ? (
+            products.map((p, idx) => {
+              const rowIndex = (currentPage - 1) * pageSize + idx + 1;
+              const categoryName = p.categoryId?.name || p.category || 'Fertilizers';
+              const brandName = p.brandId?.name || p.brand || '—';
+              const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
+              const currentStock = Math.max(0, Number(p.totalStock ?? p.currentStock ?? 0));
+              const lowStockAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
+              const purchasePrice = Number(p.currentActiveBatch?.purchaseRate ?? p.defaultPurchaseRate ?? p.purchasePrice ?? 0);
+              const sellingPrice = Number(p.currentSellingPrice ?? p.sellingPrice ?? p.defaultSellingPrice ?? 0);
+              const packageSize = p.packageSize || p.packaging || `${unitName}`;
+
+              return (
+                <div
+                  key={p._id || p.id || idx}
+                  className="bg-white rounded-xl border border-slate-200/80 p-3 space-y-2.5 shadow-2xs hover:border-emerald-500/50 transition-all cursor-pointer"
+                  onClick={() => onViewProduct && onViewProduct(p)}
+                >
+                  {/* Top Row: Avatar + Name + Category & Status Badges */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <ProductAvatar src={p.image} name={p.name} size={38} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-bold text-gray-900 text-xs block truncate" title={p.name}>
+                          {p.name}
+                        </span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-medium truncate mt-0.5">
+                          <span className="truncate">{brandName}</span>
+                          <span>•</span>
+                          <span className="truncate">{packageSize}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {getStatusBadge(p.status, currentStock, lowStockAlert)}
+                      <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-medium border ${getCategoryBadgeClass(categoryName)}`}>
+                        {categoryName}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Price & Stock Details */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50/80 p-2 rounded-lg text-[11px] border border-slate-100">
+                    <div>
+                      <span className="text-[9.5px] text-slate-400 font-semibold block uppercase">Purchase</span>
+                      <span className="font-mono font-bold text-slate-700 block mt-0.5">
+                        ₹{purchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9.5px] text-slate-400 font-semibold block uppercase">Selling Price</span>
+                      <span className="font-mono font-bold text-[#047857] block mt-0.5">
+                        ₹{sellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[9.5px] text-slate-400 font-semibold block uppercase">Current Stock</span>
+                      <span className={`font-mono block mt-0.5 ${getStockTextColor(currentStock, lowStockAlert)}`}>
+                        {currentStock} {unitName}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Item # & Actions */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      #{rowIndex} • Alert: {lowStockAlert} {unitName}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewProduct && onViewProduct(p);
+                        }}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Details</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditProduct && onEditProduct(p);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#047857] border border-emerald-200 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-6 text-center text-xs text-slate-400 font-medium">
+              No products found
+            </div>
+          )}
+        </div>
+
+        {/* 2. DESKTOP PRODUCTS TABLE (Visible strictly on desktop/tablet screens md:block) */}
         <div className="hidden md:block w-full overflow-x-auto">
           <table className="w-full text-sm border-collapse table-auto">
             <thead className="bg-gray-50/90 border-b border-gray-200 text-gray-700 font-bold text-xs uppercase tracking-tight">
@@ -142,7 +250,8 @@ export default function ProductsTable({
                 return (
                   <tr
                     key={p._id || p.id || idx}
-                    className="hover:bg-slate-50/70 transition-colors"
+                    className="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                    onClick={() => onViewProduct && onViewProduct(p)}
                   >
                     <td className="py-2.5 px-2 text-center text-gray-500 font-medium text-xs align-middle">
                       {rowIndex}
@@ -180,7 +289,10 @@ export default function ProductsTable({
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
-                          onClick={() => onViewProduct && onViewProduct(p)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewProduct && onViewProduct(p);
+                          }}
                           className="p-1 rounded text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer flex items-center justify-center"
                           title="View Product Details"
                         >
@@ -195,7 +307,7 @@ export default function ProductsTable({
           </table>
         </div>
 
-        {/* Dynamic Pagination Bar */}
+        {/* 3. DYNAMIC PAGINATION BAR */}
         <div className="px-3.5 py-2.5 bg-gray-50/80 border-t border-gray-200/80 flex items-center justify-between text-xs text-gray-600 flex-wrap gap-2">
           <div className="flex items-center gap-1 leading-none">
             Showing <span className="font-semibold text-gray-900">{products.length > 0 ? startIndex : 0}</span> to{' '}

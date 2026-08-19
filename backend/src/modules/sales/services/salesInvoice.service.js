@@ -484,10 +484,29 @@ export const salesInvoiceService = {
       }
     }
 
-    const authoritativeSubtotal = itemSnapshots.reduce((sum, s) => sum + (Number(s.lineTotal) || Number(s.totalAmount) || 0), 0);
+    const rawGrossSubtotal = itemSnapshots.reduce((sum, s) => sum + (Number(s.quantity || 1) * Number(s.unitPrice || 0)), 0);
+    const totalItemDiscounts = itemSnapshots.reduce((sum, s) => sum + (Number(s.discountAmount) || 0), 0);
+    const authoritativeDiscountAmount = Number(discountAmount || 0) || totalItemDiscounts;
+
+    // Prorate bill-level discount to itemSnapshots if item-level discounts were 0
+    if (authoritativeDiscountAmount > 0 && totalItemDiscounts === 0 && rawGrossSubtotal > 0) {
+      let allocatedDiscSum = 0;
+      itemSnapshots.forEach((s, idx) => {
+        const itemGross = (Number(s.quantity) || 1) * (Number(s.unitPrice) || 0);
+        const itemDisc = idx === itemSnapshots.length - 1
+          ? Math.max(0, Math.round((authoritativeDiscountAmount - allocatedDiscSum) * 100) / 100)
+          : Math.round(((itemGross / rawGrossSubtotal) * authoritativeDiscountAmount) * 100) / 100;
+        allocatedDiscSum += itemDisc;
+        s.discountAmount = itemDisc;
+        s.taxableAmount = Math.max(0, itemGross - itemDisc);
+        s.lineTotal = Math.max(0, itemGross - itemDisc + (Number(s.gstAmount) || 0));
+        s.totalAmount = s.lineTotal;
+      });
+    }
+
+    const authoritativeSubtotal = rawGrossSubtotal > 0 ? rawGrossSubtotal : itemSnapshots.reduce((sum, s) => sum + (Number(s.lineTotal) || Number(s.totalAmount) || 0), 0);
     const authoritativeTaxAmount = itemSnapshots.reduce((sum, s) => sum + (Number(s.gstAmount) || 0), 0);
-    const authoritativeDiscountAmount = Number(discountAmount || 0);
-    const grandTotal = Math.max(0, Math.round((authoritativeSubtotal - authoritativeDiscountAmount + Number.EPSILON) * 100) / 100);
+    const grandTotal = Math.max(0, Math.round((authoritativeSubtotal - authoritativeDiscountAmount + authoritativeTaxAmount + Number.EPSILON) * 100) / 100);
 
     let paidAmount = inputPaidAmount !== undefined ? Number(inputPaidAmount) : grandTotal;
     if (isNaN(paidAmount) || paidAmount < 0) paidAmount = grandTotal;

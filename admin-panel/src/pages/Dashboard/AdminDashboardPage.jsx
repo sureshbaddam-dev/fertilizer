@@ -8,14 +8,8 @@ import {
   UserPlus,
   HelpCircle,
   Clock,
-  CheckCircle2,
-  Activity,
-  ArrowRight,
   AlertCircle,
-  Phone,
   RefreshCw,
-  Eye,
-  ShieldAlert,
   ArrowUpRight,
   Zap,
 } from 'lucide-react';
@@ -29,8 +23,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts';
 
 export default function AdminDashboardPage() {
@@ -49,8 +41,6 @@ export default function AdminDashboardPage() {
   const [recentUsers, setRecentUsers] = useState([]);
   const [demoRequests, setDemoRequests] = useState([]);
   const [supportTickets, setSupportTickets] = useState([]);
-  const [activityLogs, setActivityLogs] = useState([]);
-  const [activityFilter, setActivityFilter] = useState('TODAY'); // 'TODAY' | 'YESTERDAY' | 'WEEK'
   const [isLoading, setIsLoading] = useState(true);
 
   // Quick Demo Grant Modal State
@@ -67,19 +57,17 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, usersRes, demoRes, ticketsRes, logsRes] = await Promise.all([
+      const [statsRes, usersRes, demoRes, ticketsRes] = await Promise.all([
         adminApiService.getDashboardStats(),
         adminApiService.getUsersList({ page: 1, limit: 6 }),
         adminApiService.getDemoRequests(),
-        adminApiService.getSupportTickets('ALL'),
-        adminApiService.getRecentActivity(),
+        adminApiService.getSupportTickets({ status: 'ALL' }),
       ]);
 
       if (statsRes) setStats(statsRes);
       if (usersRes?.users) setRecentUsers(usersRes.users);
       if (demoRes) setDemoRequests(demoRes);
-      if (ticketsRes) setSupportTickets(ticketsRes.slice(0, 5));
-      if (logsRes) setActivityLogs(logsRes);
+      if (ticketsRes) setSupportTickets(ticketsRes);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -122,7 +110,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6 font-sans antialiased text-slate-800">
-      
       {/* 1. DASHBOARD HEADER */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
@@ -146,7 +133,7 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* 2. COMPACT KPI SUMMARY (6 METRICS GRID IN 2 ROWS) */}
+      {/* 2. COMPACT KPI SUMMARY (6 METRICS GRID) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Total Users */}
         <div
@@ -227,9 +214,8 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* 3. QUICK ACTIONS & ACTION REQUIRED (COMPACT PANELS) */}
+      {/* 3. QUICK ACTIONS & ACTION REQUIRED PANELS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        
         {/* Quick Actions (2 Cols) */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
@@ -325,131 +311,8 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* 4. MAIN FOCUS — TODAY'S DAILY OPERATIONAL ACTIVITY STREAM */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-600" />
-              <span>Today's System Operational Stream</span>
-            </h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Real-time log of registrations, demo requests, payments, support tickets, and system activity.</p>
-          </div>
-
-          {/* Time Filter Pills */}
-          <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
-            {['TODAY', 'YESTERDAY', 'WEEK'].map((tf) => (
-              <button
-                key={tf}
-                onClick={() => setActivityFilter(tf)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                  activityFilter === tf
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                {tf === 'TODAY' ? 'Today' : tf === 'YESTERDAY' ? 'Yesterday' : 'This Week'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Live Event Activity Feed */}
-        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-          {activityLogs.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium text-center py-6">No system activity logged for this time period.</p>
-          ) : (
-            activityLogs.map((log, idx) => (
-              <div
-                key={idx}
-                className="p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl transition flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                    <Zap className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900 block leading-tight">{log.details || log.action}</span>
-                    <span className="text-[10px] text-slate-500 font-medium">
-                      By {log.adminName || 'System'} • Target: {log.targetName || 'Platform'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-3 text-right">
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    LOGGED
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* 5. SUPPORT TICKETS & RECENT LEADS (COMPACT TABLES) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Support Tickets (CLICKING ROW NAVIGATES TO USER PROFILE WITH TICKET CONTEXT) */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <HelpCircle className="w-4 h-4 text-amber-600" /> Support Tickets
-            </h3>
-            <button
-              onClick={() => navigate('/admin/support')}
-              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 underline flex items-center gap-1"
-            >
-              <span>View All</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-2">Ticket</th>
-                  <th className="p-2">User / Mobile</th>
-                  <th className="p-2">Subject</th>
-                  <th className="p-2">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {supportTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="p-4 text-center text-slate-400">No support tickets</td>
-                  </tr>
-                ) : (
-                  supportTickets.map((ticket) => (
-                    <tr
-                      key={ticket._id}
-                      onClick={() => navigate(`/admin/users/${ticket.userId}?ticketId=${ticket._id}`)}
-                      className="hover:bg-amber-50/50 cursor-pointer transition"
-                      title="Click to view complete User Profile & Support Context"
-                    >
-                      <td className="p-2 font-mono font-bold text-slate-900">{ticket.ticketId || `#TKT-${ticket._id.slice(-4)}`}</td>
-                      <td className="p-2">
-                        <span className="font-bold text-slate-900 block">{ticket.userName || 'User'}</span>
-                        <span className="text-[10px] font-mono text-slate-500">{ticket.userMobile || '9848081875'}</span>
-                      </td>
-                      <td className="p-2 font-medium text-slate-700 max-w-[140px] truncate">{ticket.subject}</td>
-                      <td className="p-2"><StatusBadge status={ticket.status} /></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* 6. RECENT USERS & COMPACT REVENUE / TRAFFIC ANALYTICS */}
+      {/* 4. RECENT USERS & REVENUE ANALYTICS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Recent Users Table (2 Cols) */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
@@ -458,7 +321,7 @@ export default function AdminDashboardPage() {
             </h3>
             <button
               onClick={() => navigate('/admin/users')}
-              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 underline flex items-center gap-1"
+              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 underline flex items-center gap-1 cursor-pointer"
             >
               <span>View All Users</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -486,7 +349,7 @@ export default function AdminDashboardPage() {
                     <td className="p-2.5">
                       <button
                         onClick={() => navigate(`/admin/users/${u._id}`)}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
+                        className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer"
                       >
                         Profile →
                       </button>
@@ -498,7 +361,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Compact Revenue Trend Chart (1 Col - Fits cleanly without occupying half screen!) */}
+        {/* Compact Revenue Trend Chart (1 Col) */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">

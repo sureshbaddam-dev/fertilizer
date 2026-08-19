@@ -1,6 +1,14 @@
 import ureaBagImg from '../assets/urea_bag.png';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  return `http://${host}:5000/api/v1`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 export const SERVER_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 /**

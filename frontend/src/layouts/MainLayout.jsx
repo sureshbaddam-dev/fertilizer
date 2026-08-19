@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import PageLayout from '../components/layout/PageLayout';
 import PageTracker from '../components/PageTracker';
-
-import { subscriptionService } from '../services/subscriptionService';
 
 export default function MainLayout() {
   const navigate = useNavigate();
@@ -12,39 +10,43 @@ export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isBillingOpen, setIsBillingOpen] = useState(false);
   const [quickAddedProduct, setQuickAddedProduct] = useState(null);
+  const [navToastVisible, setNavToastVisible] = useState(false);
 
-  // Check Subscription Status for non-admin users
-  useEffect(() => {
-    const checkSub = async () => {
-      const allowedExemptPaths = ['/subscription', '/support', '/admin/tickets', '/admin/subscriptions'];
-      if (allowedExemptPaths.some((p) => location.pathname.startsWith(p))) {
-        return;
-      }
-      try {
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          const user = JSON.parse(userStr);
-          if (user.role === 'admin') return;
-        }
-        const res = await subscriptionService.getMySubscription();
-        const hasActive = res?.data?.hasActiveSubscription || res?.hasActiveSubscription;
-        if (!hasActive) {
-          navigate('/subscription/plans');
-        }
-      } catch (_err) {
-        // Continue normally if error
-      }
-    };
-    checkSub();
-  }, [location.pathname]);
+  const toastTimeoutRef = useRef(null);
+  const isDashboardRoute = location.pathname === '/' || location.pathname === '/dashboard';
 
-  // Helper to trigger opening billing drawer + navigate to dashboard if on another route
+  const showNavBlockToast = () => {
+    setNavToastVisible(true);
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setNavToastVisible(false);
+    }, 3500);
+  };
+
+  // Open billing drawer + navigate to dashboard if triggered on another route
   const triggerGlobalBilling = () => {
-    if (location.pathname !== '/' && location.pathname !== '/dashboard') {
-      navigate('/dashboard');
+    if (!isDashboardRoute) {
+      navigate('/dashboard', { state: { openBillingDrawer: true } });
     }
     setIsBillingOpen(true);
   };
+
+  // Consume navigation state to open drawer on dashboard mount
+  useEffect(() => {
+    if (isDashboardRoute && location.state?.openBillingDrawer) {
+      setIsBillingOpen(true);
+    }
+  }, [isDashboardRoute, location.state]);
+
+  // Block route changes while Billing Drawer is open (keep user on /dashboard + show toast)
+  useEffect(() => {
+    if (isBillingOpen && !isDashboardRoute) {
+      navigate('/dashboard', { replace: true });
+      showNavBlockToast();
+    }
+  }, [isBillingOpen, isDashboardRoute, navigate]);
 
   // Global F2 Key Listener
   useEffect(() => {
@@ -56,7 +58,7 @@ export default function MainLayout() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [location.pathname]);
+  }, [location.pathname, isDashboardRoute]);
 
   const handleToggleSidebar = () => {
     setSidebarOpen((prev) => !prev);
@@ -72,6 +74,7 @@ export default function MainLayout() {
 
   const handleCloseNewBill = () => {
     setIsBillingOpen(false);
+    setNavToastVisible(false);
   };
 
   const handleQuickAddProduct = (product) => {
@@ -89,6 +92,8 @@ export default function MainLayout() {
       onCloseNewBill={handleCloseNewBill}
       onQuickAddProduct={handleQuickAddProduct}
       quickAddedProduct={quickAddedProduct}
+      onBlockNav={showNavBlockToast}
+      navToastVisible={navToastVisible}
     >
       <PageTracker />
       <Outlet context={{ onOpenNewBill: handleOpenNewBill, onQuickAddProduct: handleQuickAddProduct, isBillingOpen }} />

@@ -1,30 +1,29 @@
 import React, { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Tag } from 'lucide-react';
+import { Bell, Tag, Sparkles } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import MostSellingProducts from '../../components/dashboard/MostSellingProducts';
-import TopCategories from '../../components/dashboard/TopCategories';
 import TodaySummary from '../../components/dashboard/TodaySummary';
 import RecentBills from '../../components/dashboard/RecentBills';
 import LowStockProducts from '../../components/dashboard/LowStockProducts';
 import ShopDiscountModal from '../../components/settings/ShopDiscountModal';
 import StockAlertsModal from '../../components/dashboard/StockAlertsModal';
 import { dashboardService } from '../../services/dashboardService';
+import { subscriptionService } from '../../services/subscriptionService';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const outletContext = useOutletContext();
   const onQuickAddProduct = outletContext?.onQuickAddProduct;
-  const onOpenNewBill = outletContext?.onOpenNewBill;
   const isBillingOpen = outletContext?.isBillingOpen;
 
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
 
-  // Fetch full live dashboard data from MongoDB
+  // Fetch Live Dashboard Data from API
   const { data: dashboardApi } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => dashboardService.getDashboardSummary(),
@@ -32,6 +31,14 @@ export default function HomePage() {
     refetchInterval: 60 * 1000,
     refetchOnWindowFocus: false,
   });
+
+  // Fetch Current Subscription Status
+  const { data: subRes } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: subscriptionService.getMySubscription,
+  });
+
+  const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
   const dashboardData = dashboardApi?.data || dashboardApi;
   const stockAlerts = dashboardData?.stockAlerts || { totalAlerts: 0, lowStock: 0, outOfStock: 0, expiryAlerts: 0, expiredProducts: 0 };
@@ -45,10 +52,12 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6 font-sans w-full max-w-full">
-      {/* 1. Most Selling Products Section (Directly below navbar) */}
+      
+      {/* 1. Available Products Section */}
       <MostSellingProducts
         onQuickAdd={onQuickAddProduct}
         showCategoryTabs={isBillingOpen}
+        hasActiveSub={hasActiveSub}
       />
 
       {/* 2. Bottom Dashboard Summary Cards Grid */}
@@ -118,14 +127,14 @@ export default function HomePage() {
                   <Tag className="w-4 h-4 fill-emerald-600/20" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="card-title text-xs sm:text-sm font-extrabold text-slate-900 truncate">Shop Discount</h4>
-                  <p className="helper-text text-[11px] text-slate-500 font-medium truncate">{discountLabel}</p>
+                  <span className="helper-text text-[10px] uppercase font-bold block text-slate-400">Shop Discount</span>
+                  <span className="font-extrabold text-slate-900 text-xs block truncate">{discountLabel}</span>
                 </div>
               </div>
               <Button
-                variant="primary"
+                variant="ghost"
                 size="sm"
-                className="shrink-0 text-xs px-2.5 py-1"
+                className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-100/50 text-xs shrink-0 px-2"
                 onClick={() => setIsDiscountModalOpen(true)}
               >
                 Manage
@@ -135,13 +144,12 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Shop Discount Configuration Modal */}
+      {/* Modals */}
       <ShopDiscountModal
         isOpen={isDiscountModalOpen}
         onClose={() => setIsDiscountModalOpen(false)}
+        initialData={shopDiscount}
       />
-
-      {/* Stock Alerts Grouped Modal */}
       <StockAlertsModal
         isOpen={isAlertsModalOpen}
         onClose={() => setIsAlertsModalOpen(false)}

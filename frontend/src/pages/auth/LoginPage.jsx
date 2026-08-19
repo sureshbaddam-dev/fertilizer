@@ -41,21 +41,7 @@ export default function LoginPage() {
     try {
       const response = await authService.login({ mobile: data.mobile, password: data.password });
       if (response.success) {
-        const user = response.data?.user || response.user || {};
-        if (user.role === 'admin') {
-          navigate('/dashboard');
-          return;
-        }
-        try {
-          const subRes = await subscriptionService.getMySubscription();
-          if (subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription) {
-            navigate('/dashboard');
-          } else {
-            navigate('/subscription/plans');
-          }
-        } catch (_err) {
-          navigate('/subscription/plans');
-        }
+        navigate('/dashboard');
       }
     } catch (error) {
       setServerError(error.message || 'Login failed. Please check your credentials.');

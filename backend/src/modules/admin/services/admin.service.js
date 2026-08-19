@@ -66,10 +66,12 @@ export const getOrCreateSubscriptionSettings = async () => {
     settings = await SubscriptionSettings.create({
       planName: 'Fertilizer ERP',
       planCode: 'FERTILIZER_ERP',
+      isSubscriptionSystemActive: true,
       durations: [
-        { code: '1_MONTH', label: '1 Month', months: 1, amount: 199, isEnabled: true },
-        { code: '3_MONTHS', label: '3 Months', months: 3, amount: 499, isEnabled: true },
-        { code: '6_MONTHS', label: '6 Months', months: 6, amount: 899, isEnabled: true },
+        { code: '1_MONTH', label: '1 Month', months: 1, amount: 201, offerPrice: 149, isEnabled: true },
+        { code: '3_MONTHS', label: '3 Months', months: 3, amount: 499, offerPrice: 399, isEnabled: true },
+        { code: '6_MONTHS', label: '6 Months', months: 6, amount: 899, offerPrice: 699, isEnabled: true },
+        { code: '12_MONTHS', label: '12 Months', months: 12, amount: 1499, offerPrice: 1199, isEnabled: true },
       ],
       demoSettings: {
         isDemoAvailable: true,
@@ -850,7 +852,6 @@ export const adminService = {
 
   // 11. SYSTEM SETTINGS (PERSISTENCE)
   getSystemSettings: async () => {
-    const { SystemSetting } = await import('./models/systemSetting.model.js');
     const settingsList = await SystemSetting.find().lean();
     const settingsMap = { subscriptionSystemEnabled: true };
     settingsList.forEach((s) => {
@@ -860,12 +861,20 @@ export const adminService = {
   },
 
   updateSystemSetting: async (key, value, adminUser, req) => {
-    const { SystemSetting } = await import('./models/systemSetting.model.js');
     const setting = await SystemSetting.findOneAndUpdate(
       { key },
       { key, value },
       { upsert: true, new: true }
     );
+
+    // Sync subscriptionSystemEnabled with SubscriptionSettings document as well
+    if (key === 'subscriptionSystemEnabled') {
+      await SubscriptionSettings.findOneAndUpdate(
+        {},
+        { isSubscriptionSystemActive: !!value },
+        { upsert: true }
+      );
+    }
 
     if (adminUser) {
       await logAdminAuditAction({

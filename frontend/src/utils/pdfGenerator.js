@@ -1,6 +1,87 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getItemUnitPrice } from './pricing';
+import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
+
+/**
+ * Standardized PDF Top Header Generator across all PDF documents:
+ * - Top-Left: Logged-in Shop Details (Shop Logo if available, Shop Name in bold green #047857, Address, Phone, GSTIN, Email)
+ * - Top-Right: Official VEDIXA Branding ([VEDIXA LOGO] + VEDIXA text underneath)
+ * - Green Divider Line at Y=28mm
+ */
+export function drawPdfDocumentHeader(doc, shopSettings = {}) {
+  const shopName = (shopSettings.shopName || shopSettings.name || 'Agri Solutions Store').trim();
+  const address = (shopSettings.address || '').trim();
+  const mobile = (shopSettings.mobile || shopSettings.phone || '').trim();
+  const gstin = (shopSettings.gstNumber || shopSettings.gstin || '').trim();
+  const email = (shopSettings.email || '').trim();
+  const customShopLogo = shopSettings.logoUrl || shopSettings.shopLogo || '';
+
+  const pdfWidth = doc.internal.pageSize.getWidth() || 210;
+
+  // 1. TOP-LEFT: SHOP LOGO & DETAILS
+  let textLeftX = 8;
+  if (customShopLogo) {
+    try {
+      doc.addImage(customShopLogo, 8, 7, 20, 15);
+      textLeftX = 31;
+    } catch (e) {
+      console.warn('Could not render custom shop logo:', e);
+      textLeftX = 8;
+    }
+  }
+
+  // Logged-in Shop Name (Bold Green #047857)
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87);
+  doc.text(shopName, textLeftX, 13);
+
+  // Shop Address & Contact Info
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(70, 70, 70);
+
+  let currentY = 18;
+  if (address) {
+    const splitAddr = doc.splitTextToSize(address, 125);
+    doc.text(splitAddr[0], textLeftX, currentY);
+    currentY += 4.5;
+  }
+
+  const metaParts = [];
+  if (mobile) metaParts.push(`Phone: ${mobile}`);
+  if (gstin && gstin !== '-') metaParts.push(`GSTIN: ${gstin}`);
+  if (email) metaParts.push(`Email: ${email}`);
+
+  if (metaParts.length > 0) {
+    doc.text(metaParts.join(' | '), textLeftX, currentY);
+  }
+
+  // 2. TOP-RIGHT: VEDIXA BRANDING SYSTEM ([VEDIXA LOGO] + VEDIXA text directly underneath)
+  const vedixaLogoWidth = 14;
+  const vedixaLogoHeight = 14;
+  const vedixaRightX = pdfWidth - 8;
+  const vedixaLogoX = vedixaRightX - vedixaLogoWidth;
+  const vedixaLogoY = 6;
+
+  try {
+    doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', vedixaLogoX, vedixaLogoY, vedixaLogoWidth, vedixaLogoHeight);
+  } catch (err) {
+    console.warn('Could not render VEDIXA logo in PDF:', err);
+  }
+
+  // "VEDIXA" Text centered directly under logo
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(4, 120, 87);
+  doc.text('VEDIXA', vedixaLogoX + (vedixaLogoWidth / 2), vedixaLogoY + vedixaLogoHeight + 3.5, { align: 'center' });
+
+  // 3. GREEN DIVIDER LINE
+  doc.setLineWidth(0.6);
+  doc.setDrawColor(4, 120, 87);
+  doc.line(8, 28, pdfWidth - 8, 28);
+}
 
 /**
  * Single Unified Vector jsPDF Generator for Customer Ledger Statement.
@@ -26,12 +107,6 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
     shopSettings = txsArg && typeof txsArg === 'object' && !Array.isArray(txsArg) ? txsArg : {};
   }
 
-  const shopName = shopSettings.shopName || shopSettings.name || 'Agri Solutions Store';
-  const address = shopSettings.address || '';
-  const mobile = shopSettings.mobile || shopSettings.phone || '';
-  const gstin = shopSettings.gstNumber || shopSettings.gstin || '';
-  const email = shopSettings.email || '';
-
   const custName = customer?.name || customer?.customerName || 'Valued Customer';
   const custMobile = customer?.mobile || customer?.phone || 'N/A';
   const custVillage = customer?.village || customer?.area || '';
@@ -56,34 +131,8 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
     year: 'numeric',
   });
 
-  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
-  let textLeftX = 8;
-
-  if (logoUrl) {
-    try {
-      doc.addImage(logoUrl, 8, 8, 30, 16);
-      textLeftX = 42;
-    } catch (e) {
-      console.warn('Could not render logo in PDF:', e);
-      textLeftX = 8;
-    }
-  }
-
-  // 1. SHOP DETAILS HEADER
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87); // #047857
-  doc.text(shopName, textLeftX, 14);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(70, 70, 70);
-  doc.text(`${address}`, textLeftX, 20);
-  doc.text(`Phone: ${mobile} | GSTIN: ${gstin} | Email: ${email}`, textLeftX, 25);
-
-  doc.setLineWidth(0.6);
-  doc.setDrawColor(4, 120, 87);
-  doc.line(8, 28, 202, 28);
+  // 1. SHOP & VEDIXA BRANDING HEADER
+  drawPdfDocumentHeader(doc, shopSettings);
 
   // 2. DOCUMENT TITLE & CUSTOMER DETAILS
   doc.setFontSize(12);
@@ -344,39 +393,8 @@ export function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettingsArg = 
   const payments = Number(monthlyData.payments || 0);
   const closingDue = Number(monthlyData.closingDue ?? (openBal + newPurchases - payments));
 
-  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
-  let textLeftX = 8;
-
-  if (logoUrl) {
-    try {
-      doc.addImage(logoUrl, 8, 8, 30, 16);
-      textLeftX = 42;
-    } catch (e) {
-      console.warn('Could not render logo in PDF:', e);
-      textLeftX = 8;
-    }
-  }
-
-  // 1. SHOP DETAILS HEADER
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87); // #047857
-  doc.text(shopName, textLeftX, 14);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(70, 70, 70);
-  doc.text(`${address}`, textLeftX, 20);
-
-  const contactParts = [];
-  if (mobile) contactParts.push(`Phone: ${mobile}`);
-  if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
-  if (email) contactParts.push(`Email: ${email}`);
-  doc.text(contactParts.join(' | '), textLeftX, 25);
-
-  doc.setLineWidth(0.6);
-  doc.setDrawColor(4, 120, 87);
-  doc.line(8, 28, 202, 28);
+  // 1. SHOP & VEDIXA BRANDING HEADER
+  drawPdfDocumentHeader(doc, shopSettings);
 
   // 2. DOCUMENT TITLE & CUSTOMER DETAILS
   doc.setFontSize(12);
@@ -646,40 +664,8 @@ export function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
       maximumFractionDigits: 2,
     })}`;
 
-  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
-  let textLeftX = 8;
-
-  // Render Shop Logo if available
-  if (logoUrl) {
-    try {
-      doc.addImage(logoUrl, 8, 8, 30, 16);
-      textLeftX = 42;
-    } catch (e) {
-      console.warn('Could not render logo in Invoice PDF:', e);
-      textLeftX = 8;
-    }
-  }
-
-  // 1. TOP HEADER: SHOP DETAILS
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87); // Emerald brand color #047857
-  doc.text(shopName.toUpperCase(), textLeftX, 14);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(70, 70, 70);
-  doc.text(address, textLeftX, 20);
-
-  const contactLine = gstin && gstin !== '-'
-    ? `Phone: ${mobile} | GSTIN: ${gstin}${email ? ` | Email: ${email}` : ''}`
-    : `Phone: ${mobile}${email ? ` | Email: ${email}` : ''}`;
-  doc.text(contactLine, textLeftX, 25);
-
-  // Top Separator Line (Left 8mm, Right 202mm -> Width 194mm)
-  doc.setLineWidth(0.6);
-  doc.setDrawColor(4, 120, 87);
-  doc.line(8, 28, 202, 28);
+  // 1. TOP HEADER: SHOP & VEDIXA BRANDING
+  drawPdfDocumentHeader(doc, shopSettings);
 
   // 2. INVOICE & CUSTOMER DETAILS
   doc.setFontSize(12);
@@ -724,20 +710,29 @@ export function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
 
   // 3. ITEMS TABLE (Printable width: 194mm, Margins 8mm left / 8mm right, Borderless, Alternating Colors, All Centered)
   const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
+  const billDiscount = Number(invoice.discountAmount || invoice.discount || 0);
+
   const tableRows = items.map((it, idx) => {
     const pName = it.productName || it.name || 'Agri Product';
     const qty = Number(it.quantity || it.qty || 1);
     const unit = it.unit || it.unitName || 'Bag';
     const rate = getItemUnitPrice(it);
-    const disc = Number(it.discountAmount || it.discount || 0);
-    const total = Number(it.totalAmount || it.total || (qty * rate - disc));
+    const itemGross = qty * rate;
+
+    let disc = Number(it.discountAmount || it.discount || 0);
+    if (disc <= 0 && billDiscount > 0 && rawSubtotal > 0) {
+      disc = Math.round((itemGross / rawSubtotal) * billDiscount * 100) / 100;
+    }
+
+    const total = Math.max(0, itemGross - disc);
 
     return [
       idx + 1,
       pName,
       `${qty} ${unit}`,
       formatCurrency(rate),
-      disc > 0 ? formatCurrency(disc) : '-',
+      disc > 0 ? formatCurrency(disc) : formatCurrency(0),
       formatCurrency(total),
     ];
   });
@@ -971,39 +966,8 @@ export function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSetti
     hour12: true,
   });
 
-  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
-  let textLeftX = 12;
-
-  if (logoUrl) {
-    try {
-      doc.addImage(logoUrl, 12, 10, 24, 24);
-      textLeftX = 40;
-    } catch (e) {
-      console.warn('Could not render logo in Statement PDF:', e);
-      textLeftX = 12;
-    }
-  }
-
-  // 1. SHOP DETAILS HEADER
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87); // #047857
-  doc.text(shopName.toUpperCase(), textLeftX, 15);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text(address, textLeftX, 21);
-
-  const contactLine = gstin
-    ? `Mobile: ${mobile} | GSTIN: ${gstin}`
-    : `Mobile: ${mobile}${email ? ` | Email: ${email}` : ''}`;
-  doc.text(contactLine, textLeftX, 26);
-
-  // Top Separator Line
-  doc.setLineWidth(0.6);
-  doc.setDrawColor(4, 120, 87);
-  doc.line(12, 32, 198, 32);
+  // 1. SHOP & VEDIXA BRANDING HEADER
+  drawPdfDocumentHeader(doc, shopSettings);
 
   // 2. REPORT TITLE & METADATA
   doc.setFontSize(13);
@@ -1189,48 +1153,8 @@ export function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {
     year: 'numeric',
   });
 
-  const logoUrl = shopSettings.logoUrl || shopSettings.shopLogo || '';
-  let textLeftX = 10;
-
-  if (logoUrl) {
-    try {
-      doc.addImage(logoUrl, 10, 8, 28, 16);
-      textLeftX = 42;
-    } catch (e) {
-      console.warn('Could not render logo in General Customers PDF:', e);
-      textLeftX = 10;
-    }
-  }
-
-  // 1. SHOP DETAILS HEADER
-  doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87); // Emerald brand color #047857
-  doc.text(shopName.toUpperCase(), textLeftX, 14);
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(70, 70, 70);
-
-  const contactParts = [];
-  if (mobile) contactParts.push(`Phone: ${mobile}`);
-  if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
-  if (email) contactParts.push(`Email: ${email}`);
-  const contactLine = contactParts.join(' | ');
-
-  if (address) {
-    doc.text(address, textLeftX, 19.5);
-    if (contactLine) {
-      doc.text(contactLine, textLeftX, 24.5);
-    }
-  } else if (contactLine) {
-    doc.text(contactLine, textLeftX, 19.5);
-  }
-
-  // Top Separator Line (Left 10mm, Right 200mm -> Width 190mm)
-  doc.setLineWidth(0.6);
-  doc.setDrawColor(4, 120, 87);
-  doc.line(10, 27, 200, 27);
+  // 1. SHOP & VEDIXA BRANDING HEADER
+  drawPdfDocumentHeader(doc, shopSettings);
 
   // 2. DOCUMENT TITLE & CUSTOMER DIRECTORY METADATA (Left side, X=10mm)
   doc.setFontSize(11);
@@ -1268,9 +1192,9 @@ export function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {
   let totalOutstandingVal = 0;
 
   const tableRows = (customersList || []).map((cust, idx) => {
-    const dueVal = Number(cust.outstandingBalance || 0);
+    const dueVal = Math.max(0, Number(cust.outstandingBalance || 0));
     const totalPurchases = Number(cust.totalPurchases || 0);
-    const totalPaid = Number(cust.totalPaid || (totalPurchases - dueVal));
+    const totalPaid = Number(cust.totalPaid || 0);
     const billsCount = Number(cust.totalBillsCount || 1);
     const statusStr = dueVal === 0 ? 'PAID' : 'DUE';
 

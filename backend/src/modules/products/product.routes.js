@@ -13,10 +13,12 @@ import {
 } from './controllers/product.controller.js';
 import { uploadProductImageMiddleware } from '../../middlewares/upload.middleware.js';
 import { protect } from '../../middlewares/auth.middleware.js';
+import { requireActiveSubscription } from '../../middlewares/subscription.middleware.js';
 
 const router = Router();
 
 router.use(protect);
+router.use(requireActiveSubscription);
 
 router.get('/', getProducts);
 router.get('/top-selling', getTopSellingProducts);

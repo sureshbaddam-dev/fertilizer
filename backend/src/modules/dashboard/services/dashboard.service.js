@@ -1,6 +1,7 @@
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { Product } from '../../products/models/product.model.js';
 import { Category } from '../../masters/models/category.model.js';
+import { Brand } from '../../masters/models/brand.model.js';
 import { Customer } from '../../customers/models/customer.model.js';
 import { shopDiscountService } from '../../settings/services/shopDiscount.service.js';
 import { reportsService } from '../../reports/services/reports.service.js';
@@ -10,17 +11,46 @@ export const dashboardService = {
     if (!userId) throw new Error('userId is required');
     const now = new Date();
 
-    const biData = await reportsService.getBIAnalytics({}, userId);
+    // 1. Calculate IST Today's Date Boundaries (00:00:00.000 IST to 23:59:59.999 IST)
+    const istDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+    const [yearStr, monthStr, dayStr] = istDateStr.split('-');
+    const year = parseInt(yearStr, 10);
+    const monthIdx = parseInt(monthStr, 10) - 1;
+    const day = parseInt(dayStr, 10);
 
-    const salesInfo = biData?.sales || {};
-    const overallInfo = biData?.overallBusiness || {};
+    const startOfTodayIST = new Date(Date.UTC(year, monthIdx, day, 0, 0, 0, 0) - (5.5 * 60 * 60 * 1000));
+    const endOfTodayIST = new Date(Date.UTC(year, monthIdx, day, 23, 59, 59, 999) - (5.5 * 60 * 60 * 1000));
 
-    const rawTodaySales = salesInfo.todaySales > 0 ? salesInfo.todaySales : (salesInfo.totalSales || 0);
-    const totalBillsCount = await SalesInvoice.countDocuments({ userId });
-    const activeCustomersCount = await Customer.countDocuments({ userId, isActive: true });
-    const rawPendingPayments = overallInfo.customerOutstanding !== undefined
-      ? overallInfo.customerOutstanding
-      : (salesInfo.outstandingCollection || 0);
+    // Query invoices created TODAY ONLY (between startOfTodayIST and endOfTodayIST)
+    const todayInvoices = await SalesInvoice.find({
+      userId,
+      $or: [
+        { createdAt: { $gte: startOfTodayIST, $lte: endOfTodayIST } },
+        { date: { $gte: startOfTodayIST, $lte: endOfTodayIST } },
+      ],
+    }).lean().exec();
+
+    // Today's Total Sales (Sum of valid sales created today)
+    const rawTodaySales = todayInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
+
+    // Today's Total Bills Count
+    const totalBillsCount = todayInvoices.length;
+
+    // Today's Active Customers (Unique customers with transactions/bills today)
+    const activeCustomersSet = new Set(
+      todayInvoices
+        .map((inv) => (inv.customerId ? inv.customerId.toString() : inv.customerName ? inv.customerName.trim() : null))
+        .filter(Boolean)
+    );
+    const activeCustomersCount = activeCustomersSet.size;
+
+    // Today's Pending Payments (Due amount associated with today's invoices)
+    const rawPendingPayments = todayInvoices.reduce((sum, inv) => {
+      const total = Number(inv.totalAmount || 0);
+      const paid = Number(inv.paidAmount || 0);
+      const due = total - paid;
+      return sum + (due > 0 ? due : 0);
+    }, 0);
 
     const formattedTodayDate = now.toLocaleDateString('en-IN', {
       day: '2-digit',
@@ -110,6 +140,23 @@ export const dashboardService = {
 
     categoriesWithCount.sort((a, b) => b.prodCount - a.prodCount);
 
+    // Calculate Yesterday's IST Date Boundaries for growth comparison
+    const startOfYesterdayIST = new Date(startOfTodayIST.getTime() - 24 * 60 * 60 * 1000);
+    const endOfYesterdayIST = new Date(startOfTodayIST.getTime() - 1);
+
+    const yesterdayInvoices = await SalesInvoice.find({
+      userId,
+      $or: [
+        { createdAt: { $gte: startOfYesterdayIST, $lte: endOfYesterdayIST } },
+        { date: { $gte: startOfYesterdayIST, $lte: endOfYesterdayIST } },
+      ],
+    }).lean().exec();
+
+    const rawYesterdaySales = yesterdayInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
+    const salesGrowth = rawYesterdaySales > 0
+      ? Math.round(((rawTodaySales - rawYesterdaySales) / rawYesterdaySales) * 100)
+      : rawTodaySales > 0 ? 100 : 0;
+
     const shopDiscount = await shopDiscountService.getShopDiscount(userId);
 
     return {
@@ -120,7 +167,7 @@ export const dashboardService = {
         customers: activeCustomersCount,
         pendingPayments: `₹ ${rawPendingPayments.toLocaleString('en-IN')}`,
         rawPendingPayments,
-        salesGrowth: salesInfo.salesGrowth || 0,
+        salesGrowth,
         billsGrowth: 0,
         customerGrowth: 0,
         pendingGrowth: 0,
@@ -172,16 +219,25 @@ export const dashboardService = {
     const userTickets = await SupportTicket.find({ userId }).sort({ updatedAt: -1 }).limit(5).lean();
     userTickets.forEach((t) => {
       const st = (t.status || 'PENDING').toUpperCase();
-      const statusLabel = st === 'COMPLETED' || st === 'RESOLVED' ? 'Resolved' : st === 'IN_PROGRESS' ? 'In Progress' : 'Pending';
+      const statusLabel =
+        st === 'COMPLETED' || st === 'RESOLVED'
+          ? 'Resolved'
+          : st === 'IN_PROGRESS'
+          ? 'In Progress'
+          : st === 'WAITING_FOR_USER'
+          ? 'Waiting for You'
+          : st === 'CLOSED'
+          ? 'Closed'
+          : 'Pending';
       notifications.push({
         id: `ticket-${t._id}`,
         type: 'support_ticket',
-        title: `Support Ticket ${statusLabel}`,
-        message: `Ticket ${t.ticketId} (${t.subject}): Status is ${statusLabel}.`,
+        title: `Help Request ${statusLabel}`,
+        message: `Request ${t.ticketId} (${t.subject}): Status is ${statusLabel}.`,
         timestamp: new Date(t.updatedAt || t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
         createdAt: t.updatedAt || t.createdAt,
         read: false,
-        category: 'Support Tickets',
+        category: 'Help Requests',
         path: '/support',
       });
     });

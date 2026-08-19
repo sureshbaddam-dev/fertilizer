@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, CheckCheck, Menu, Plus, Search, Store, Clock, CheckCircle2, MessageSquare, Megaphone } from 'lucide-react';
+import { Bell, CheckCheck, Menu, Plus, Search, Store, Clock, CheckCircle2, MessageSquare, Megaphone, ChevronDown, ChevronRight, User, CreditCard, LogOut } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
 import { dashboardService } from '../../services/dashboardService';
+import { authService } from '../../services/authService';
+import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
+import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
 
 const NOTIF_CATEGORIES = ['All', 'Support Tickets', 'Admin Announcements'];
 
-export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddProduct }) {
+export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddProduct, isBillingOpen, onBlockNav }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useSettings();
@@ -38,11 +41,72 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     }
   });
 
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSubRequiredModalOpen, setIsSubRequiredModalOpen] = useState(false);
+
   const searchRef = useRef(null);
   const mobileSearchRef = useRef(null);
   const notifRef = useRef(null);
+  const profileRef = useRef(null);
   const topbarInputRef = useRef(null);
   const prevUnreadCountRef = useRef(0);
+
+  // Fetch Current Logged In User Profile
+  const { data: userProfileRes } = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: () => authService.getProfile(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Fetch Subscription Status from Backend API
+  const { data: subRes } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => subscriptionService.getMySubscription(),
+    staleTime: 10 * 1000,
+    refetchInterval: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  const currentUser = authService.getCurrentUser() || {};
+  const userProfile = userProfileRes?.data || userProfileRes || {};
+  const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'b.suresh';
+  const userMobile = userProfile.mobile || currentUser.mobile || 'Not added';
+  const userEmail = userProfile.email || currentUser.email || 'Not added';
+  const shopName = settings?.shopName?.trim() ? settings.shopName : 'Not added';
+  const userProfilePic = userProfile.profilePicUrl || currentUser.profilePicUrl || settings?.logoUrl || settings?.shopLogo || null;
+
+  const getInitials = (name) => {
+    if (!name) return 'BS';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+  };
+
+  const userInitials = getInitials(userName);
+
+  const subData = subRes?.data || subRes || {};
+  const hasActiveSub = subData?.hasActiveSubscription || false;
+  const currentSub = subData?.subscription || null;
+  const planName = currentSub?.planId?.name || currentSub?.planName || (currentSub?.planCode ? currentSub.planCode.replace(/_/g, ' ') : '3 Months');
+  const expiryFormatted = currentSub?.expiryDate ? new Date(currentSub.expiryDate).toLocaleDateString('en-IN') : null;
+
+  const handleSignOut = async () => {
+    try {
+      await authService.logout();
+    } catch (_err) {}
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
+
+  const handleNewBillClick = () => {
+    if (!hasActiveSub) {
+      setIsSubRequiredModalOpen(true);
+      return;
+    }
+    onOpenNewBill?.();
+  };
 
   // Web Audio Chime Helper (Plays only when Notification Sound = ON)
   const playNotifSound = () => {
@@ -85,6 +149,9 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
       }
       if (notifRef.current && !notifRef.current.contains(event.target)) {
         setIsNotifOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsProfileOpen(false);
       }
     };
 
@@ -187,8 +254,8 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   return (
     <header className="app-topbar fixed top-0 left-0 right-0 w-full z-40 bg-white border-b border-slate-200/80 shadow-2xs font-sans">
-      <div className="h-[var(--topbar-height)] px-3 sm:px-5 lg:px-6">
-        <div className="flex h-full items-center justify-between gap-3">
+      <div className="h-[var(--topbar-height)] px-2.5 sm:px-4 lg:px-6">
+        <div className="flex h-full items-center justify-between gap-1.5 sm:gap-3">
           {/* LEFT: Mobile Menu + Large VEDIXA Logo Image */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0 h-full">
             <button
@@ -296,8 +363,8 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={onOpenNewBill}
-              className="inline-flex items-center gap-1.5 h-9 px-3 bg-[#047857] hover:bg-[#065f46] text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              onClick={handleNewBillClick}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-[#047857] hover:bg-[#065f46] text-white rounded-[9px] text-xs font-bold transition-all shadow-2xs cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>New Bill</span>
@@ -309,15 +376,17 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               <button
                 type="button"
                 onClick={() => setIsNotifOpen((prev) => !prev)}
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-[9px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer overflow-visible"
                 aria-label="View notifications"
               >
-                <Bell className="h-4 w-4" />
-                {unreadNotifCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-extrabold text-white animate-pulse">
-                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                  </span>
-                )}
+                <div className="relative inline-flex items-center justify-center">
+                  <Bell className="w-[21px] h-[21px] stroke-[2]" />
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 z-10 min-w-[17px] h-[17px] px-1 inline-flex items-center justify-center rounded-full bg-rose-600 border border-white text-[9px] font-black text-white leading-none shadow-xs pointer-events-none whitespace-nowrap">
+                      {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                    </span>
+                  )}
+                </div>
               </button>
 
               {isNotifOpen && (
@@ -402,35 +471,173 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               )}
             </div>
 
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              {settings?.logoUrl || settings?.shopLogo ? (
-                <img
-                  src={settings?.logoUrl || settings?.shopLogo}
-                  alt={settings?.shopName || 'Shop Owner'}
-                  className="h-9 w-9 rounded-xl border border-slate-200 bg-white object-contain p-0.5 shadow-2xs"
-                />
-              ) : (
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200/80 font-extrabold text-xs">
-                  <Store className="h-4 w-4 text-slate-600" />
+            {/* PROFILE TRIGGER AREA & ANCHORED DROPDOWN CARD (DESKTOP ONLY) */}
+            <div className="hidden lg:block relative border-l border-slate-200 pl-2" ref={profileRef}>
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen((prev) => !prev)}
+                className="flex items-center gap-2 cursor-pointer focus:outline-none group py-1 px-1 rounded-full hover:bg-slate-50 transition-colors"
+                aria-label="User account menu"
+              >
+                {userProfilePic ? (
+                  <img
+                    src={userProfilePic}
+                    alt={userName}
+                    className="h-9 w-9 rounded-full border border-slate-200 bg-white object-cover shadow-2xs group-hover:border-emerald-500 transition-colors"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-xs shadow-2xs">
+                    {userInitials}
+                  </div>
+                )}
+                <div className="hidden sm:flex items-center gap-1.5 text-left">
+                  <span className="text-xs font-bold text-slate-900 leading-tight">
+                    {userName}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isProfileOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                </div>
+              </button>
+
+              {/* PROFILE DROPDOWN CARD */}
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl z-50 overflow-hidden font-sans p-4 space-y-3.5 animate-in fade-in duration-150">
+                  {/* ACCOUNT DETAILS */}
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                        Phone Number
+                      </span>
+                      <span className="font-bold text-slate-800 block mt-0.5">{userMobile}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                        Email
+                      </span>
+                      <span className="font-bold text-slate-800 block mt-0.5 truncate">{userEmail}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                        Shop Name
+                      </span>
+                      <span className="font-bold text-slate-800 block mt-0.5 truncate">{shopName}</span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      {hasActiveSub && currentSub ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                                Subscription
+                              </span>
+                              <span className="font-bold text-emerald-700 inline-flex items-center gap-1.5 mt-0.5">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Active
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block text-right">
+                                Plan
+                              </span>
+                              <span className="font-bold text-slate-800 block mt-0.5 text-right">{planName}</span>
+                            </div>
+                          </div>
+
+                          {expiryFormatted && (
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                                Expiry Date
+                              </span>
+                              <span className="font-mono font-bold text-slate-700 block mt-0.5">{expiryFormatted}</span>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsProfileOpen(false);
+                              navigate('/subscription/plans');
+                            }}
+                            className="w-full py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs transition cursor-pointer"
+                          >
+                            Upgrade
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                              Subscription
+                            </span>
+                            <span className="font-bold text-rose-600 inline-flex items-center gap-1.5 mt-0.5">
+                              <span className="h-2 w-2 rounded-full bg-rose-600" /> {currentSub?.status === 'EXPIRED' ? 'Subscription Expired' : 'No Active Subscription'}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsProfileOpen(false);
+                              navigate('/subscription/plans');
+                            }}
+                            className="w-full py-1.5 px-3 bg-[#047857] hover:bg-[#036046] text-white rounded-xl font-bold text-xs shadow-2xs transition cursor-pointer"
+                          >
+                            Subscription Plans
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ACTION LINKS */}
+                  <div className="pt-2 border-t border-slate-100 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isBillingOpen) {
+                          onBlockNav?.();
+                          return;
+                        }
+                        setIsProfileOpen(false);
+                        navigate('/settings/user-profile');
+                      }}
+                      className="w-full py-2 px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl transition flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <User className="w-3.5 h-3.5 text-slate-500" /> View Profile
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="w-full py-2 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <LogOut className="w-3.5 h-3.5 text-rose-500" /> Sign Out
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
-              <div className="hidden sm:block text-left">
-                <span className="block text-xs font-extrabold text-slate-900 leading-tight">
-                  {settings?.ownerName || 'BSREDDY'}
-                </span>
-                <span className="block text-[10px] font-semibold text-slate-500 leading-tight mt-0.5">
-                  {settings?.userRole || 'Shop Owner'}
-                </span>
-              </div>
             </div>
           </div>
         </div>
+
+        {/* SUBSCRIPTION REQUIRED MODAL FOR NEW BILL / F2 BUTTON */}
+        <SubscriptionRequiredModal
+          isOpen={isSubRequiredModalOpen}
+          onClose={() => setIsSubRequiredModalOpen(false)}
+          featureName="Billing & Invoices"
+        />
       </div>
 
       {showMobileSearch && (
-        <div ref={mobileSearchRef} className="relative border-t border-slate-200/70 bg-white/80 px-4 py-3 lg:hidden">
+        <div ref={mobileSearchRef} className="relative border-t border-slate-200/70 bg-white px-3 py-2.5 sm:px-4 sm:py-3 lg:hidden shadow-2xs">
           <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
@@ -440,7 +647,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               }}
               onFocus={() => setIsDropdownOpen(true)}
               placeholder="Search products, category, or batch"
-              className="app-input h-11 w-full rounded-full pl-11 pr-4"
+              className="app-input h-10 w-full rounded-full pl-10 pr-4 text-xs bg-slate-50 border border-slate-200 focus:bg-white focus:border-[#047857] shadow-2xs"
             />
           </div>
 

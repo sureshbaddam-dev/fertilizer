@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { customerController } from '../controllers/customer.controller.js';
 
 import { protect } from '../../../middlewares/auth.middleware.js';
+import { requireActiveSubscription } from '../../../middlewares/subscription.middleware.js';
 
 const router = Router();
 
 router.use(protect);
+router.use(requireActiveSubscription);
 
 router.get('/', customerController.getCustomers);
 router.get('/general', customerController.getGeneralCustomers);

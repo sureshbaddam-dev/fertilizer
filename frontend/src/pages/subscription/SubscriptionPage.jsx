@@ -1,27 +1,40 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Check, ShieldCheck, Zap, Ticket, CheckCircle2, ArrowRight, Star, Sparkles } from 'lucide-react';
+import { CheckCircle2, Star, AlertTriangle, Info, Ticket, Clock } from 'lucide-react';
 import { subscriptionService } from '../../services/subscriptionService';
 import BrandLogo from '../../components/common/BrandLogo';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import Modal from '../../components/ui/Modal';
 
 export default function SubscriptionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [couponCode, setCouponCode] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [checkoutPlan, setCheckoutPlan] = useState(null);
+  const [checkoutCouponCode, setCheckoutCouponCode] = useState('');
+  const [appliedCheckoutCoupon, setAppliedCheckoutCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
-  const [selectedPlanCode, setSelectedPlanCode] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [featureModalPlan, setFeatureModalPlan] = useState(null);
+  const [showCouponInput, setShowCouponInput] = useState(false);
+  const [headerCouponCode, setHeaderCouponCode] = useState('');
+  const [appliedHeaderCoupon, setAppliedHeaderCoupon] = useState(null);
 
-  // Fetch Subscription Plans API
+  // Guards for payment lifecycle
+  const isInitializingPaymentRef = useRef(false);
+  const rzpInstanceRef = useRef(null);
+
+  // Fetch Subscription Plans API (Single Source of Truth from MongoDB)
   const { data: plansRes, isLoading: isPlansLoading } = useQuery({
     queryKey: ['subscription-plans'],
     queryFn: subscriptionService.getPlans,
   });
+
+  const durationPlans = plansRes?.data?.plans || plansRes?.plans || [];
+  const isSystemActive = plansRes?.data?.isSubscriptionSystemActive ?? plansRes?.isSubscriptionSystemActive ?? true;
 
   // Fetch Current User Subscription API
   const { data: subRes, isLoading: isSubLoading } = useQuery({
@@ -29,24 +42,48 @@ export default function SubscriptionPage() {
     queryFn: subscriptionService.getMySubscription,
   });
 
-  const plans = plansRes?.data?.plans || plansRes?.plans || [];
   const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
-  // Guards for double-click & single Razorpay instance lifecycle
-  const isInitializingPaymentRef = useRef(false);
-  const rzpInstanceRef = useRef(null);
+  // Demo Request Mutation
+  const demoRequestMutation = useMutation({
+    mutationFn: (requestedPlan) => subscriptionService.requestFreeDemo(requestedPlan),
+    onSuccess: () => {
+      setSuccessMessage('Your Free Demo Request has been submitted!');
+      queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
+    },
+    onError: (err) => {
+      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to submit demo request.');
+    },
+  });
+
+  // Default features
+  const defaultFeatures = [
+    'Complete Fertilizer & Agri ERP Access',
+    'FIFO & Batch-wise Inventory Management',
+    'Barcode Scanning & Custom Print Layouts',
+    'GST Tax Compliance Reports (GSTR-1, GSTR-3B)',
+    'Supplier & Customer Financial Ledgers',
+    'WhatsApp Invoice Sharing & Print Support',
+    'Real-time Dashboard Analytics & Alerts',
+    '24/7 Priority Support & Free Updates',
+  ];
 
   // Coupon Validation Mutation
   const couponMutation = useMutation({
     mutationFn: ({ code, price }) => subscriptionService.validateCoupon(code, price),
     onSuccess: (res) => {
-      setAppliedCoupon(res.data || res);
+      if (checkoutPlan) {
+        setAppliedCheckoutCoupon(res.data || res);
+      } else {
+        setAppliedHeaderCoupon(res.data || res);
+      }
       setCouponError('');
     },
     onError: (err) => {
       setCouponError(err?.message || 'Invalid coupon code');
-      setAppliedCoupon(null);
+      if (checkoutPlan) setAppliedCheckoutCoupon(null);
+      else setAppliedHeaderCoupon(null);
     },
   });
 
@@ -55,7 +92,7 @@ export default function SubscriptionPage() {
     mutationFn: ({ planCode, couponCode }) => subscriptionService.createRazorpayOrder(planCode, couponCode),
     onSuccess: (res) => {
       const orderData = res?.data || res;
-      const couponCodeToUse = appliedCoupon?.coupon?.code || couponCode;
+      const couponCodeToUse = appliedCheckoutCoupon?.coupon?.code || appliedHeaderCoupon?.coupon?.code || checkoutCouponCode;
 
       if (typeof window !== 'undefined' && window.Razorpay) {
         try {
@@ -69,15 +106,16 @@ export default function SubscriptionPage() {
             amount: orderData.amount,
             currency: orderData.currency || 'INR',
             name: 'VEDIXA ERP',
-            description: `${orderData.planCode || selectedPlanCode} Plan Subscription`,
+            description: `${orderData.planName || orderData.planCode || checkoutPlan?.code} Plan Subscription`,
             order_id: orderData.orderId,
             handler: async function (response) {
               isInitializingPaymentRef.current = false;
+              setCheckoutPlan(null);
               verifyMutation.mutate({
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
-                planCode: selectedPlanCode,
+                planCode: checkoutPlan?.code,
                 couponCode: couponCodeToUse,
               });
             },
@@ -101,238 +139,380 @@ export default function SubscriptionPage() {
         }
       } else {
         isInitializingPaymentRef.current = false;
-        setErrorMessage('Razorpay SDK is loading. Please try again in a moment.');
+        setErrorMessage('Razorpay SDK failed to load. Please check your internet connection.');
       }
     },
     onError: (err) => {
       isInitializingPaymentRef.current = false;
-      setErrorMessage(err?.message || 'Failed to initialize Razorpay checkout order.');
+      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to initiate Razorpay order.');
     },
   });
 
   const verifyMutation = useMutation({
     mutationFn: (payload) => subscriptionService.verifyPayment(payload),
     onSuccess: () => {
-      isInitializingPaymentRef.current = false;
       queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
-      queryClient.invalidateQueries({ queryKey: ['shop-settings-global'] });
-      window.location.href = '/dashboard';
+      queryClient.invalidateQueries({ queryKey: ['subscription-plans'] });
+      setSuccessMessage('Payment verified & subscription activated successfully!');
+      setErrorMessage('');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1200);
     },
     onError: (err) => {
-      isInitializingPaymentRef.current = false;
-      setErrorMessage(err?.message || 'Payment verification failed.');
+      setErrorMessage(err?.response?.data?.message || err?.message || 'Payment verification failed.');
     },
   });
 
-  const handleApplyCoupon = () => {
-    if (!couponCode.trim()) return;
-    couponMutation.mutate({ code: couponCode, price: 399 });
+  const handleApplyHeaderCoupon = () => {
+    if (!headerCouponCode.trim()) return;
+    const basePrice = durationPlans[0]?.price || 199;
+    couponMutation.mutate({ code: headerCouponCode, price: basePrice });
   };
 
-  const handleSelectPlan = (code) => {
-    if (createOrderMutation.isPending || verifyMutation.isPending || isInitializingPaymentRef.current) return;
+  const handleApplyCheckoutCoupon = () => {
+    if (!checkoutCouponCode.trim() || !checkoutPlan) return;
+    couponMutation.mutate({ code: checkoutCouponCode, price: checkoutPlan.price });
+  };
+
+  const handleOpenCheckout = (plan) => {
+    if (!isSystemActive) return;
+    setCheckoutPlan(plan);
+    setCheckoutCouponCode('');
+    setAppliedCheckoutCoupon(null);
+    setCouponError('');
+    setErrorMessage('');
+    setSuccessMessage('');
+    isInitializingPaymentRef.current = false;
+  };
+
+  const handleConfirmPayment = () => {
+    if (!checkoutPlan || createOrderMutation.isPending || verifyMutation.isPending || isInitializingPaymentRef.current) {
+      return;
+    }
     isInitializingPaymentRef.current = true;
-    setSelectedPlanCode(code);
     setErrorMessage('');
     createOrderMutation.mutate({
-      planCode: code,
-      couponCode: appliedCoupon?.coupon?.code || couponCode,
+      planCode: checkoutPlan.code,
+      couponCode: appliedCheckoutCoupon?.coupon?.code || appliedHeaderCoupon?.coupon?.code || checkoutCouponCode,
     });
   };
 
+  // Payable calculations for checkout modal
+  const originalPrice = checkoutPlan?.price || 0;
+  const activeCoupon = appliedCheckoutCoupon || appliedHeaderCoupon;
+  const discountAmount = activeCoupon?.discountAmount || 0;
+  const finalPayableAmount = Math.max(0, originalPrice - discountAmount);
+
   return (
-    <div className="min-h-screen bg-slate-50 font-sans flex flex-col justify-between p-4 md:p-8">
-      {/* Header Bar */}
-      <header className="max-w-6xl mx-auto w-full flex items-center justify-between py-4 border-b border-slate-200 mb-8">
-        <BrandLogo />
-        {hasActiveSub && (
-          <Button
-            onClick={() => navigate('/dashboard')}
-            className="btn-agri-primary text-xs flex items-center gap-1.5"
-          >
-            <span>Go to Dashboard</span>
-            <ArrowRight className="w-4 h-4" />
-          </Button>
+    <div className="min-h-screen lg:h-screen lg:max-h-screen bg-slate-100/70 text-slate-800 flex flex-col justify-between overflow-y-auto lg:overflow-hidden font-sans antialiased p-3 sm:p-5 lg:p-6">
+      {/* HEADER (MEDIUM/COMPACT 70-80px HEIGHT, BALANCED PADDING) */}
+      <header className="max-w-6xl mx-auto w-full shrink-0 space-y-1.5 mb-2">
+        <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-5 py-3 shadow-2xs h-18">
+          <BrandLogo textScale="md" />
+
+          {hasActiveSub && currentSub && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Active: <strong>{currentSub.planName || currentSub.planCode}</strong> (Expires:{' '}
+                {new Date(currentSub.expiryDate).toLocaleDateString('en-IN')})
+              </span>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="ml-2 px-2.5 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded-lg transition"
+              >
+                ERP App →
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center space-x-2.5">
+            <button
+              onClick={() => setShowCouponInput(!showCouponInput)}
+              className="px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Ticket className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{appliedHeaderCoupon ? `Coupon: ${appliedHeaderCoupon.coupon?.code}` : 'Have Coupon?'}</span>
+            </button>
+
+            <Button onClick={() => navigate('/dashboard')} className="btn-agri-secondary text-xs py-1.5 px-3">
+              Back to App
+            </Button>
+          </div>
+        </div>
+
+        {showCouponInput && (
+          <div className="max-w-md mx-auto p-2.5 bg-white border border-slate-200 rounded-xl shadow-2xs flex items-center gap-2">
+            <Input
+              type="text"
+              placeholder="ENTER OFFER CODE"
+              value={headerCouponCode}
+              onChange={(e) => setHeaderCouponCode(e.target.value.toUpperCase())}
+              className="text-xs uppercase font-mono py-1.5"
+            />
+            <Button onClick={handleApplyHeaderCoupon} className="btn-agri-primary text-xs py-1.5 px-3.5 shrink-0">
+              Apply
+            </Button>
+            {appliedHeaderCoupon && (
+              <span className="text-[11px] font-extrabold text-emerald-700 shrink-0">
+                -₹{appliedHeaderCoupon.discountAmount}
+              </span>
+            )}
+          </div>
         )}
       </header>
 
-      {/* Main Content Container */}
-      <main className="max-w-6xl mx-auto w-full flex-1 space-y-8">
-        {/* Title & Subtitle */}
-        <div className="text-center space-y-3 max-w-2xl mx-auto">
-          <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-extrabold rounded-full uppercase tracking-wider inline-flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-700" /> Choose Your VEDIXA ERP Plan
-          </span>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Empower Your Fertilizer & Agri Retail Business
+      {/* MAIN VIEWPORT-FIT CONTENT */}
+      <main className="max-w-6xl mx-auto w-full flex-1 flex flex-col justify-between space-y-3">
+        <div className="text-center space-y-1 shrink-0 pt-1">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+            VEDIXA ERP Subscription Plans
           </h1>
-          <p className="text-xs md:text-sm text-slate-600">
-            Select a SaaS plan tailored to your store's billing, FIFO stock management, and financial reporting needs.
-          </p>
-        </div>
 
-        {/* ACTIVE SUBSCRIPTION NOTIFICATION CARD (If already active) */}
-        {hasActiveSub && currentSub && (
-          <div className="max-w-3xl mx-auto p-4 bg-emerald-900 text-white rounded-2xl shadow-md flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="w-8 h-8 text-emerald-300 shrink-0" />
-              <div>
-                <span className="text-[10px] uppercase font-bold text-emerald-300">Active Subscription</span>
-                <h3 className="text-base font-extrabold">{currentSub.planName} Plan</h3>
-                <span className="text-xs text-emerald-200 block">
-                  Valid until {new Date(currentSub.expiryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </span>
-              </div>
+          {!isSystemActive && (
+            <div className="max-w-lg mx-auto mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-semibold flex items-center justify-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Subscriptions are temporarily unavailable for maintenance. Please check back later.</span>
             </div>
-            <Button
-              onClick={() => navigate('/dashboard')}
-              className="bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-extrabold shrink-0"
-            >
-              Access Dashboard
-            </Button>
-          </div>
-        )}
+          )}
 
-        {/* ERROR MSG BANNER */}
-        {errorMessage && (
-          <div className="max-w-xl mx-auto p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-semibold text-center">
-            {errorMessage}
-          </div>
-        )}
-
-        {/* OFFER CODE INPUT */}
-        <div className="max-w-md mx-auto p-3.5 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-            <span className="flex items-center gap-1.5">
-              <Ticket className="w-4 h-4 text-emerald-700" /> Special Offer / Coupon Code
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              placeholder="ENTER OFFER CODE (e.g. VEDIXA50)"
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              className="text-xs uppercase font-mono"
-            />
-            <Button onClick={handleApplyCoupon} className="btn-agri-primary text-xs shrink-0">
-              Apply
-            </Button>
-          </div>
-          {couponError && <p className="text-[11px] text-red-600 font-semibold">{couponError}</p>}
-          {appliedCoupon && (
-            <p className="text-[11px] text-emerald-700 font-extrabold">
-              ✓ Code Applied! ₹{appliedCoupon.discountAmount} discount applied.
-            </p>
+          {successMessage && (
+            <div className="max-w-lg mx-auto py-2 px-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-bold flex items-center justify-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+          {errorMessage && (
+            <div className="max-w-lg mx-auto py-2 px-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-bold">
+              {errorMessage}
+            </div>
           )}
         </div>
 
-        {/* 3 PLAN CARDS GRID */}
+        {/* 3 EQUAL-HEIGHT & BALANCED PRICING CARDS GRID */}
         {isPlansLoading ? (
-          <div className="text-center py-12 text-slate-400 text-xs italic">Loading subscription plans...</div>
+          <div className="text-center py-10 text-slate-400 text-xs italic">Loading pricing options...</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch pt-2">
-            {plans.map((p) => {
-              const isPopular = p.isPopular || p.code === 'PROFESSIONAL';
-              const isCurrent = currentSub?.planCode === p.code && hasActiveSub;
-              const isSelected = (createOrderMutation.isPending || verifyMutation.isPending) && selectedPlanCode === p.code;
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch max-w-5xl mx-auto w-full my-auto py-4 lg:py-5">
+            {durationPlans.slice(0, 3).map((plan, index) => {
+              const isPopular = plan.isPopular || index === 1;
+
+              const cardThemes = [
+                {
+                  tabBg: 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white',
+                  glowBg: 'bg-gradient-to-b from-cyan-100/70 via-teal-50/40 to-transparent',
+                  btnStyle: 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white shadow-md hover:shadow-lg',
+                  accentColor: 'text-teal-700',
+                  badgeTitle: '1 MONTH',
+                },
+                {
+                  tabBg: 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white',
+                  glowBg: 'bg-gradient-to-b from-emerald-100/80 via-teal-50/50 to-transparent',
+                  btnStyle: 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white shadow-lg hover:shadow-xl ring-2 ring-emerald-500/30',
+                  accentColor: 'text-emerald-700',
+                  badgeTitle: '3 MONTHS',
+                },
+                {
+                  tabBg: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white',
+                  glowBg: 'bg-gradient-to-b from-purple-100/70 via-indigo-50/40 to-transparent',
+                  btnStyle: 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg',
+                  accentColor: 'text-indigo-700',
+                  badgeTitle: '6 MONTHS',
+                },
+              ];
+
+              const theme = cardThemes[index % cardThemes.length];
 
               return (
-                <div
-                  key={p.code}
-                  className={`relative rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between ${
-                    isPopular
-                      ? 'bg-white border-2 border-[#047857] shadow-xl md:-translate-y-2'
-                      : 'bg-white border border-slate-200 shadow-sm hover:border-emerald-300'
-                  }`}
-                >
-                  {/* MOST POPULAR BADGE */}
+                <div key={plan.code} className="flex flex-col h-full relative group">
+                  
+                  {/* FLOATING MOST POPULAR BADGE - POSITIONED CLEANLY ABOVE TAB LABEL */}
                   {isPopular && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#047857] text-white text-[10px] font-extrabold uppercase px-3 py-1 rounded-full shadow-xs tracking-wider flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-amber-300 text-amber-300" /> Most Popular
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-amber-400 text-slate-950 text-[10px] font-extrabold uppercase px-3 py-0.5 rounded-full shadow-md tracking-wider flex items-center gap-1 z-30 whitespace-nowrap border border-amber-300">
+                      <Star className="w-3 h-3 fill-slate-950 text-slate-950 shrink-0" /> MOST POPULAR
                     </div>
                   )}
 
-                  <div className="space-y-4">
-                    {/* Plan Title & Subtitle */}
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-black text-slate-900 tracking-tight">{p.name}</h3>
-                      <p className="text-xs text-slate-500 font-medium">
-                        {p.code === 'STARTER' && 'Suitable for small fertilizer & agri retail shops.'}
-                        {p.code === 'PROFESSIONAL' && 'Suitable for growing fertilizer & agri businesses.'}
-                        {p.code === 'PREMIUM' && 'Complete VEDIXA ERP with full advanced controls.'}
-                      </p>
-                    </div>
-
-                    {/* Price Section */}
-                    <div className="border-y border-slate-100 py-3.5 space-y-0.5">
-                      <div className="flex items-baseline gap-2">
-                        {p.originalPrice && (
-                          <span className="text-sm font-semibold text-slate-400 line-through">
-                            ₹{p.originalPrice}
-                          </span>
-                        )}
-                        <span className="text-3xl font-extrabold text-[#047857] font-mono">
-                          ₹{p.price}
-                        </span>
-                        <span className="text-xs text-slate-500 font-semibold">/ month</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100 inline-block">
-                        Includes {p.discountTokens} Discount Tokens
-                      </span>
-                    </div>
-
-                    {/* Feature List */}
-                    <div className="space-y-2">
-                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
-                        Included Features:
-                      </span>
-                      <ul className="space-y-2 text-xs text-slate-700 font-medium">
-                        {p.features?.map((feat, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <Check className="w-4 h-4 text-[#047857] shrink-0 mt-0.5" />
-                            <span className="leading-tight">{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
+                  {/* TOP HEADER TAB BADGE */}
+                  <div className="w-44 mx-auto relative z-10 -mb-4 text-center">
+                    <div className={`h-7 px-4 rounded-t-2xl font-black text-xs uppercase tracking-wider shadow-2xs flex items-center justify-center ${theme.tabBg}`}>
+                      {plan.name || theme.badgeTitle}
                     </div>
                   </div>
 
-                  {/* CTA Button */}
-                  <div className="pt-6">
-                    <Button
-                      onClick={() => handleSelectPlan(p.code)}
-                      disabled={isSelected || isCurrent || createOrderMutation.isPending || verifyMutation.isPending || isInitializingPaymentRef.current}
-                      className={`w-full py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer ${
-                        isCurrent
-                          ? 'bg-slate-100 text-slate-400 cursor-default border border-slate-200'
-                          : isPopular
-                          ? 'bg-[#047857] hover:bg-[#036046] text-white shadow-md'
-                          : 'btn-agri-primary'
-                      }`}
-                    >
-                      {isSelected
-                        ? 'Activating Plan...'
-                        : isCurrent
-                        ? 'Current Active Plan'
-                        : p.code === 'STARTER'
-                        ? 'Select Starter'
-                        : p.code === 'PROFESSIONAL'
-                        ? 'Select Professional'
-                        : 'Choose Premium'}
-                    </Button>
+                  {/* WHITE ROUNDED CARD CONTAINER (BALANCED NATURAL HEIGHT) */}
+                  <div
+                    className={`bg-white rounded-3xl pt-7 pb-5 px-6 shadow-xl border flex flex-col justify-between h-full relative z-0 transition-all duration-300 ${
+                      isPopular
+                        ? 'border-emerald-500 ring-2 ring-emerald-500/20 shadow-2xl'
+                        : 'border-slate-200/90 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="space-y-3.5">
+                      <div className={`rounded-2xl p-4 text-center space-y-0.5 -mx-1 ${theme.glowBg}`}>
+                        {plan.originalPrice && (
+                          <div className="text-xs font-semibold text-slate-400 line-through">
+                            ₹{plan.originalPrice}
+                          </div>
+                        )}
+                        <div className="text-3xl lg:text-4xl font-black text-slate-900 font-mono tracking-tight">
+                          ₹{plan.price}
+                        </div>
+                        <div className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">
+                          {plan.billingPeriod || 'per duration'}
+                        </div>
+                        {plan.offerPrice && (
+                          <span className="inline-block mt-1 text-[10px] font-extrabold text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                            Offer Price
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 pt-1 border-t border-slate-100">
+                        <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                          {(plan.features || defaultFeatures).slice(0, 5).map((feat, idx) => (
+                            <li key={idx} className="flex items-center gap-2">
+                              <CheckCircle2 className={`w-4 h-4 shrink-0 stroke-[2.2] ${theme.accentColor}`} />
+                              <span className="leading-tight text-xs">{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() => setFeatureModalPlan(plan)}
+                          className="text-xs font-bold text-slate-500 hover:text-slate-800 underline inline-flex items-center gap-1 pt-1 cursor-pointer"
+                        >
+                          <Info className="w-3.5 h-3.5" /> View feature details
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-auto space-y-2">
+                      <button
+                        onClick={() => handleOpenCheckout(plan)}
+                        disabled={!isSystemActive || hasActiveSub}
+                        className={`w-full py-2.5 px-4 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${theme.btnStyle}`}
+                      >
+                        {!isSystemActive ? 'System Disabled' : `Get Started (₹${plan.price})`}
+                      </button>
+
+                      <button
+                        onClick={() => demoRequestMutation.mutate(plan.code)}
+                        disabled={demoRequestMutation.isPending || hasActiveSub}
+                        className="w-full py-1 text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition flex items-center justify-center space-x-1 disabled:opacity-50 cursor-pointer"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{demoRequestMutation.isPending ? 'Requesting...' : 'Request Free Demo'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+
+        <footer className="text-center text-xs text-slate-400 font-medium shrink-0 pt-1 border-t border-slate-200/60">
+          VEDIXA Agri-Business ERP © {new Date().getFullYear()} – All Rights Reserved. Support Call: 9848081875
+        </footer>
       </main>
 
-      {/* Footer */}
-      <footer className="max-w-6xl mx-auto w-full text-center text-xs text-slate-400 py-6 border-t border-slate-200 mt-12">
-        VEDIXA Agri-Business ERP © {new Date().getFullYear()} – All Rights Reserved.
-      </footer>
+      {/* CHECKOUT MODAL */}
+      {checkoutPlan && (
+        <Modal
+          isOpen={true}
+          onClose={() => setCheckoutPlan(null)}
+          title={`Subscribe to ${checkoutPlan.name}`}
+          size="md"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-1.5">
+              <div className="flex justify-between text-xs font-bold text-slate-800">
+                <span>Plan Duration:</span>
+                <span className="text-emerald-800">{checkoutPlan.billingPeriod || checkoutPlan.name}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-slate-800">
+                <span>Base Price:</span>
+                <span className="font-mono">₹{checkoutPlan.price}</span>
+              </div>
+              {activeCoupon && (
+                <div className="flex justify-between text-xs font-bold text-emerald-700 border-t border-emerald-200/60 pt-1.5">
+                  <span>Coupon Discount ({activeCoupon.coupon?.code}):</span>
+                  <span className="font-mono">- ₹{discountAmount}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-extrabold text-slate-900 border-t border-emerald-200 pt-1.5">
+                <span>Final Payable Amount:</span>
+                <span className="font-mono text-emerald-800 text-base">₹{finalPayableAmount}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">Have a Promo / Coupon Code?</label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="ENTER CODE"
+                  value={checkoutCouponCode}
+                  onChange={(e) => setCheckoutCouponCode(e.target.value.toUpperCase())}
+                  className="text-xs uppercase font-mono py-1.5"
+                />
+                <Button onClick={handleApplyCheckoutCoupon} className="btn-agri-primary text-xs py-1.5 shrink-0">
+                  Apply
+                </Button>
+              </div>
+              {couponError && <p className="text-[11px] text-red-600 font-semibold">{couponError}</p>}
+              {activeCoupon && (
+                <p className="text-[11px] text-emerald-700 font-extrabold">✓ Discount Applied!</p>
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center justify-end space-x-2.5 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCheckoutPlan(null)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <Button
+                onClick={handleConfirmPayment}
+                disabled={createOrderMutation.isPending || verifyMutation.isPending || isInitializingPaymentRef.current}
+                className="btn-agri-primary text-xs font-bold px-4 py-2 shadow-md cursor-pointer"
+              >
+                {createOrderMutation.isPending ? 'Creating Order...' : `Proceed to Pay ₹${finalPayableAmount}`}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* FEATURE DETAILS MODAL */}
+      {featureModalPlan && (
+        <Modal
+          isOpen={true}
+          onClose={() => setFeatureModalPlan(null)}
+          title={`${featureModalPlan.name} Included Features`}
+          size="md"
+        >
+          <div className="space-y-3">
+            <ul className="space-y-2 text-xs text-slate-700 font-medium">
+              {(featureModalPlan.features || defaultFeatures).map((feat, idx) => (
+                <li key={idx} className="flex items-start gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200/80">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 stroke-[2.2]" />
+                  <span>{feat}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => setFeatureModalPlan(null)} className="btn-agri-secondary text-xs py-1.5">
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

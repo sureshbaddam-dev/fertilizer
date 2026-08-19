@@ -33,6 +33,14 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentReceiptPdf, generateMonthlyStatementPdf, printMonthlyStatementPdf, buildMonthlyStatementPdfDoc } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import PdfCanvasViewer from '../../components/PdfCanvasViewer';
+import vedixaLogoImg from '../../assets/vedixa_logo.png';
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const YEAR_OPTIONS = ['2026', '2025', '2024', '2023', '2022'];
 
 // Record Payment Modal Dialog Component
 function RecordPaymentModal({ isOpen, onClose, customer }) {
@@ -345,10 +353,28 @@ export default function CustomerLedgerPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  const [statementType, setStatementType] = useState('MONTHLY'); // 'MONTHLY' | 'CUSTOM' | 'FULL'
+  const [statementType, setStatementType] = useState('FULL'); // Default to 'FULL' history
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthStr);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  const [tempFromDate, setTempFromDate] = useState('');
+  const [tempToDate, setTempToDate] = useState('');
+
+  const [selectedYearVal, selectedMonthNumVal] = useMemo(() => {
+    if (selectedMonth && selectedMonth.includes('-')) {
+      const parts = selectedMonth.split('-');
+      return [parts[0], parts[1]];
+    }
+    const d = new Date();
+    return [String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0')];
+  }, [selectedMonth]);
+
+  const handleApplyCustomDates = () => {
+    setFromDate(tempFromDate);
+    setToDate(tempToDate);
+    setCurrentPage(1);
+  };
 
   const [selectedPeriod, setSelectedPeriod] = useState('Monthly Statement');
   const [editableLedgerMsg, setEditableLedgerMsg] = useState('');
@@ -453,62 +479,76 @@ export default function CustomerLedgerPage() {
     return [];
   }, [apiResponse]);
 
-  // Authoritative Centralized Statement Calculation
+  // Authoritative Centralized Statement Calculation for current period & filters
   const monthlyCalculation = useMemo(() => {
     return calculateCustomerStatement({
       transactions: rawTransactions,
       customer,
-      statementType: 'MONTHLY',
+      statementType,
       selectedMonth: selectedMonth || defaultMonthStr,
+      fromDate,
+      toDate,
     });
-  }, [rawTransactions, customer, selectedMonth, defaultMonthStr]);
-
-  // Filtered Transactions
-  const filteredTransactions = useMemo(() => {
-    const list = Array.isArray(rawTransactions) ? rawTransactions : [];
-    return list.filter((tx) => {
-      if (!tx) return false;
-
-      if (appliedTxType !== 'All') {
-        if (appliedTxType === 'Purchase' || appliedTxType === 'Invoice') {
-          if (tx.type !== 'Invoice') return false;
-        } else if (appliedTxType === 'Payment') {
-          if (tx.type !== 'Payment') return false;
-        } else if (appliedTxType === 'Advance') {
-          if (tx.type !== 'Advance') return false;
-        }
-      }
-
-      if (appliedRefType !== 'All') {
-        if (appliedRefType === 'INV' || appliedRefType === 'Invoice') {
-          if (tx.type !== 'Invoice') return false;
-        } else if (appliedRefType === 'PAY' || appliedRefType === 'Payment') {
-          if (tx.type !== 'Payment') return false;
-        }
-      }
-
-      return true;
-    });
-  }, [rawTransactions, appliedTxType, appliedRefType]);
+  }, [rawTransactions, customer, statementType, selectedMonth, defaultMonthStr, fromDate, toDate]);
 
   const displayTransactions = useMemo(() => {
-    let list = filteredTransactions;
+    let list = monthlyCalculation.monthlyTransactions || monthlyCalculation.transactions || [];
 
-    if (statementType === 'MONTHLY') {
-      list = monthlyCalculation.monthlyTransactions;
-    } else if (statementType === 'CUSTOM') {
-      if (fromDate || toDate) {
-        const start = fromDate ? new Date(`${fromDate}T00:00:00`) : new Date(0);
-        const end = toDate ? new Date(`${toDate}T23:59:59`) : new Date();
-        list = filteredTransactions.filter((tx) => {
-          const d = new Date(tx.rawDate || tx.date || tx.createdAt);
-          return d >= start && d <= end;
-        });
-      }
+    if (appliedTxType !== 'All' || appliedRefType !== 'All') {
+      list = list.filter((tx) => {
+        if (!tx) return false;
+
+        if (appliedTxType !== 'All') {
+          if (appliedTxType === 'Purchase' || appliedTxType === 'Invoice') {
+            if (tx.type !== 'Invoice') return false;
+          } else if (appliedTxType === 'Payment') {
+            if (tx.type !== 'Payment') return false;
+          } else if (appliedTxType === 'Advance') {
+            if (tx.type !== 'Advance') return false;
+          }
+        }
+
+        if (appliedRefType !== 'All') {
+          if (appliedRefType === 'INV' || appliedRefType === 'Invoice') {
+            if (tx.type !== 'Invoice') return false;
+          } else if (appliedRefType === 'PAY' || appliedRefType === 'Payment') {
+            if (tx.type !== 'Payment') return false;
+          }
+        }
+
+        return true;
+      });
     }
 
     return list;
-  }, [statementType, monthlyCalculation, filteredTransactions, fromDate, toDate]);
+  }, [monthlyCalculation, appliedTxType, appliedRefType]);
+
+  // Single Source of Truth: Dynamic Financial Summary Metrics for Top Cards
+  const dynamicTopMetrics = useMemo(() => {
+    const isFull = statementType === 'FULL';
+    const isMonthly = statementType === 'MONTHLY';
+
+    const openingBal = Number(monthlyCalculation.openingBalance || 0);
+    const purchases = Number(monthlyCalculation.newPurchases || (isFull ? customer.totalPurchases : 0) || 0);
+    const paid = Number(monthlyCalculation.payments || (isFull ? customer.totalPaid : 0) || 0);
+    const netBal = Number(monthlyCalculation.closingDue ?? (isFull ? customer.outstandingBalance : 0) ?? 0);
+    const outstanding = netBal > 0 ? netBal : 0;
+    const advance = netBal < 0 ? Math.abs(netBal) : (isFull ? Number(customer.advanceBalance || 0) : 0);
+
+    return {
+      showOpeningBalance: !isFull,
+      openingBalance: openingBal,
+      totalPurchases: purchases,
+      totalPaid: paid,
+      outstanding,
+      advanceBalance: advance,
+      openingLabel: 'Opening Balance',
+      purchasesLabel: isFull ? 'Total Purchases' : (isMonthly ? 'Monthly Purchases' : 'Period Purchases'),
+      paidLabel: isFull ? 'Total Paid' : (isMonthly ? 'Monthly Paid' : 'Period Paid'),
+      outstandingLabel: isFull ? 'Outstanding' : (isMonthly ? 'Closing Due' : 'Period Due'),
+      advanceLabel: isFull ? 'Advance Balance' : 'Period Advance',
+    };
+  }, [statementType, monthlyCalculation, customer]);
 
   const totalEntries = displayTransactions.length;
   const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize));
@@ -592,10 +632,17 @@ export default function CustomerLedgerPage() {
   };
 
   const handleResetFilter = () => {
+    setStatementType('FULL');
+    setSelectedMonth(defaultMonthStr);
+    setFromDate('');
+    setToDate('');
+    setTempFromDate('');
+    setTempToDate('');
     setTransactionTypeInput('All');
     setRefTypeInput('All');
     setAppliedTxType('All');
     setAppliedRefType('All');
+    setSearchQuery('');
     setCurrentPage(1);
   };
 
@@ -606,11 +653,7 @@ export default function CustomerLedgerPage() {
   }), [customer]);
 
   const handlePrintLedger = () => {
-    if (statementType === 'MONTHLY') {
-      printMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
-    } else {
-      printLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
-    }
+    window.print();
   };
 
   const handleDownloadLedgerPdf = () => {
@@ -691,59 +734,61 @@ export default function CustomerLedgerPage() {
 
   return (
     <div className="w-full pb-10 space-y-4 sm:space-y-5 font-sans text-xs">
+      {/* ON-SCREEN UI CONTAINER (HIDDEN DURING PRINT) */}
+      <div className="customer-ledger-screen-ui print:hidden space-y-4 sm:space-y-5">
       {/* 1. TOP HEADER NAVIGATION BAR */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full overflow-hidden">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={() => navigate('/customers')}
             className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors cursor-pointer shrink-0"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-black text-gray-900">Customer Ledger</h1>
-              <span className="px-2.5 py-0.5 bg-emerald-50 text-[#047857] border border-emerald-200 rounded-full font-bold text-[10px]">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base sm:text-xl font-black text-gray-900 truncate">Customer Ledger</h1>
+              <span className="px-2 py-0.5 bg-emerald-50 text-[#047857] border border-emerald-200 rounded-full font-bold text-[10px] shrink-0">
                 {customer.status}
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 font-medium">Real-time synchronized transactions &amp; financial ledger</p>
+            <p className="text-[10px] sm:text-[11px] text-gray-500 font-medium truncate">Real-time synchronized transactions &amp; financial ledger</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setIsPaymentModalOpen(true)}
-            className="px-3.5 py-2 bg-[#047857] hover:bg-[#036448] text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-[#047857] hover:bg-[#036448] text-white font-bold rounded-xl text-[11px] sm:text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Record Payment (F3)</span>
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Record Payment</span>
           </button>
           <button
             type="button"
             onClick={handlePrintLedger}
-            className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 font-bold rounded-xl text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
           >
-            <Printer className="w-4 h-4 text-gray-600" />
-            <span>Print Ledger</span>
+            <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+            <span>Print</span>
           </button>
           <button
             type="button"
             onClick={handleDownloadLedgerPdf}
-            className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-800 font-bold rounded-xl text-[11px] sm:text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
           >
-            <Download className="w-4 h-4 text-gray-600" />
-            <span>Download Statement</span>
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+            <span>Download</span>
           </button>
           <button
             type="button"
             onClick={handleWhatsAppStatement}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] sm:text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
           >
-            <MessageSquare className="w-4 h-4 text-white" />
-            <span>WhatsApp Statement</span>
+            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            <span>WhatsApp</span>
           </button>
         </div>
       </div>
@@ -751,32 +796,32 @@ export default function CustomerLedgerPage() {
       {/* 2. MAIN CONTENT GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* LEFT COLUMN (9 COLS) */}
-        <div className="lg:col-span-9 space-y-4 sm:space-y-5">
+        <div className="lg:col-span-9 space-y-4 sm:space-y-5 min-w-0 w-full">
           {/* PROFILE CARD */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-2xs">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 rounded-full bg-[#047857] text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
+          <div className="bg-white border border-gray-200 rounded-2xl p-3.5 sm:p-5 shadow-2xs w-full max-w-full overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 w-full">
+              <div className="flex items-start gap-3 sm:gap-4 min-w-0 w-full lg:w-auto">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#047857] text-white flex items-center justify-center font-bold text-sm sm:text-base shadow-sm shrink-0">
                   {avatarInitials}
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">{customer.name}</h2>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-[#047857] rounded-full font-bold text-[10px]">
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">{customer.name}</h2>
+                    <span className="px-2 py-0.5 bg-emerald-50 text-[#047857] rounded-full font-bold text-[10px] shrink-0">
                       {customer.type}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-600 font-mono flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{customer.mobile || 'No Mobile Registered'}</span>
+                  <div className="text-xs text-gray-600 font-mono flex items-center gap-1.5 truncate">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <span className="truncate">{customer.mobile || 'No Mobile Registered'}</span>
                   </div>
-                  <div className="text-[11px] text-gray-600 flex flex-wrap items-center gap-x-4 gap-y-0.5 pt-0.5">
+                  <div className="text-[11px] text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-0.5 pt-0.5">
                     <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       <span>Village: <strong className="text-gray-800">{customer.village || 'N/A'}</strong></span>
                     </span>
                     <span className="flex items-center gap-1">
-                      <Building className="w-3.5 h-3.5 text-gray-400" />
+                      <Building className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       <span>District: <strong className="text-gray-800">{customer.district || 'N/A'}</strong></span>
                     </span>
                   </div>
@@ -784,25 +829,56 @@ export default function CustomerLedgerPage() {
               </div>
 
               {/* DYNAMIC FINANCIAL SUMMARY CARDS */}
-              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap text-right border-t md:border-t-0 md:border-l border-gray-100 pt-3 md:pt-0 md:pl-4">
-                <div className="p-2 bg-gray-50/80 rounded-xl border border-gray-200/80 min-w-[95px]">
-                  <span className="text-[10px] text-gray-500 font-medium uppercase block">Total Purchases</span>
-                  <span className="font-mono font-bold text-blue-600 text-xs">₹ {customer.totalPurchases.toLocaleString('en-IN')}.00</span>
-                </div>
-                <div className="p-2 bg-emerald-50/60 rounded-xl border border-emerald-200/80 min-w-[95px]">
-                  <span className="text-[10px] text-gray-500 font-medium uppercase block">Total Paid</span>
-                  <span className="font-mono font-bold text-emerald-700 text-xs">₹ {customer.totalPaid.toLocaleString('en-IN')}.00</span>
-                </div>
-                <div className={`p-2 rounded-xl border min-w-[105px] ${customer.outstandingBalance > 0 ? 'bg-red-50/70 border-red-200/80' : 'bg-gray-50/80 border-gray-200/80'}`}>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Outstanding</span>
-                  <span className={`font-mono font-black text-sm ${customer.outstandingBalance > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                    ₹ {customer.outstandingBalance.toLocaleString('en-IN')}.00
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-2 sm:gap-2.5 w-full lg:w-auto border-t lg:border-t-0 lg:border-l border-gray-100 pt-3 lg:pt-0 lg:pl-4">
+                {/* 1. Opening Balance Card (ONLY for Monthly Statement & Custom Date) */}
+                {dynamicTopMetrics.showOpeningBalance && (
+                  <div className="p-2 sm:p-2.5 bg-slate-50/90 rounded-xl border border-slate-200 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block truncate">
+                      {dynamicTopMetrics.openingLabel}
+                    </span>
+                    <span className="font-mono font-bold text-slate-800 text-xs sm:text-sm block truncate">
+                      ₹ {dynamicTopMetrics.openingBalance.toLocaleString('en-IN')}.00
+                    </span>
+                  </div>
+                )}
+
+                {/* 2. Purchases Card */}
+                <div className="p-2 sm:p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/80 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
+                  <span className="text-[10px] text-blue-600 font-bold uppercase block truncate">
+                    {dynamicTopMetrics.purchasesLabel}
+                  </span>
+                  <span className="font-mono font-bold text-blue-700 text-xs sm:text-sm block truncate">
+                    ₹ {dynamicTopMetrics.totalPurchases.toLocaleString('en-IN')}.00
                   </span>
                 </div>
-                <div className={`p-2 rounded-xl border min-w-[105px] ${customer.advanceBalance > 0 ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-gray-50/80 border-gray-200/80'}`}>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Advance Balance</span>
-                  <span className={`font-mono font-black text-sm ${customer.advanceBalance > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                    ₹ {customer.advanceBalance.toLocaleString('en-IN')}.00
+
+                {/* 3. Paid Card */}
+                <div className="p-2 sm:p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
+                  <span className="text-[10px] text-emerald-600 font-bold uppercase block truncate">
+                    {dynamicTopMetrics.paidLabel}
+                  </span>
+                  <span className="font-mono font-bold text-emerald-700 text-xs sm:text-sm block truncate">
+                    ₹ {dynamicTopMetrics.totalPaid.toLocaleString('en-IN')}.00
+                  </span>
+                </div>
+
+                {/* 4. Outstanding / Closing Due Card */}
+                <div className={`p-2 sm:p-2.5 rounded-xl border w-full lg:w-auto lg:min-w-[95px] text-left lg:text-right ${dynamicTopMetrics.outstanding > 0 ? 'bg-red-50/80 border-red-200' : 'bg-gray-50/80 border-gray-200'}`}>
+                  <span className="text-[10px] font-bold text-red-600 uppercase block truncate">
+                    {dynamicTopMetrics.outstandingLabel}
+                  </span>
+                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${dynamicTopMetrics.outstanding > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                    ₹ {dynamicTopMetrics.outstanding.toLocaleString('en-IN')}.00
+                  </span>
+                </div>
+
+                {/* 5. Advance Balance / Period Advance Card */}
+                <div className={`p-2 sm:p-2.5 rounded-xl border w-full lg:w-auto lg:min-w-[95px] text-left lg:text-right ${dynamicTopMetrics.advanceBalance > 0 ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-gray-50/80 border-gray-200/80'}`}>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase block truncate">
+                    {dynamicTopMetrics.advanceLabel}
+                  </span>
+                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${dynamicTopMetrics.advanceBalance > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                    ₹ {dynamicTopMetrics.advanceBalance.toLocaleString('en-IN')}.00
                   </span>
                 </div>
               </div>
@@ -810,7 +886,7 @@ export default function CustomerLedgerPage() {
           </div>
 
           {/* TABS HEADER */}
-          <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto scrollbar-none pb-0.5">
+          <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto scrollbar-none max-w-full pb-0.5 whitespace-nowrap text-xs font-bold w-full">
             {[
               { id: 'Ledger', label: 'Ledger' },
               { id: 'Profile', label: 'Profile & Details' },
@@ -838,104 +914,120 @@ export default function CustomerLedgerPage() {
           {activeTab === 'Ledger' && (
             <div className="space-y-4">
               {/* STATEMENT PERIOD SELECTOR BAR */}
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs space-y-3 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-gray-700">Statement Period:</span>
-                    <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => setStatementType('MONTHLY')}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                          statementType === 'MONTHLY' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Monthly Statement ⭐
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStatementType('CUSTOM')}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                          statementType === 'CUSTOM' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Custom Date
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStatementType('FULL')}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                          statementType === 'FULL' ? 'bg-[#047857] text-white shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Full History
-                      </button>
+              <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-4 shadow-2xs text-xs w-full max-w-full overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 w-full">
+                  {/* Left: Filter Title & Primary Selector */}
+                  <div className="flex flex-wrap items-center gap-2 max-w-full">
+                    <div className="flex items-center gap-1.5 font-bold text-gray-800 shrink-0">
+                      <Calendar className="w-4 h-4 text-[#047857]" />
+                      <span>Statement Period</span>
                     </div>
+
+                    <select
+                      value={statementType}
+                      onChange={(e) => {
+                        setStatementType(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="h-8 px-2.5 bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:border-[#047857] cursor-pointer transition-colors max-w-full"
+                    >
+                      <option value="FULL">Full History</option>
+                      <option value="MONTHLY">Monthly Statement</option>
+                      <option value="CUSTOM">Custom Date</option>
+                    </select>
                   </div>
 
-                  {statementType === 'MONTHLY' && (
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-semibold text-gray-600">Select Month:</label>
-                      <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:border-[#047857]"
-                      />
-                    </div>
-                  )}
+                  {/* Right: Sub-Controls based on Mode */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap max-w-full">
+                    {statementType === 'MONTHLY' && (
+                      <div className="flex items-center gap-1.5 flex-wrap max-w-full">
+                        <label className="text-xs font-semibold text-gray-600 shrink-0">Select Month:</label>
+                        <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-xl px-2 py-0.5 max-w-full">
+                          <select
+                            value={selectedMonthNumVal}
+                            onChange={(e) => {
+                              setSelectedMonth(`${selectedYearVal}-${e.target.value}`);
+                              setCurrentPage(1);
+                            }}
+                            className="bg-transparent text-xs font-bold text-gray-800 focus:outline-none cursor-pointer py-1"
+                          >
+                            {MONTH_NAMES.map((mName, idx) => {
+                              const numStr = String(idx + 1).padStart(2, '0');
+                              return (
+                                <option key={mName} value={numStr}>
+                                  {mName}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <select
+                            value={selectedYearVal}
+                            onChange={(e) => {
+                              setSelectedMonth(`${e.target.value}-${selectedMonthNumVal}`);
+                              setCurrentPage(1);
+                            }}
+                            className="bg-transparent text-xs font-bold text-gray-800 focus:outline-none cursor-pointer py-1"
+                          >
+                            {YEAR_OPTIONS.map((y) => (
+                              <option key={y} value={y}>
+                                {y}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
 
-                  {statementType === 'CUSTOM' && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="date"
-                        value={fromDate}
-                        onChange={(e) => setFromDate(e.target.value)}
-                        className="h-8 px-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800"
-                      />
-                      <span className="text-xs text-gray-400">to</span>
-                      <input
-                        type="date"
-                        value={toDate}
-                        onChange={(e) => setToDate(e.target.value)}
-                        className="h-8 px-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800"
-                      />
-                    </div>
-                  )}
+                    {statementType === 'CUSTOM' && (
+                      <div className="flex items-center gap-1.5 flex-wrap max-w-full">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-semibold text-gray-600">From:</span>
+                          <input
+                            type="date"
+                            value={tempFromDate}
+                            onChange={(e) => setTempFromDate(e.target.value)}
+                            className="h-8 px-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:outline-none focus:border-[#047857]"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-semibold text-gray-600">To:</span>
+                          <input
+                            type="date"
+                            value={tempToDate}
+                            onChange={(e) => setTempToDate(e.target.value)}
+                            className="h-8 px-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:outline-none focus:border-[#047857]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleApplyCustomDates}
+                          className="px-2.5 py-1.5 bg-[#047857] hover:bg-[#036448] text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer shrink-0"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Apply</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {statementType === 'FULL' && (
+                      <span className="px-2.5 py-1 bg-emerald-50 text-[#047857] border border-emerald-200 rounded-full font-bold text-[11px] flex items-center gap-1 shrink-0">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Showing Full History</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
-
-                {/* MONTHLY SUMMARY METRICS CARDS */}
-                {statementType === 'MONTHLY' && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 border-t border-gray-100">
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Opening Balance</span>
-                      <span className="font-mono font-bold text-slate-800 text-sm">₹ {monthlyCalculation.openingBalance.toLocaleString('en-IN')}.00</span>
-                    </div>
-                    <div className="p-2.5 bg-blue-50/70 rounded-xl border border-blue-200/80">
-                      <span className="text-[10px] font-bold text-blue-600 uppercase block">New Purchases</span>
-                      <span className="font-mono font-bold text-blue-700 text-sm">₹ {monthlyCalculation.newPurchases.toLocaleString('en-IN')}.00</span>
-                    </div>
-                    <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80">
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase block">Payments</span>
-                      <span className="font-mono font-bold text-emerald-700 text-sm">₹ {monthlyCalculation.payments.toLocaleString('en-IN')}.00</span>
-                    </div>
-                    <div className="p-2.5 bg-red-50/80 rounded-xl border border-red-200">
-                      <span className="text-[10px] font-extrabold text-red-600 uppercase block">Closing Due</span>
-                      <span className="font-mono font-black text-red-600 text-base">₹ {monthlyCalculation.closingDue.toLocaleString('en-IN')}.00</span>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* FILTER CONTROLS ROW */}
-              <div className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-2xs flex flex-wrap items-end justify-between gap-3 text-xs">
-                <div className="flex flex-wrap items-center gap-3 flex-1">
-                  <div className="space-y-1">
+              <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs w-full max-w-full overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-1 w-full">
+                  <div className="space-y-1 w-full sm:w-auto">
                     <label className="text-[10px] font-bold text-gray-500 uppercase block">Transaction Type</label>
                     <select
                       value={transactionTypeInput}
                       onChange={(e) => setTransactionTypeInput(e.target.value)}
-                      className="h-8 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:outline-none focus:border-[#047857] min-w-[120px]"
+                      className="h-8 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-800 focus:outline-none focus:border-[#047857] w-full sm:w-auto min-w-[130px]"
                     >
                       <option value="All">All Transactions</option>
                       <option value="Invoice">Invoices (Purchases)</option>
@@ -945,7 +1037,7 @@ export default function CustomerLedgerPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <button
                     type="button"
                     onClick={handleApplyFilter}
@@ -1971,6 +2063,201 @@ export default function CustomerLedgerPage() {
           </div>
         </div>
       )}
+      </div>
+
+      {/* HIDDEN DEDICATED PRINT CONTAINER FOR A4 SINGLE-PAGE CUSTOMER LEDGER */}
+      <div className="printable-ledger-document customer-ledger-print hidden print:block bg-white text-black p-0 m-0 font-sans">
+        {/* 1. SHOP & VEDIXA BRANDING HEADER */}
+        <div className="flex items-start justify-between border-b-2 border-[#047857] pb-2.5 mb-3">
+          {/* Top-Left: Logged-In Shop Details */}
+          <div className="flex items-center gap-3">
+            {(shopSettings.logoUrl || shopSettings.shopLogo) && (
+              <img
+                src={shopSettings.logoUrl || shopSettings.shopLogo}
+                alt="Shop Logo"
+                className="h-11 w-auto object-contain"
+              />
+            )}
+            <div>
+              <h1 className="text-lg font-black text-[#047857] uppercase tracking-tight">
+                {shopSettings.shopName || shopSettings.name || 'Agri Solutions Store'}
+              </h1>
+              {shopSettings.address && (
+                <p className="text-[9.5px] text-gray-700 font-medium leading-tight">
+                  {shopSettings.address}
+                </p>
+              )}
+              <p className="text-[9.5px] text-gray-700 font-medium leading-tight">
+                Phone: {shopSettings.mobile || shopSettings.phone || 'N/A'}
+                {shopSettings.gstNumber || shopSettings.gstin ? ` | GSTIN: ${shopSettings.gstNumber || shopSettings.gstin}` : ''}
+                {shopSettings.email ? ` | Email: ${shopSettings.email}` : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* Top-Right: Official VEDIXA Branding System ([VEDIXA LOGO] + VEDIXA text underneath) */}
+          <div className="flex flex-col items-center justify-center shrink-0 text-center">
+            <img
+              src={vedixaLogoImg}
+              alt="VEDIXA"
+              className="h-9 w-auto object-contain select-none"
+            />
+            <span className="text-[9px] font-black text-[#047857] tracking-wider uppercase mt-0.5">
+              VEDIXA
+            </span>
+          </div>
+        </div>
+
+        {/* 2. DOCUMENT TITLE & CUSTOMER DETAILS + SUMMARY BOX */}
+        <div className="grid grid-cols-12 gap-3 mb-3">
+          {/* Left (7 cols): Customer Info */}
+          <div className="col-span-7 space-y-1">
+            <h2 className="text-sm font-extrabold text-gray-900 uppercase tracking-wide">
+              {statementType === 'MONTHLY' ? 'CUSTOMER ACCOUNT STATEMENT' : 'CUSTOMER LEDGER STATEMENT'}
+            </h2>
+            <div className="text-[11px] text-gray-800 space-y-0.5">
+              <p className="font-bold text-gray-900">
+                Customer Name : <span className="font-extrabold">{customer?.name || 'Valued Customer'}</span>
+              </p>
+              <p>
+                Customer Phone : <span className="font-mono">{customer?.mobile || 'N/A'}</span>
+              </p>
+              <p>
+                Customer Address: {' '}
+                {[customer?.address, customer?.village || customer?.area, customer?.mandal, customer?.district, customer?.state]
+                  .filter(Boolean)
+                  .join(', ') || 'N/A'}
+              </p>
+              <p className="text-[10px] text-gray-600">
+                Statement Period: {statementType === 'MONTHLY' ? (monthlyCalculation?.monthLabel || 'Current Month') : (statementType === 'FULL' ? 'Full History' : `${fromDate || ''} to ${toDate || ''}`)} | Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
+          {/* Right (5 cols): Summary Box */}
+          <div className="col-span-5 bg-slate-50 border border-slate-300 rounded-lg p-2.5 space-y-1 text-[11px]">
+            <h3 className="text-[11px] font-bold text-[#047857] uppercase border-b border-slate-200 pb-1 mb-1">
+              ACCOUNT SUMMARY
+            </h3>
+            {statementType === 'MONTHLY' ? (
+              <div className="space-y-0.5">
+                <div className="flex justify-between font-medium">
+                  <span>OPENING BALANCE:</span>
+                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span>NEW PURCHASES:</span>
+                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.newPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-medium text-[#047857]">
+                  <span>PAYMENTS:</span>
+                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.payments || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-bold text-[#dc2626] border-t border-slate-300 pt-1 mt-1 text-[11.5px]">
+                  <span>DUE / CLOSING BALANCE:</span>
+                  <span className="font-mono font-extrabold">₹ {Number(monthlyCalculation.closingDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                <div className="flex justify-between font-medium">
+                  <span>Total Purchases:</span>
+                  <span className="font-mono font-bold">₹ {Number(totals.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-medium text-[#047857]">
+                  <span>Total Payments:</span>
+                  <span className="font-mono font-bold">₹ {Number(totals.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className={`flex justify-between font-bold border-t border-slate-300 pt-1 mt-1 text-[11.5px] ${Number(totals.outstanding || 0) > 0 ? 'text-[#dc2626]' : 'text-[#047857]'}`}>
+                  <span>Outstanding Balance:</span>
+                  <span className="font-mono font-extrabold">₹ {Number(totals.outstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3. TRANSACTIONS TABLE */}
+        <table className="print-ledger-table w-full border-collapse">
+          <thead>
+            <tr className="bg-[#047857] text-white text-[10px] uppercase font-bold">
+              <th className="py-1.5 px-2 text-center border border-[#047857]">DATE</th>
+              <th className="py-1.5 px-2 text-left border border-[#047857]">PARTICULARS</th>
+              <th className="py-1.5 px-2 text-right border border-[#047857]">DEBIT (₹)</th>
+              <th className="py-1.5 px-2 text-right border border-[#047857]">CREDIT (₹)</th>
+              <th className="py-1.5 px-2 text-right border border-[#047857]">BALANCE (₹)</th>
+            </tr>
+          </thead>
+          <tbody className="text-[10px]">
+            {displayTransactions.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-3 text-center text-gray-500 italic border border-gray-200">
+                  No transactions found in this period
+                </td>
+              </tr>
+            ) : (
+              displayTransactions.map((tx, index) => {
+                const isInvoice = tx.type === 'Invoice' || tx.debit > 0;
+                const items = Array.isArray(tx.items) ? tx.items : [];
+
+                return (
+                  <tr
+                    key={tx.id || tx._id || index}
+                    className={index % 2 === 0 ? 'bg-white' : 'bg-[#f8faf8]'}
+                  >
+                    <td className="py-1.5 px-2 text-center border border-gray-200 font-mono text-[9.5px]">
+                      {tx.dateFormatted || tx.date || (tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-')}
+                    </td>
+                    <td className="py-1.5 px-2 text-left border border-gray-200">
+                      {isInvoice ? (
+                        <div>
+                          <p className="font-bold text-gray-900">
+                            Purchase - {items.length > 0 ? `${items.length} Item${items.length > 1 ? 's' : ''}` : '1 Item'}
+                            {(tx.invoiceNumber || tx.docNo || tx.refNo) ? `, ${(tx.invoiceNumber || tx.docNo || tx.refNo).replace(/^Bill\s*#?\s*/i, '')}` : ''}
+                          </p>
+                          {items.length > 0 && (
+                            <div className="pl-1 mt-0.5 space-y-0.5 text-[9px] text-gray-600 font-mono">
+                              {items.map((it, idx) => {
+                                const qty = Number(it.quantity || it.qty || 1);
+                                const price = Number(it.unitPrice || it.price || (qty > 0 ? (it.total || 0) / qty : 0));
+                                return (
+                                  <div key={idx} className="flex justify-between gap-2 max-w-[280px]">
+                                    <span>• {it.productName || it.name || 'Item'}</span>
+                                    <span>Qty: {qty} @ ₹{price > 0 ? price.toLocaleString('en-IN') : '0'}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="font-semibold text-gray-800">
+                          {tx.particulars || tx.description || tx.type || 'Payment'}
+                          {tx.refNo ? ` (Ref: ${tx.refNo})` : ''}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-semibold">
+                      {tx.debit > 0 ? Number(tx.debit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-semibold text-[#047857]">
+                      {tx.credit > 0 ? Number(tx.credit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-bold">
+                      {Number(tx.balance ?? (tx.runningBalance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+
+        {/* 4. FOOTER */}
+        <div className="mt-4 pt-2 border-t border-gray-300 text-center text-[9px] text-gray-500 font-medium">
+          Computer Generated Ledger Statement • No Signature Required • Generated by {shopSettings.shopName || shopSettings.name || 'VEDIXA AGRI SOLUTIONS'}
+        </div>
+      </div>
     </div>
   );
 }

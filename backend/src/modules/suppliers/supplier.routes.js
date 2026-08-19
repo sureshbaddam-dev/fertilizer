@@ -13,10 +13,12 @@ import {
 } from './controllers/supplier.controller.js';
 
 import { protect } from '../../middlewares/auth.middleware.js';
+import { requireActiveSubscription } from '../../middlewares/subscription.middleware.js';
 
 const router = Router();
 
 router.use(protect);
+router.use(requireActiveSubscription);
 
 router.get('/', getSuppliers);
 router.post('/', createSupplier);
