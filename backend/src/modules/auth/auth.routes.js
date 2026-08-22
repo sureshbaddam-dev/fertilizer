@@ -13,8 +13,12 @@ import {
   getProfile,
   updateProfile,
   emailPasswordSignup,
+  initiateSignupOtp,
+  resendSignupOtp,
   verifyEmail,
   resendVerificationEmail,
+  completeOnboarding,
+  checkEmailAvailability,
 } from './auth.controller.js';
 import { protect } from '../../middlewares/auth.middleware.js';
 import {
@@ -23,6 +27,9 @@ import {
   loginRules,
   forgotPasswordRules,
   resetPasswordRules,
+  initiateSignupRules,
+  verifySignupOtpRules,
+  completeOnboardingRules,
 } from './auth.validator.js';
 
 import { logger } from '../../config/logger.config.js';
@@ -35,13 +42,20 @@ router.post(
     logger.info(`\n========================\n[1] Signup API Hit\n========================`);
     next();
   },
-  signupRules,
-  signup
+  initiateSignupRules,
+  initiateSignupOtp
 );
-router.post('/signup/email', emailPasswordSignup);
+router.get('/check-email', checkEmailAvailability);
+router.get('/signup/check-email', checkEmailAvailability);
+router.post('/signup/check-email', checkEmailAvailability);
+router.post('/signup/initiate-otp', initiateSignupRules, initiateSignupOtp);
+router.post('/signup/email', initiateSignupRules, initiateSignupOtp);
+router.post('/signup/verify-otp', verifySignupOtpRules, verifySignupOtp);
+router.post('/signup/resend-otp', resendSignupOtp);
+router.post('/complete-onboarding', protect, completeOnboardingRules, completeOnboarding);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerificationEmail);
-router.post('/verify-signup-otp', verifyOtpRules, verifySignupOtp);
+router.post('/verify-signup-otp', verifySignupOtp);
 router.post('/login', login);
 router.post('/forgot-password', forgotPasswordRules, forgotPassword);
 router.post('/verify-forgot-otp', verifyOtpRules, verifyForgotOtp);

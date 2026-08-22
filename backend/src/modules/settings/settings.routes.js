@@ -3,19 +3,19 @@ import { shopDiscountController } from './controllers/shopDiscount.controller.js
 import { shopSettingsController } from './controllers/shopSettings.controller.js';
 
 import { protect } from '../../middlewares/auth.middleware.js';
+import { uploadShopImageMiddleware } from '../../middlewares/upload.middleware.js';
 
 const router = Router();
 
 router.use(protect);
 
+// Shop Profile Image Upload (Logo, Owner Photo, Signature)
+router.post('/upload-image', uploadShopImageMiddleware.single('image'), shopSettingsController.uploadShopImage);
+
 // Shop Profile & System Settings Routes (CRUD + Patch + Reset)
 router.get('/profile', shopSettingsController.getSettings);
 router.put('/profile', shopSettingsController.updateSettings);
 router.patch('/profile', shopSettingsController.updateSettings);
-
-router.get('/', shopSettingsController.getSettings);
-router.put('/', shopSettingsController.updateSettings);
-router.patch('/', shopSettingsController.updateSettings);
 router.post('/reset', shopSettingsController.resetSettings);
 
 // Shop Discount Settings Routes

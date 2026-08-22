@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getItemUnitPrice } from './pricing';
+import { formatCustomerLedgerAddress } from './statementCalculator';
 import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
 
 /**
@@ -112,18 +113,9 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
   const custVillage = customer?.village || customer?.area || '';
   const custMandal = customer?.mandal || '';
   const custDistrict = customer?.district || '';
-  const custState = customer?.state || 'Andhra Pradesh';
   const custGstin = customer?.gstin || customer?.gstNumber || '';
 
-  const addressParts = [
-    customer?.address,
-    custVillage,
-    custMandal,
-    custDistrict,
-    custState,
-  ].filter(Boolean);
-
-  const custAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+  const custAddress = formatCustomerLedgerAddress(customer);
 
   const todayFormatted = new Date().toLocaleDateString('en-IN', {
     day: '2-digit',
@@ -152,9 +144,9 @@ export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], to
   doc.text(`Statement Period: ${periodStr || 'All Time'} | Generated: ${todayFormatted}${custGstin ? ` | GSTIN: ${custGstin}` : ''}`, 8, 57);
 
   const formatCurrency = (value) =>
-    `Rs. ${Number(value || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    `Rs. ${Math.round(Number(value || 0)).toLocaleString('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
 
   // 3. ACCOUNT SUMMARY BOX (Clean fixed two-column layout at top-right X=110mm, width=92mm, right edge=202mm)
@@ -376,16 +368,14 @@ export function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettingsArg = 
   const custVillage = customer?.village || customer?.area || '';
   const custMandal = customer?.mandal || '';
   const custDistrict = customer?.district || '';
-  const custState = customer?.state || 'Andhra Pradesh';
-  const addressParts = [customer?.address, custVillage, custMandal, custDistrict, custState].filter(Boolean);
-  const custAddress = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+  const custAddress = formatCustomerLedgerAddress(customer);
 
   const monthLabel = (monthlyData.monthLabel || new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })).toUpperCase();
 
   const formatCurrency = (val) =>
-    `Rs. ${Number(val || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    `Rs. ${Math.round(Number(val || 0)).toLocaleString('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
 
   const openBal = Number(monthlyData.openingBalance || 0);
@@ -659,9 +649,9 @@ export function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   const custAddress = invoice.customerAddress || invoice.customer?.address || '';
 
   const formatCurrency = (value) =>
-    `Rs. ${Number(value || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    `Rs. ${Math.round(Number(value || 0)).toLocaleString('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
 
   // 1. TOP HEADER: SHOP & VEDIXA BRANDING
@@ -1012,7 +1002,7 @@ export function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSetti
       custMobile ? `${custName}\nPh: ${custMobile}` : custName,
       itemsSummary,
       `${payMode}\n[${statusStr}]`,
-      `₹ ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+      `₹ ${Math.round(grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
     ];
   });
 
@@ -1077,16 +1067,16 @@ export function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSetti
   doc.text(`${totalBillsCount}`, 194, finalY + 14, { align: 'right' });
 
   doc.text('Subtotal:', 118, finalY + 20);
-  doc.text(`₹ ${totAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 194, finalY + 20, { align: 'right' });
+  doc.text(`₹ ${Math.round(totAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 194, finalY + 20, { align: 'right' });
 
   doc.text('Total Paid:', 118, finalY + 26);
   doc.setTextColor(4, 120, 87);
-  doc.text(`₹ ${totPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 194, finalY + 26, { align: 'right' });
+  doc.text(`₹ ${Math.round(totPaid).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 194, finalY + 26, { align: 'right' });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(220, 38, 38);
   doc.text('Total Due Amount:', 118, finalY + 33);
-  doc.text(`₹ ${totDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 194, finalY + 33, { align: 'right' });
+  doc.text(`₹ ${Math.round(totDue).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 194, finalY + 33, { align: 'right' });
 
   // 5. FOOTER
   const footerY = Math.max(finalY + 48, 275);
@@ -1179,9 +1169,9 @@ export function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {
   }
 
   const formatCurrency = (val) =>
-    `Rs. ${Number(val || 0).toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    `Rs. ${Math.round(Number(val || 0)).toLocaleString('en-IN', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
 
   // 3. COMPUTATIONS FOR ACCOUNT SUMMARY & TABLE ROWS

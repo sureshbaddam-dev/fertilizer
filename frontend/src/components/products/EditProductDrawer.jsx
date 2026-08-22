@@ -83,7 +83,7 @@ export default function EditProductDrawer({
         notes: product.notes || '',
         discount: product.discount !== undefined && product.discount !== null && product.discount !== '' && Number(product.discount) !== 0 ? String(product.discount) : '',
         discountType: product.discountType || 'Percentage',
-        gstRate: product.gstRate !== undefined && product.gstRate !== null && product.gstRate !== '' && Number(product.gstRate) !== 0 ? String(product.gstRate) : '',
+        gstRate: product.gstRate !== undefined && product.gstRate !== null && product.gstRate !== '' ? String(product.gstRate) : '0',
       });
 
       const initialBatch = stockAvailableBatches[0] || rawBatches[0] || null;
@@ -104,7 +104,7 @@ export default function EditProductDrawer({
           mrp: mrpVal && Number(mrpVal) !== 0 ? String(mrpVal) : '',
           discount: discVal !== undefined && discVal !== null && discVal !== '' && Number(discVal) !== 0 ? String(discVal) : '',
           discountType: discTypeVal,
-          gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' && Number(gstVal) !== 0 ? String(gstVal) : '',
+          gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' ? String(gstVal) : '0',
           currentStock: Number(initialBatch.currentStock ?? initialBatch.quantityRemaining ?? product.currentStock ?? 0),
         });
       } else {
@@ -140,7 +140,7 @@ export default function EditProductDrawer({
         mrp: mrpVal && Number(mrpVal) !== 0 ? String(mrpVal) : '',
         discount: discVal !== undefined && discVal !== null && discVal !== '' && Number(discVal) !== 0 ? String(discVal) : '',
         discountType: discTypeVal,
-        gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' && Number(gstVal) !== 0 ? String(gstVal) : '',
+        gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' ? String(gstVal) : '0',
         currentStock: Number(target.currentStock ?? target.quantityRemaining ?? 0),
       });
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -26,11 +26,37 @@ import {
   FileText,
   PackageCheck,
   Receipt,
+  MapPin,
+  Bell,
 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import GrantSubscriptionModal from '../../components/GrantSubscriptionModal';
+import SendNotificationModal from '../../components/SendNotificationModal';
 import TypeToConfirmModal from '../../components/TypeToConfirmModal';
 import { adminApiService } from '../../services/adminApiService';
+
+function formatAdminFullAddress(shop = {}, user = {}) {
+  const rawAddr = (shop?.address || user?.address || '').trim();
+  const village = (shop?.village || user?.village || '').trim();
+  const mandal = (shop?.mandal || user?.mandal || '').trim();
+  const district = (shop?.district || user?.district || '').trim();
+  const state = (shop?.state || user?.state || '').trim();
+  const pincode = (shop?.pincode || user?.pincode || '').trim();
+
+  const parts = [];
+  if (rawAddr) parts.push(rawAddr);
+  if (village && !rawAddr.toLowerCase().includes(village.toLowerCase())) parts.push(village);
+  if (mandal && !rawAddr.toLowerCase().includes(mandal.toLowerCase())) parts.push(mandal);
+  if (district && !rawAddr.toLowerCase().includes(district.toLowerCase())) parts.push(district);
+  if (state && !rawAddr.toLowerCase().includes(state.toLowerCase())) parts.push(state);
+
+  let addressStr = parts.length > 0 ? parts.join(', ') : '';
+  if (pincode && !addressStr.includes(pincode)) {
+    addressStr = addressStr ? `${addressStr} - ${pincode}` : pincode;
+  }
+
+  return addressStr;
+}
 
 export default function UserDetailsPage() {
   const { userId } = useParams();
@@ -48,6 +74,7 @@ export default function UserDetailsPage() {
   // Modal States
   const [modalMode, setModalMode] = useState('GRANT'); // 'GRANT' | 'EXTEND' | 'DEMO'
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
+  const [isSendNotifModalOpen, setIsSendNotifModalOpen] = useState(false);
   const [isManageMenuOpen, setIsManageMenuOpen] = useState(false);
 
   // Type To Confirm Modal State
@@ -196,6 +223,8 @@ export default function UserDetailsPage() {
   const { user, shop, subscription, subHistory = [], tickets = [], counts = {}, paymentSummary = {} } = details;
   const currentSubStatus = (subscription?.status || (subscription?.planName ? 'ACTIVE' : 'NO_SUBSCRIPTION')).toUpperCase();
 
+  const formattedFullAddress = formatAdminFullAddress(shop, user);
+
   return (
     <div className="space-y-6 font-sans antialiased text-slate-800">
       {/* Back Button & Top Action Controls */}
@@ -209,6 +238,15 @@ export default function UserDetailsPage() {
         </button>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Send Notification Button */}
+          <button
+            onClick={() => setIsSendNotifModalOpen(true)}
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+          >
+            <Bell className="w-4 h-4" />
+            <span>Send Notification</span>
+          </button>
+
           {/* User Account Status Toggle (No Hard Delete) */}
           {user.isActive ? (
             <button
@@ -418,6 +456,13 @@ export default function UserDetailsPage() {
                 Reg: {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN') : 'No data'}
               </span>
             </div>
+
+            {formattedFullAddress && (
+              <div className="flex items-start gap-1.5 text-xs text-slate-600 font-medium mt-2">
+                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                <span className="break-words max-w-2xl">{formattedFullAddress}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -451,6 +496,8 @@ export default function UserDetailsPage() {
           </div>
         </div>
       </div>
+
+
 
       {/* PAYMENT SUMMARY SECTION (REQUIREMENT 3 & 4) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
@@ -634,6 +681,14 @@ export default function UserDetailsPage() {
         user={user}
         currentSubscription={subscription}
         mode={modalMode}
+        onSuccess={() => fetchUserDetails()}
+      />
+
+      {/* Send Single-User Notification Modal */}
+      <SendNotificationModal
+        isOpen={isSendNotifModalOpen}
+        onClose={() => setIsSendNotifModalOpen(false)}
+        user={user}
         onSuccess={() => fetchUserDetails()}
       />
 

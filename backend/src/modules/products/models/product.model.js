@@ -124,5 +124,8 @@ productSchema.pre('validate', function (next) {
 
 productSchema.plugin(softDeletePlugin);
 productSchema.index({ name: 'text', barcode: 'text', code: 'text' });
+productSchema.index({ userId: 1, categoryId: 1, isActive: 1 });
+productSchema.index({ userId: 1, totalStock: 1, isActive: 1 });
+productSchema.index({ userId: 1, brandId: 1, isActive: 1 });
 
 export const Product = mongoose.model('Product', productSchema);

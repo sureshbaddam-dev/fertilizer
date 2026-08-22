@@ -86,7 +86,21 @@ export const dashboardService = {
       };
     });
 
-    const lowStockDocs = await Product.find({ userId, totalStock: { $lte: 20 }, isActive: true })
+    const lowStockDocs = await Product.find({
+      userId,
+      isActive: true,
+      $expr: {
+        $and: [
+          { $gt: ['$totalStock', 0] },
+          {
+            $lte: [
+              '$totalStock',
+              { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+            ],
+          },
+        ],
+      },
+    })
       .populate('brandId', 'name')
       .sort({ totalStock: 1 })
       .limit(5)
@@ -94,14 +108,15 @@ export const dashboardService = {
       .exec();
 
     const lowStockProducts = lowStockDocs.map((p) => {
-      const isCritical = (p.totalStock || 0) <= 5;
+      const minAlert = p.minimumStockAlert ?? p.lowStockAlert ?? 10;
+      const isCritical = (p.totalStock || 0) <= minAlert / 2;
       return {
         _id: p._id,
         name: p.name,
         brand: p.brandId?.name || p.brand || 'General',
         stock: `${p.totalStock || 0} Units left`,
         stockVal: p.totalStock || 0,
-        status: isCritical ? 'Out of Stock' : 'Low Stock',
+        status: isCritical ? 'Critical' : 'Low Stock',
         tagColor: isCritical
           ? 'text-red-700 bg-red-50 border-red-200'
           : 'text-amber-700 bg-amber-50 border-amber-200',
@@ -112,10 +127,31 @@ export const dashboardService = {
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const { ProductBatch } = await import('../../products/models/productBatch.model.js');
 
-    const totalLowStock = await Product.countDocuments({ userId, totalStock: { $gt: 0, $lte: 10 }, isActive: true });
-    const totalOutOfStock = await Product.countDocuments({ userId, totalStock: { $eq: 0 }, isActive: true });
-    const expiryAlerts = await ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } });
-    const expiredProducts = await ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } });
+    const [totalLowStock, totalOutOfStock, expiryAlerts, expiredProducts, dbCategories, categoryCountsAgg] = await Promise.all([
+      Product.countDocuments({
+        userId,
+        isActive: true,
+        $expr: {
+          $and: [
+            { $gt: ['$totalStock', 0] },
+            {
+              $lte: [
+                '$totalStock',
+                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+              ],
+            },
+          ],
+        },
+      }),
+      Product.countDocuments({ userId, totalStock: { $lte: 0 }, isActive: true }),
+      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } }),
+      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } }),
+      Category.find({ userId }).lean().exec(),
+      Product.aggregate([
+        { $match: { userId, isActive: true } },
+        { $group: { _id: '$categoryId', prodCount: { $sum: 1 } } },
+      ]),
+    ]);
 
     const stockAlerts = {
       totalAlerts: totalLowStock + totalOutOfStock + expiryAlerts + expiredProducts,
@@ -125,18 +161,16 @@ export const dashboardService = {
       expiredProducts,
     };
 
-    const dbCategories = await Category.find({ userId }).lean().exec();
-    const categoriesWithCount = await Promise.all(
-      dbCategories.map(async (cat) => {
-        const prodCount = await Product.countDocuments({ userId, categoryId: cat._id, isActive: true });
-        return {
-          _id: cat._id,
-          title: cat.name,
-          count: `${prodCount} Products`,
-          prodCount,
-        };
-      })
-    );
+    const categoryCountMap = new Map(categoryCountsAgg.map((c) => [c._id ? c._id.toString() : 'null', c.prodCount]));
+    const categoriesWithCount = dbCategories.map((cat) => {
+      const prodCount = categoryCountMap.get(cat._id.toString()) || 0;
+      return {
+        _id: cat._id,
+        title: cat.name,
+        count: `${prodCount} Products`,
+        prodCount,
+      };
+    });
 
     categoriesWithCount.sort((a, b) => b.prodCount - a.prodCount);
 
@@ -194,6 +228,7 @@ export const dashboardService = {
       $or: [
         { targetAudience: 'ALL_USERS' },
         { targetUserIds: userId },
+        { recipient: userId },
       ],
     })
       .sort({ createdAt: -1 })
@@ -204,7 +239,7 @@ export const dashboardService = {
       const isTicketMsg = an.title?.includes('Ticket') || an.message?.includes('TCK-');
       notifications.push({
         id: `admin-${an._id}`,
-        type: 'admin_announcement',
+        type: an.type || 'admin_announcement',
         title: an.title || 'System Announcement',
         message: an.message,
         timestamp: new Date(an.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),

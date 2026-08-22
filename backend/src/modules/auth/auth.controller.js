@@ -133,9 +133,34 @@ export const updateProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'User profile updated successfully.', user, HTTP_STATUS.OK);
 });
 
+export const checkEmailAvailability = asyncHandler(async (req, res) => {
+  const email = req.query.email || req.body?.email;
+  const result = await authService.checkEmailAvailability(email);
+  const message = result.available
+    ? 'Email address is available for registration.'
+    : 'Email address is already registered.';
+  return sendSuccess(res, message, result, HTTP_STATUS.OK);
+});
+
+export const initiateSignupOtp = asyncHandler(async (req, res) => {
+  const { email, password, confirmPassword } = req.body;
+  const cleanEmail = email ? String(email).trim().toLowerCase() : '';
+  logger.info(`[Signup OTP] Recipient: ${cleanEmail}`);
+  const result = await authService.initiateSignupOtp({ email: cleanEmail, password, confirmPassword });
+  return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+});
+
+export const resendSignupOtp = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const cleanEmail = email ? String(email).trim().toLowerCase() : '';
+  logger.info(`[Signup OTP] Resend Recipient: ${cleanEmail}`);
+  const result = await authService.resendSignupOtp({ email: cleanEmail });
+  return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+});
+
 export const emailPasswordSignup = asyncHandler(async (req, res) => {
-  const result = await authService.emailPasswordSignup(req.body);
-  return sendSuccess(res, result.message, result, HTTP_STATUS.CREATED);
+  const result = await authService.initiateSignupOtp(req.body);
+  return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
 });
 
 export const verifyEmail = asyncHandler(async (req, res) => {
@@ -148,4 +173,16 @@ export const resendVerificationEmail = asyncHandler(async (req, res) => {
   const { email } = req.body;
   const result = await authService.resendVerificationEmail(email);
   return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+});
+
+export const completeOnboarding = asyncHandler(async (req, res) => {
+  const result = await authService.completeOnboarding(req.user._id, req.body);
+  if (result.accessToken) {
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  if (result.refreshToken) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
+  const { refreshToken: _, ...clientData } = result;
+  return sendSuccess(res, 'Business details saved and onboarding completed successfully.', clientData, HTTP_STATUS.OK);
 });

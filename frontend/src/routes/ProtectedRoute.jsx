@@ -8,14 +8,12 @@ export function ProtectedRoute({ children }) {
   const [isInitializing, setIsInitializing] = useState(() => authService.isInitializing);
 
   useEffect(() => {
-    // Sync state on mount in case authService initialized before effect ran
-    setIsAuth(authService.isAuthenticated());
-    setIsInitializing(authService.isInitializing);
-
-    const unsubscribe = authService.subscribe(() => {
+    const handleAuthChange = () => {
       setIsAuth(authService.isAuthenticated());
       setIsInitializing(authService.isInitializing);
-    });
+    };
+
+    const unsubscribe = authService.subscribe(handleAuthChange);
     return () => unsubscribe();
   }, []);
 
@@ -41,14 +39,12 @@ export function PublicOnlyRoute({ children }) {
   const [isInitializing, setIsInitializing] = useState(() => authService.isInitializing);
 
   useEffect(() => {
-    // Sync state on mount in case authService initialized before effect ran
-    setIsAuth(authService.isAuthenticated());
-    setIsInitializing(authService.isInitializing);
-
-    const unsubscribe = authService.subscribe(() => {
+    const handleAuthChange = () => {
       setIsAuth(authService.isAuthenticated());
       setIsInitializing(authService.isInitializing);
-    });
+    };
+
+    const unsubscribe = authService.subscribe(handleAuthChange);
     return () => unsubscribe();
   }, []);
 
@@ -62,6 +58,14 @@ export function PublicOnlyRoute({ children }) {
   }
 
   if (isAuth) {
+    const user = authService.getCurrentUser();
+    const isComplete = Boolean(
+      user?.isProfileComplete ||
+      (user?.ownerName && user?.ownerName !== 'Pending Setup' && user?.mobile && !user?.mobile.startsWith('pending_'))
+    );
+    if (!isComplete) {
+      return <Navigate to="/shop-setup" replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 

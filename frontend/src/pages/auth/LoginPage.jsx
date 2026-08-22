@@ -4,36 +4,11 @@ import { Lock, Phone, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, Loader2
 import { authService } from '../../services/authService';
 import BrandLogo from '../../components/common/BrandLogo';
 
-// Google OAuth Client ID Sanitizer
-const getGoogleClientId = () => {
-  let clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-  if (typeof clientId === 'string') {
-    clientId = clientId.replace(/^["']|["']$/g, '').trim();
-  }
-  return clientId;
-};
-
-const ensureGoogleGisScript = () => {
-  return new Promise((resolve) => {
-    if (window.google?.accounts?.id || window.google?.accounts?.oauth2) {
-      resolve(true);
-      return;
-    }
-    const existingScript = document.getElementById('google-gis-script');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(true), { once: true });
-      return;
-    }
-    const script = document.createElement('script');
-    script.id = 'google-gis-script';
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.head.appendChild(script);
-  });
-};
+import {
+  getGoogleClientId,
+  loadGoogleGisScript,
+  initGoogleIdClientOnce,
+} from '../../services/googleAuthService';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -51,20 +26,15 @@ export default function LoginPage() {
   // SINGLE-FLIGHT IN-FLIGHT GUARD & DUPLICATE CREDENTIAL PROTECTION
   const isGoogleAuthInProgressRef = useRef(false);
   const processedTokensRef = useRef(new Set());
+  const gisInitializedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
     const initGis = async () => {
-      await ensureGoogleGisScript();
+      await loadGoogleGisScript();
       const clientId = getGoogleClientId();
       if (clientId && window.google?.accounts?.id && isMounted) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleGoogleCredentialResponse,
-            auto_select: false,
-          });
-        } catch (_e) {}
+        initGoogleIdClientOnce(clientId, handleGoogleCredentialResponse);
       }
     };
     initGis();
@@ -91,7 +61,7 @@ export default function LoginPage() {
         if (res.data?.isProfileComplete) {
           navigate('/dashboard', { replace: true });
         } else {
-          navigate('/signup', { replace: true });
+          navigate('/shop-setup', { replace: true });
         }
       } else {
         setServerError(res.message || 'Google authentication failed. Please try again.');
@@ -116,7 +86,7 @@ export default function LoginPage() {
 
     isGoogleAuthInProgressRef.current = true;
     setIsLoading(true);
-    await ensureGoogleGisScript();
+    await loadGoogleGisScript();
 
     try {
       if (window.google?.accounts?.oauth2) {
@@ -132,10 +102,14 @@ export default function LoginPage() {
               isGoogleAuthInProgressRef.current = false;
             }
           },
-          error_callback: () => {
+          error_callback: (err) => {
             setIsLoading(false);
             isGoogleAuthInProgressRef.current = false;
-            setServerError('Google Sign-In was cancelled.');
+            if (err?.error === 'popup_closed_by_user') {
+              setServerError('Google Sign-In popup was closed.');
+            } else {
+              setServerError(err?.error ? `Google OAuth error (${err.error}). Check Authorized origins in Google Cloud Console.` : 'Google Sign-In was cancelled.');
+            }
           },
         });
         client.requestAccessToken();
@@ -182,8 +156,8 @@ export default function LoginPage() {
 
       const response = await authService.login(payload);
       if (response.success) {
-        const u = response.data?.user || authService.getCurrentUser() || {};
-        if (!u.shopName || !u.shopName.trim()) {
+        const isComplete = response.data?.isProfileComplete ?? (response.data?.user?.isProfileComplete && Boolean(response.data?.user?.shopName));
+        if (!isComplete) {
           navigate('/shop-setup', { replace: true });
         } else {
           navigate('/dashboard', { replace: true });

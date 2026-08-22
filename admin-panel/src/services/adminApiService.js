@@ -13,11 +13,27 @@ const API_BASE_URL = `${BACKEND_BASE}/api/v1/admin`;
 
 axios.defaults.withCredentials = true;
 
+// Interceptor to handle 401 Unauthorized globally and avoid request loops
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      const isAuthPath = typeof window !== 'undefined' && (window.location.pathname.includes('/auth') || window.location.pathname.includes('/login'));
+      if (!isAuthPath) {
+        localStorage.removeItem('adminAccessToken');
+        localStorage.removeItem('accessToken');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('adminAccessToken') || localStorage.getItem('accessToken');
   return {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: token ? `Bearer ${token}` : '',
     },
     withCredentials: true,
   };
@@ -34,15 +50,17 @@ export const adminApiService = {
     const res = await axios.post(`${API_BASE_URL}/auth/verify-otp`, { mobile, otp });
     const data = res.data?.data;
     if (data?.accessToken) {
+      localStorage.setItem('adminAccessToken', data.accessToken);
       localStorage.setItem('accessToken', data.accessToken);
     }
     return data;
   },
 
   refreshAdminToken: async () => {
-    const res = await axios.post(`${API_BASE_URL}/auth/refresh`);
+    const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, getAuthHeaders());
     const data = res.data?.data;
     if (data?.accessToken) {
+      localStorage.setItem('adminAccessToken', data.accessToken);
       localStorage.setItem('accessToken', data.accessToken);
     }
     return data;
@@ -52,6 +70,7 @@ export const adminApiService = {
     try {
       await axios.post(`${API_BASE_URL}/auth/logout`, {}, getAuthHeaders());
     } finally {
+      localStorage.removeItem('adminAccessToken');
       localStorage.removeItem('accessToken');
     }
   },
@@ -222,6 +241,11 @@ export const adminApiService = {
   },
 
   // Notifications
+  sendUserNotification: async (data) => {
+    const res = await axios.post(`${API_BASE_URL}/notifications/user`, data, getAuthHeaders());
+    return res.data?.data;
+  },
+
   sendAdminNotification: async (data) => {
     const res = await axios.post(`${API_BASE_URL}/notifications/send`, data, getAuthHeaders());
     return res.data?.data;
@@ -310,24 +334,5 @@ export const adminApiService = {
     const backendRoot = API_BASE_URL.replace('/admin', '');
     const res = await axios.patch(`${backendRoot}/support/admin/notifications/${id}/read`, {}, getAuthHeaders());
     return res.data;
-  },
-
-  // Demo Requests
-  getDemoRequests: async (status) => {
-    const backendRoot = API_BASE_URL.replace('/admin', '');
-    const res = await axios.get(`${backendRoot}/subscriptions/admin/demo-requests${status ? `?status=${status}` : ''}`, getAuthHeaders());
-    return res.data?.data?.demoRequests || [];
-  },
-
-  approveDemoRequest: async (id, adminNotes) => {
-    const backendRoot = API_BASE_URL.replace('/admin', '');
-    const res = await axios.post(`${backendRoot}/subscriptions/admin/demo-requests/${id}/approve`, { adminNotes }, getAuthHeaders());
-    return res.data?.data?.demoRequest;
-  },
-
-  rejectDemoRequest: async (id, adminNotes) => {
-    const backendRoot = API_BASE_URL.replace('/admin', '');
-    const res = await axios.post(`${backendRoot}/subscriptions/admin/demo-requests/${id}/reject`, { adminNotes }, getAuthHeaders());
-    return res.data?.data?.demoRequest;
   },
 };

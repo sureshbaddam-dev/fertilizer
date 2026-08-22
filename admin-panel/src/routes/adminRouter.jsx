@@ -8,7 +8,6 @@ import UsersListPage from '../pages/Users/UsersListPage';
 import UserDetailsPage from '../pages/Users/UserDetailsPage';
 import SubscriptionOverviewPage from '../pages/Subscriptions/SubscriptionOverviewPage';
 import SubscriptionSettingsPage from '../pages/Subscriptions/SubscriptionSettingsPage';
-import DemoSubscriptionsPage from '../pages/Subscriptions/DemoSubscriptionsPage';
 import SubscriptionHistoryPage from '../pages/Subscriptions/SubscriptionHistoryPage';
 import TransactionsPage from '../pages/Payments/TransactionsPage';
 import RevenueAnalyticsPage from '../pages/Payments/RevenueAnalyticsPage';
@@ -48,7 +47,6 @@ export const adminRouter = createBrowserRouter([
       { path: 'users/:userId', element: <UserDetailsPage /> },
       { path: 'subscriptions', element: <SubscriptionOverviewPage /> },
       { path: 'subscriptions/settings', element: <SubscriptionSettingsPage /> },
-      { path: 'subscriptions/demos', element: <DemoSubscriptionsPage /> },
       { path: 'subscriptions/history', element: <SubscriptionHistoryPage /> },
       { path: 'payments', element: <TransactionsPage /> },
       { path: 'revenue', element: <RevenueAnalyticsPage /> },

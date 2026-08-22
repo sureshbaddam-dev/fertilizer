@@ -86,18 +86,9 @@ export default function AuthLayout() {
         {/* ========================================================= */}
         {/* RIGHT FORM CARD PANEL (Desktop / Laptop / Tablet)        */}
         {/* ========================================================= */}
-        <div className="hidden md:flex md:col-span-6 lg:col-span-5 flex-col justify-between p-4 sm:p-5 lg:p-8 bg-white relative overflow-y-auto">
-          {/* Top Right Theme Selector */}
-          <div className="flex justify-end mb-1">
-            <button className="flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
-              <Sun className="w-3.5 h-3.5 text-gray-500" />
-              <span>Light</span>
-              <ChevronDown className="w-3 h-3 text-gray-400" />
-            </button>
-          </div>
-
+        <div className="hidden md:flex md:col-span-6 lg:col-span-5 flex-col justify-center p-4 sm:p-6 lg:p-8 bg-white relative overflow-y-auto">
           {/* Form Card Slot */}
-          <div className="max-w-sm mx-auto w-full my-auto py-1">
+          <div className="max-w-sm mx-auto w-full py-1">
             <Outlet />
           </div>
         </div>
@@ -107,12 +98,8 @@ export default function AuthLayout() {
         {/* ========================================================= */}
         <div className="flex md:hidden flex-col p-3 sm:p-4 bg-white space-y-3 overflow-y-auto max-h-[92vh]">
           {/* Compact Top Header */}
-          <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
+          <div className="flex items-center justify-center border-b border-gray-100 pb-2">
             <BrandLogo iconSize="w-5 h-5" textScale="normal" />
-            <button className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 rounded-md">
-              <Sun className="w-3 h-3 text-gray-500" />
-              <span>Light</span>
-            </button>
           </div>
 
           {/* Compact Hero Banner */}

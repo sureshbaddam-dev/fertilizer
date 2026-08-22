@@ -99,6 +99,64 @@ export const emailService = {
     }
   },
 
+  async sendBrevoOtpEmail({ toEmail, toName, otp }) {
+    if (!toEmail || typeof toEmail !== 'string' || !toEmail.trim() || !toEmail.includes('@')) {
+      throw new Error('Valid recipient email address (toEmail) is required for OTP delivery');
+    }
+    const cleanToEmail = toEmail.trim().toLowerCase();
+
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const templateId = Number(process.env.BREVO_TEMPLATE_ID || '2');
+    const senderEmail = process.env.EMAIL_FROM || 'info@vedixaerp.com';
+    const senderName = process.env.EMAIL_FROM_NAME || 'VEDIXA ERP';
+
+    logger.info(`[Signup OTP] Recipient: ${cleanToEmail}`);
+
+    if (!brevoApiKey) {
+      throw new Error('BREVO_API_KEY is missing in backend environment configuration.');
+    }
+
+    logger.info(`[Brevo API] Dispatching OTP via Template #${templateId} from ${senderEmail} (${senderName}) to recipient: ${cleanToEmail}`);
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+          'api-key': brevoApiKey,
+        },
+        body: JSON.stringify({
+          sender: { email: senderEmail, name: senderName },
+          to: [{ email: cleanToEmail, name: toName || 'Valued User' }],
+          templateId: templateId,
+          params: {
+            otp: String(otp),
+          },
+        }),
+      });
+
+      logger.info(`[Brevo API] Response status: ${response.status}`);
+
+      if (response.ok) {
+        const resData = await response.json();
+        logger.info(`[Brevo API] OTP email delivered successfully via Template #${templateId} to recipient: ${cleanToEmail} (MessageID: ${resData.messageId})`);
+        return { sent: true, provider: 'brevo_api', messageId: resData.messageId };
+      } else {
+        const errText = await response.text();
+        let sanitizedReason = errText;
+        try {
+          const parsed = JSON.parse(errText);
+          sanitizedReason = parsed.message || parsed.code || errText;
+        } catch (_e) {}
+        logger.error(`[Brevo API] Brevo REST API returned HTTP ${response.status}: ${sanitizedReason}`);
+        throw new Error(`Brevo API Error (${response.status}): ${sanitizedReason}`);
+      }
+    } catch (apiErr) {
+      logger.error(`[Brevo API] Execution failed for ${cleanToEmail}: ${apiErr.message}`);
+      throw apiErr;
+    }
+  },
+
   async sendVerificationEmail(toEmail, verifyUrl) {
     const subject = 'Verify your VEDIXA ERP Account Email';
     const html = `

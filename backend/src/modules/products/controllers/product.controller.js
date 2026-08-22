@@ -78,7 +78,7 @@ export const uploadProductImage = asyncHandler(async (req, res) => {
       message: 'No image file uploaded',
     });
   }
-  const imageUrl = `/uploads/products/${req.file.filename}`;
+  const imageUrl = req.file.path || req.file.secure_url || req.file.url || `/uploads/products/${req.file.filename}`;
   return sendSuccess(res, 'Product image uploaded successfully', { imageUrl }, HTTP_STATUS.OK);
 });
 

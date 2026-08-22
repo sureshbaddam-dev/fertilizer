@@ -47,7 +47,6 @@ export async function generateNextInvoiceNumber(userId) {
     .exec();
 
   let maxSeq = 0;
-
   if (Array.isArray(invoices) && invoices.length > 0) {
     for (const inv of invoices) {
       if (inv?.invoiceNumber) {
@@ -62,15 +61,7 @@ export async function generateNextInvoiceNumber(userId) {
     }
   }
 
-  let nextSeq = maxSeq + 1;
-  let candidate = `${prefix}${nextSeq}`;
-
-  while (await SalesInvoice.exists({ userId, invoiceNumber: candidate })) {
-    nextSeq += 1;
-    candidate = `${prefix}${nextSeq}`;
-  }
-
-  return candidate;
+  return `${prefix}${maxSeq + 1}`;
 }
 
 export const salesInvoiceService = {
@@ -144,36 +135,55 @@ export const salesInvoiceService = {
     const limit = Math.max(1, parseInt(query.limit || 10, 10));
     const skip = (page - 1) * limit;
 
-    const invoices = await SalesInvoice.find(filter)
-      .sort({ date: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean()
-      .exec();
+    const userObjId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+    const aggFilter = { ...filter };
+    if (aggFilter.userId && typeof aggFilter.userId === 'string') {
+      aggFilter.userId = userObjId;
+    }
 
-    const totalRecords = await SalesInvoice.countDocuments(filter);
-    const allMatchingDocs = await SalesInvoice.find(filter).lean().exec();
+    const [invoices, summaryResult, statusCountResult] = await Promise.all([
+      SalesInvoice.find(filter)
+        .sort({ date: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      SalesInvoice.aggregate([
+        { $match: aggFilter },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: '$totalAmount' },
+            totalPaid: { $sum: '$paidAmount' },
+            totalDue: { $sum: '$dueAmount' },
+            totalCount: { $sum: 1 },
+          },
+        },
+      ]),
+      SalesInvoice.aggregate([
+        { $match: { userId: userObjId, isDeleted: { $ne: true } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+    ]);
 
-    let totalBills = allMatchingDocs.length;
-    let totalAmount = 0;
-    let totalPaid = 0;
-    let totalDue = 0;
-
-    allMatchingDocs.forEach((doc) => {
-      totalAmount += doc.totalAmount || 0;
-      totalPaid += doc.paidAmount || 0;
-      totalDue += doc.dueAmount || 0;
-    });
+    const summaryObj = summaryResult[0] || {};
+    const totalRecords = summaryObj.totalCount || 0;
+    const totalAmount = summaryObj.totalAmount || 0;
+    const totalPaid = summaryObj.totalPaid || 0;
+    const totalDue = summaryObj.totalDue || 0;
+    const totalBills = totalRecords;
 
     const duePercentage = totalAmount > 0 ? Number(((totalDue / totalAmount) * 100).toFixed(1)) : 0;
 
-    const allDbInvoices = await SalesInvoice.find({ userId }).lean().exec();
+    const statusMap = new Map((statusCountResult || []).map((s) => [s._id, s.count]));
+    const totalDbBills = (statusCountResult || []).reduce((acc, curr) => acc + (curr.count || 0), 0);
+
     const counters = {
-      all: allDbInvoices.length,
-      paid: allDbInvoices.filter((i) => i.status === 'Paid').length,
-      partial: allDbInvoices.filter((i) => i.status === 'Partial').length,
-      due: allDbInvoices.filter((i) => i.status === 'Due').length,
-      cancelled: allDbInvoices.filter((i) => i.status === 'Cancelled').length,
+      all: totalDbBills,
+      paid: statusMap.get('Paid') || 0,
+      partial: statusMap.get('Partial') || 0,
+      due: statusMap.get('Due') || 0,
+      cancelled: statusMap.get('Cancelled') || 0,
     };
 
     return {
@@ -214,15 +224,17 @@ export const salesInvoiceService = {
     if (invoice.status !== authStatus || Math.abs((invoice.dueAmount || 0) - effectiveDue) > 0.001) {
       invoice.status = authStatus;
       invoice.dueAmount = effectiveDue;
-      invoice.dueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
       await invoice.save();
     }
 
     return invoice.toObject ? invoice.toObject() : invoice;
   },
 
-  async createInvoice(data, userId) {
+  async createInvoice(data, userId, reqStartTime = Date.now()) {
     if (!userId) throw new Error('userId is required');
+
+    const tStart = Date.now();
+
     const {
       customer: customerObj,
       customerName: inputCustomerName,
@@ -258,6 +270,9 @@ export const salesInvoiceService = {
       }
     }
 
+    const tCustomerLookup = Date.now() - tStart;
+    console.log(`[BILL TIMING] Customer lookup: ${tCustomerLookup}ms`);
+
     const idempotencyKey = data.idempotencyKey || null;
     if (idempotencyKey) {
       const existingInv = await SalesInvoice.findOne({ userId, idempotencyKey }).exec();
@@ -272,19 +287,55 @@ export const salesInvoiceService = {
       }
     }
 
+    // 1. Batched Product & Batch Lookups (Single Parallel DB Query)
+    const tProdReadStart = Date.now();
+    const validProdIds = [];
+    for (const item of items) {
+      const pId = item.productId || item.id || item._id;
+      if (pId && mongoose.Types.ObjectId.isValid(pId)) {
+        validProdIds.push(new mongoose.Types.ObjectId(pId));
+      }
+    }
+
+    const [productDocs, batchDocs] = await Promise.all([
+      Product.find({ _id: { $in: validProdIds }, userId }).populate('brandId categoryId defaultUnitId').lean().exec(),
+      ProductBatch.find({
+        userId,
+        productId: { $in: validProdIds },
+        isDeleted: { $ne: true },
+        isActive: { $ne: false },
+        currentStock: { $gt: 0 },
+      }).sort({ createdAt: 1 }).lean().exec(),
+    ]);
+
+    const productMap = new Map();
+    for (const p of productDocs) {
+      productMap.set(p._id.toString(), p);
+    }
+
+    const batchMap = new Map();
+    for (const b of batchDocs) {
+      const key = b.productId.toString();
+      if (!batchMap.has(key)) batchMap.set(key, []);
+      batchMap.get(key).push(b);
+    }
+
+    const tProductLookup = Date.now() - tProdReadStart;
+    console.log(`[BILL TIMING] Product lookup: ${tProductLookup}ms`);
+
+    // 2. Stock Validation & Item Snapshots (In-Memory Processing)
+    const tValidateStart = Date.now();
     for (const item of items) {
       const prodId = item.productId || item.id || item._id;
       const qty = Number(item.qty || item.quantity || 0);
       if (prodId && qty > 0) {
-        let prod = null;
-        if (mongoose.Types.ObjectId.isValid(prodId)) {
-          prod = await Product.findOne({ _id: prodId, userId }).populate('defaultUnitId').exec();
-        }
+        let prod = productMap.get(prodId?.toString());
         if (!prod && typeof prodId === 'string') {
           prod = await Product.findOne({
             userId,
             $or: [{ name: new RegExp(`^${prodId.trim()}$`, 'i') }, { code: prodId }],
-          }).populate('defaultUnitId').exec();
+          }).populate('defaultUnitId').lean().exec();
+          if (prod) productMap.set(prod._id.toString(), prod);
         }
 
         if (!prod) {
@@ -293,14 +344,7 @@ export const salesInvoiceService = {
 
         const prodName = prod.name || item.name || item.productName || 'Product';
         const unitName = prod.defaultUnitId?.shortName || item.unit || 'Bag';
-
-        const activeBatchesForStock = await ProductBatch.find({
-          userId,
-          productId: prod._id,
-          isDeleted: { $ne: true },
-          isActive: { $ne: false },
-          currentStock: { $gt: 0 },
-        }).lean().exec();
+        const activeBatchesForStock = batchMap.get(prod._id.toString()) || [];
 
         let availableStock = 0;
         if (activeBatchesForStock.length > 0) {
@@ -317,28 +361,28 @@ export const salesInvoiceService = {
         }
       }
     }
+    const tValidation = Date.now() - tValidateStart;
+    console.log(`[BILL TIMING] Request validation: ${tValidation}ms`);
+    console.log(`[BILL TIMING] Stock validation: ${tValidation}ms`);
 
+    const tSnapshotStart = Date.now();
     const itemSnapshots = [];
     const batchDeductionsToApply = [];
-    const virtualBatchStockMap = new Map();
+    const productDeductionMap = new Map();
 
     for (const i of items) {
       const pId = i.productId || i.id || i._id;
       const qty = Number(i.qty || i.quantity || 1);
       const inputUnitPrice = Number(i.price || i.unitPrice || 0);
 
-      let prod = null;
-      if (pId && mongoose.Types.ObjectId.isValid(pId)) {
-        prod = await Product.findOne({ _id: pId, userId }).populate('brandId categoryId defaultUnitId').lean().exec();
-      }
-
+      let prod = productMap.get(pId?.toString());
       const pCode = i.productCode || prod?.code || '';
       const pName = i.name || i.productName || prod?.name || 'Agri Product';
       const bName = i.brandName || prod?.brandId?.name || prod?.company || '';
       const cName = i.categoryName || prod?.categoryId?.name || 'General';
       const uName = i.unitName || prod?.defaultUnitId?.shortName || i.unit || 'Unit';
       const hsn = i.hsnCode || prod?.hsnCode || '';
-      const gst = Number(i.gstRate ?? i.gstPercent ?? prod?.gstRate ?? 18);
+      const gst = Number(i.gstRate ?? i.gstPercent ?? prod?.gstRate ?? 0);
 
       let remainingToAllocate = qty;
       let totalLineCost = 0;
@@ -346,27 +390,17 @@ export const salesInvoiceService = {
       let primaryBatchNumber = i.batchNumber || '';
       const itemBatchAllocations = [];
 
-      if (pId) {
-        const activeBatches = await ProductBatch.find({
-          userId,
-          productId: pId,
-          isDeleted: { $ne: true },
-          isActive: { $ne: false },
-          currentStock: { $gt: 0 },
-        }).sort({ createdAt: 1 }).lean().exec();
+      if (prod) {
+        const activeBatches = batchMap.get(prod._id.toString()) || [];
 
         for (const batch of activeBatches) {
           if (remainingToAllocate <= 0) break;
 
-          const bIdStr = batch._id.toString();
-          const currentAvailable = virtualBatchStockMap.has(bIdStr)
-            ? virtualBatchStockMap.get(bIdStr)
-            : Number(batch.currentStock || 0);
-
+          const currentAvailable = Number(batch.currentStock || 0);
           if (currentAvailable <= 0) continue;
 
           const allocatedQty = Math.min(currentAvailable, remainingToAllocate);
-          virtualBatchStockMap.set(bIdStr, currentAvailable - allocatedQty);
+          batch.currentStock -= allocatedQty;
 
           const bPurchaseRate = Number(batch.purchaseRate || 0);
           const bSellingPrice = Number(batch.sellingPrice || prod?.defaultSellingPrice || inputUnitPrice || 0);
@@ -377,7 +411,7 @@ export const salesInvoiceService = {
             allocatedQty,
             purchaseRate: bPurchaseRate,
             sellingPrice: bSellingPrice,
-            productId: pId,
+            productId: prod._id,
           });
 
           itemBatchAllocations.push({
@@ -393,6 +427,12 @@ export const salesInvoiceService = {
           remainingToAllocate -= allocatedQty;
           if (!primaryBatchNumber) primaryBatchNumber = batch.batchNumber;
         }
+
+        const prevDeduction = productDeductionMap.get(prod._id.toString()) || { totalQty: 0, sellingPrice: inputUnitPrice };
+        productDeductionMap.set(prod._id.toString(), {
+          totalQty: prevDeduction.totalQty + qty,
+          sellingPrice: inputUnitPrice || prod.defaultSellingPrice || 0,
+        });
       }
 
       if (remainingToAllocate > 0) {
@@ -421,7 +461,7 @@ export const salesInvoiceService = {
           const allocLineProfit = allocTaxableAmount - allocLineCost;
 
           itemSnapshots.push({
-            productId: pId,
+            productId: prod?._id || pId,
             productCode: pCode,
             productName: pName,
             brandName: bName,
@@ -459,7 +499,7 @@ export const salesInvoiceService = {
         const lineProfit = lineTaxableAmount - totalLineCost;
 
         itemSnapshots.push({
-          productId: pId,
+          productId: prod?._id || pId,
           productCode: pCode,
           productName: pName,
           brandName: bName,
@@ -488,7 +528,6 @@ export const salesInvoiceService = {
     const totalItemDiscounts = itemSnapshots.reduce((sum, s) => sum + (Number(s.discountAmount) || 0), 0);
     const authoritativeDiscountAmount = Number(discountAmount || 0) || totalItemDiscounts;
 
-    // Prorate bill-level discount to itemSnapshots if item-level discounts were 0
     if (authoritativeDiscountAmount > 0 && totalItemDiscounts === 0 && rawGrossSubtotal > 0) {
       let allocatedDiscSum = 0;
       itemSnapshots.forEach((s, idx) => {
@@ -504,15 +543,16 @@ export const salesInvoiceService = {
       });
     }
 
-    const authoritativeSubtotal = rawGrossSubtotal > 0 ? rawGrossSubtotal : itemSnapshots.reduce((sum, s) => sum + (Number(s.lineTotal) || Number(s.totalAmount) || 0), 0);
-    const authoritativeTaxAmount = itemSnapshots.reduce((sum, s) => sum + (Number(s.gstAmount) || 0), 0);
-    const grandTotal = Math.max(0, Math.round((authoritativeSubtotal - authoritativeDiscountAmount + authoritativeTaxAmount + Number.EPSILON) * 100) / 100);
+    const authoritativeSubtotal = Math.round(rawGrossSubtotal > 0 ? rawGrossSubtotal : itemSnapshots.reduce((sum, s) => sum + (Number(s.lineTotal) || Number(s.totalAmount) || 0), 0));
+    const authoritativeTaxAmount = Math.round(itemSnapshots.reduce((sum, s) => sum + (Number(s.gstAmount) || 0), 0));
+    const roundedDiscountAmount = Math.round(authoritativeDiscountAmount);
+    const grandTotal = Math.max(0, Math.round(authoritativeSubtotal - roundedDiscountAmount + authoritativeTaxAmount));
 
-    let paidAmount = inputPaidAmount !== undefined ? Number(inputPaidAmount) : grandTotal;
+    let paidAmount = inputPaidAmount !== undefined ? Math.round(Number(inputPaidAmount)) : grandTotal;
     if (isNaN(paidAmount) || paidAmount < 0) paidAmount = grandTotal;
 
-    let prevOutstanding = Number(customerDoc?.outstandingBalance || 0);
-    let prevAdvance = Number(customerDoc?.advanceBalance || 0);
+    let prevOutstanding = Math.round(Number(customerDoc?.outstandingBalance || 0));
+    let prevAdvance = Math.round(Number(customerDoc?.advanceBalance || 0));
 
     const advanceUsed = Math.min(prevAdvance, grandTotal);
     const netBillToPay = grandTotal - advanceUsed;
@@ -525,31 +565,40 @@ export const salesInvoiceService = {
     let newCustomerAdvance = remainingAdvance;
 
     if (paidAmount < netBillToPay) {
-      newBillDue = netBillToPay - paidAmount;
-      newTotalOutstanding = prevOutstanding + newBillDue;
+      newBillDue = Math.round(netBillToPay - paidAmount);
+      newTotalOutstanding = Math.round(prevOutstanding + newBillDue);
     } else if (paidAmount === netBillToPay) {
       newBillDue = 0;
       newTotalOutstanding = prevOutstanding;
     } else {
       newBillDue = 0;
-      extraPaid = paidAmount - netBillToPay;
+      extraPaid = Math.round(paidAmount - netBillToPay);
 
       if (prevOutstanding > 0) {
         clearedPrevDue = Math.min(prevOutstanding, extraPaid);
         const remainingExtra = extraPaid - clearedPrevDue;
-        newTotalOutstanding = prevOutstanding - clearedPrevDue;
-        newCustomerAdvance = remainingAdvance + remainingExtra;
+        newTotalOutstanding = Math.round(prevOutstanding - clearedPrevDue);
+        newCustomerAdvance = Math.round(remainingAdvance + remainingExtra);
       } else {
-        newCustomerAdvance = remainingAdvance + extraPaid;
+        newCustomerAdvance = Math.round(remainingAdvance + extraPaid);
         newTotalOutstanding = 0;
       }
     }
 
     const status = calculateInvoicePaymentStatus(grandTotal, paidAmount, newBillDue, data.status);
-    let dueStatus = newBillDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
+    let dueStatus = newBillDue <= 0 ? 'No Due' : 'Due In 30 Days';
 
+    const tItemsProc = Date.now() - tSnapshotStart;
+    console.log(`[BILL TIMING] Invoice items processing: ${tItemsProc}ms`);
+
+    // 3. Invoice Number Generation
+    const tNumStart = Date.now();
     const autoInvoiceNumber = await generateNextInvoiceNumber(userId);
+    const tNumGen = Date.now() - tNumStart;
+    console.log(`[BILL TIMING] Invoice number generation: ${tNumGen}ms`);
 
+    // 4. Save Invoice DB Document
+    const tInvSaveStart = Date.now();
     const newInvoice = await SalesInvoice.create({
       userId,
       invoiceNumber: autoInvoiceNumber,
@@ -572,67 +621,77 @@ export const salesInvoiceService = {
       notes,
       idempotencyKey,
     });
+    const tInvSave = Date.now() - tInvSaveStart;
+    console.log(`[BILL TIMING] Invoice database save: ${tInvSave}ms`);
 
-    for (const bDeduction of batchDeductionsToApply) {
-      const updatedBatch = await ProductBatch.findOneAndUpdate(
-        { _id: bDeduction.batchId, userId, currentStock: { $gte: bDeduction.allocatedQty } },
-        { $inc: { currentStock: -bDeduction.allocatedQty } },
-        { new: true }
-      ).exec();
+    // 5. Batched Stock Deductions & Stock Ledger Entries
+    const tStockDedStart = Date.now();
 
-      if (!updatedBatch) {
-        throw new AppError(
-          `Insufficient stock in batch '${bDeduction.batchNumber}' due to a concurrent update. Please try again.`,
-          HTTP_STATUS.BAD_REQUEST
-        );
-      }
+    if (batchDeductionsToApply.length > 0) {
+      const batchBulkOps = batchDeductionsToApply.map((bDeduction) => ({
+        updateOne: {
+          filter: { _id: bDeduction.batchId, userId, currentStock: { $gte: bDeduction.allocatedQty } },
+          update: { $inc: { currentStock: -bDeduction.allocatedQty } },
+        },
+      }));
+      await ProductBatch.bulkWrite(batchBulkOps);
 
-      if (updatedBatch.currentStock === 0) {
-        updatedBatch.isActive = false;
-        await updatedBatch.save();
+      const affectedBatchIds = batchDeductionsToApply.map((b) => b.batchId);
+      await ProductBatch.updateMany(
+        { _id: { $in: affectedBatchIds }, currentStock: { $lte: 0 } },
+        { $set: { isActive: false, currentStock: 0 } }
+      );
+    }
+
+    const productBulkOps = [];
+    const stockLedgerEntries = [];
+
+    for (const [pIdStr, deduction] of productDeductionMap.entries()) {
+      const prod = productMap.get(pIdStr);
+      if (prod) {
+        const previousStock = Math.max(0, Number(prod.totalStock ?? prod.currentStock ?? 0));
+        const currentStock = Math.max(0, previousStock - deduction.totalQty);
+
+        productBulkOps.push({
+          updateOne: {
+            filter: { _id: prod._id, userId },
+            update: { $set: { totalStock: currentStock } },
+          },
+        });
+
+        const matchingSnapshot = itemSnapshots.find((s) => s.productId?.toString() === prod._id.toString());
+        stockLedgerEntries.push({
+          userId,
+          transactionType: 'SALE',
+          referenceId: newInvoice._id,
+          referenceNumber: newInvoice.invoiceNumber,
+          productId: prod._id,
+          batchId: matchingSnapshot?.batchAllocations?.[0]?.batchId || null,
+          batchNumber: matchingSnapshot?.batchNumber || '',
+          quantity: -deduction.totalQty,
+          purchaseRate: prod.defaultPurchaseRate || 0,
+          sellingPrice: deduction.sellingPrice || prod.defaultSellingPrice || 0,
+          previousStock,
+          currentStock,
+          createdBy: 'POS System',
+          timestamp: newInvoice.date,
+        });
       }
     }
 
-    for (const item of items) {
-      const prodId = item.productId || item.id || item._id;
-      const qty = Number(item.qty || item.quantity || 0);
-      if (prodId && qty > 0) {
-        let prod = null;
-        if (mongoose.Types.ObjectId.isValid(prodId)) {
-          prod = await Product.findOne({ _id: prodId, userId }).exec();
-        }
-        if (!prod && typeof prodId === 'string') {
-          prod = await Product.findOne({
-            userId,
-            $or: [{ name: new RegExp(`^${prodId.trim()}$`, 'i') }, { code: prodId }],
-          }).exec();
-        }
-        if (prod) {
-          const previousStock = Math.max(0, Number(prod.totalStock ?? prod.currentStock ?? 0));
-          const currentStock = Math.max(0, previousStock - qty);
-          prod.totalStock = currentStock;
-          await prod.save();
-
-          await StockLedger.create({
-            userId,
-            transactionType: 'SALE',
-            referenceId: newInvoice._id,
-            referenceNumber: newInvoice.invoiceNumber,
-            productId: prod._id,
-            batchId: itemSnapshots.find((s) => s.productId?.toString() === prod._id.toString())?.batchAllocations[0]?.batchId || null,
-            batchNumber: itemSnapshots.find((s) => s.productId?.toString() === prod._id.toString())?.batchNumber || '',
-            quantity: -qty,
-            purchaseRate: prod.defaultPurchaseRate || 0,
-            sellingPrice: item.price || item.unitPrice || prod.defaultSellingPrice || 0,
-            previousStock,
-            currentStock,
-            createdBy: 'POS System',
-            timestamp: newInvoice.date,
-          });
-        }
-      }
+    if (productBulkOps.length > 0) {
+      await Product.bulkWrite(productBulkOps);
+    }
+    if (stockLedgerEntries.length > 0) {
+      await StockLedger.insertMany(stockLedgerEntries);
     }
 
+    const tStockDed = Date.now() - tStockDedStart;
+    console.log(`[BILL TIMING] Stock deduction: ${tStockDed}ms`);
+    console.log(`[BILL TIMING] Transaction creation: ${tStockDed}ms`);
+
+    // 6. Customer Ledger & Payment Processing
+    const tLedgerStart = Date.now();
     if (customerDoc) {
       customerDoc.totalPurchases = (customerDoc.totalPurchases || 0) + grandTotal;
       customerDoc.totalPaid = (customerDoc.totalPaid || 0) + paidAmount + advanceUsed;
@@ -669,6 +728,8 @@ export const salesInvoiceService = {
 
       await customerService.calculateCustomerBalance(customerDoc._id, userId);
     }
+    const tLedger = Date.now() - tLedgerStart;
+    console.log(`[BILL TIMING] Customer ledger update: ${tLedger}ms`);
 
     return {
       invoice: newInvoice,
@@ -837,46 +898,131 @@ export const salesInvoiceService = {
 
   async deleteInvoice(id, userId) {
     if (!userId) throw new Error('userId is required');
-    const invoice = await SalesInvoice.findOne({ _id: id, userId }).exec();
-    if (!invoice) {
-      throw new AppError('Invoice not found', HTTP_STATUS.NOT_FOUND);
-    }
 
-    for (const item of invoice.items) {
-      if (item.productId && item.quantity > 0) {
-        const prod = await Product.findOne({ _id: item.productId, userId }).exec();
-        if (prod) {
-          prod.totalStock = (prod.totalStock || 0) + item.quantity;
-          await prod.save();
-        }
+    const session = await mongoose.startSession();
+    let isTransactionStarted = false;
+
+    try {
+      try {
+        session.startTransaction();
+        isTransactionStarted = true;
+      } catch (_err) {
+        // Session / transaction not supported on standalone mongod without replica set
       }
 
-      if (item.batchAllocations && item.batchAllocations.length > 0) {
-        for (const alloc of item.batchAllocations) {
-          if (alloc.batchId && alloc.quantity > 0) {
-            await ProductBatch.findOneAndUpdate(
-              { _id: alloc.batchId, userId },
-              { $inc: { currentStock: alloc.quantity } }
+      const opts = isTransactionStarted ? { session } : {};
+
+      const invoice = await SalesInvoice.findOne({ _id: id, userId }, null, opts).exec();
+      if (!invoice) {
+        throw new AppError('Invoice not found', HTTP_STATUS.NOT_FOUND);
+      }
+
+      // 1. Check whether stock was actually deducted & restore stock
+      const shouldRestoreStock = invoice.status !== 'Cancelled';
+      const reversalStockLedgerEntries = [];
+
+      if (shouldRestoreStock) {
+        for (const item of invoice.items || []) {
+          if (item.productId && item.quantity > 0) {
+            const prod = await Product.findOneAndUpdate(
+              { _id: item.productId, userId },
+              { $inc: { totalStock: item.quantity } },
+              { new: true, ...opts }
             ).exec();
+
+            if (prod) {
+              const previousStockVal = Math.max(0, prod.totalStock - item.quantity);
+              reversalStockLedgerEntries.push({
+                userId,
+                transactionType: 'INVOICE_DELETE_REVERSAL',
+                referenceId: invoice._id,
+                referenceNumber: invoice.invoiceNumber,
+                productId: prod._id,
+                batchId: item.batchAllocations?.[0]?.batchId || null,
+                batchNumber: item.batchAllocations?.[0]?.batchNumber || item.batchNumber || '',
+                quantity: item.quantity,
+                purchaseRate: item.purchaseCostRate || prod.defaultPurchaseRate || 0,
+                sellingPrice: item.unitPrice || prod.defaultSellingPrice || 0,
+                previousStock: previousStockVal,
+                currentStock: prod.totalStock,
+                createdBy: 'System (Invoice Delete)',
+                timestamp: new Date(),
+              });
+            }
+          }
+
+          if (item.batchAllocations && item.batchAllocations.length > 0) {
+            for (const alloc of item.batchAllocations) {
+              if (alloc.batchId && alloc.quantity > 0) {
+                await ProductBatch.updateOne(
+                  { _id: alloc.batchId, userId },
+                  { $inc: { currentStock: alloc.quantity } },
+                  opts
+                ).exec();
+              }
+            }
           }
         }
+
+        // 2. Insert INVOICE_DELETE_REVERSAL stock ledger entries for audit trail
+        if (reversalStockLedgerEntries.length > 0) {
+          await StockLedger.insertMany(reversalStockLedgerEntries, opts);
+        }
+
+        // Clean up original SALE stock ledger entries
+        await StockLedger.deleteMany(
+          {
+            userId,
+            referenceId: invoice._id,
+            transactionType: 'SALE',
+          },
+          opts
+        ).exec();
       }
+
+      // 3. Delete ALL payments directly linked to this invoice (registered, walk-in, or general)
+      const payRef = `PAY-BILL-${invoice.invoiceNumber}`;
+      await CustomerPayment.deleteMany(
+        {
+          userId,
+          $or: [
+            { invoiceId: invoice._id },
+            { refNo: payRef },
+          ],
+        },
+        opts
+      ).exec();
+
+      // 4. Delete the SalesInvoice document
+      await SalesInvoice.deleteOne({ _id: invoice._id, userId }, opts).exec();
+
+      if (isTransactionStarted) {
+        await session.commitTransaction();
+        isTransactionStarted = false; // Mark committed so catch block won't abort
+      }
+
+      // 5. Recalculate affected customer balance AFTER transaction commit
+      if (invoice.customerId) {
+        await customerService.calculateCustomerBalance(invoice.customerId, userId);
+      } else if (invoice.customerMobile && invoice.customerType !== 'WALK_IN') {
+        const custDoc = await Customer.findOne({ userId, mobile: invoice.customerMobile }).exec();
+        if (custDoc) {
+          await customerService.calculateCustomerBalance(custDoc._id, userId);
+        }
+      }
+
+      return {
+        success: true,
+        message: `Invoice #${invoice.invoiceNumber} deleted successfully, inventory restored, and payments cleaned`,
+      };
+    } catch (error) {
+      if (isTransactionStarted) {
+        await session.abortTransaction();
+      }
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    if (invoice.customerId) {
-      await CustomerPayment.deleteMany({ userId, invoiceId: invoice._id }).exec();
-    }
-
-    await SalesInvoice.findOneAndDelete({ _id: id, userId }).exec();
-
-    if (invoice.customerId) {
-      await customerService.calculateCustomerBalance(invoice.customerId, userId);
-    }
-
-    return {
-      success: true,
-      message: `Invoice #${invoice.invoiceNumber} deleted successfully and inventory restored`,
-    };
   },
 
   async updateInvoice(id, data, userId) {
@@ -895,5 +1041,173 @@ export const salesInvoiceService = {
       throw new AppError('Invoice not found', HTTP_STATUS.NOT_FOUND);
     }
     return updatedInvoice;
+  },
+
+  async restoreInvoice(id, userId, docOverride = null) {
+    if (!userId) throw new Error('userId is required');
+
+    const session = await mongoose.startSession();
+    let isTransactionStarted = false;
+
+    try {
+      try {
+        session.startTransaction();
+        isTransactionStarted = true;
+      } catch (_err) {
+        // Transaction not supported on standalone mongod without replica set
+      }
+
+      const opts = isTransactionStarted ? { session } : {};
+
+      // 1. Locate existing invoice or use docOverride
+      let invoice = docOverride;
+      if (!invoice) {
+        invoice = await SalesInvoice.findOne({ _id: id, userId }, null, opts).exec();
+        if (!invoice && mongoose.Types.ObjectId.isValid(id)) {
+          invoice = await SalesInvoice.findById(id, null, opts).exec();
+        }
+      }
+
+      if (!invoice) {
+        throw new AppError('Invoice not found for restoration', HTTP_STATUS.NOT_FOUND);
+      }
+
+      // Check if invoice exists in DB and stock is already deducted for active invoice
+      const existDoc = await SalesInvoice.findOne({ _id: invoice._id }, null, opts).exec();
+      if (existDoc && existDoc.isStockDeducted === true && existDoc.status !== 'Cancelled' && existDoc.isActive !== false) {
+        return {
+          success: true,
+          message: `Invoice #${invoice.invoiceNumber} is already active and stock is already deducted.`,
+          invoice: existDoc,
+        };
+      }
+
+      // 2. Validate current stock availability for ALL items before restoring
+      const itemsToDeduct = invoice.items || [];
+      for (const item of itemsToDeduct) {
+        if (item.productId && item.quantity > 0) {
+          const prod = await Product.findOne({ _id: item.productId, userId }, null, opts).lean();
+          if (!prod) {
+            throw new AppError(`Product not found for invoice item '${item.productName || item.productId}'`, HTTP_STATUS.BAD_REQUEST);
+          }
+          if (prod.totalStock < item.quantity) {
+            throw new AppError(
+              `Insufficient stock to restore Invoice #${invoice.invoiceNumber}. Product '${prod.name || prod.productName}' requires ${item.quantity} units, but available stock is ${prod.totalStock}.`,
+              HTTP_STATUS.BAD_REQUEST
+            );
+          }
+        }
+
+        if (item.batchAllocations && item.batchAllocations.length > 0) {
+          for (const alloc of item.batchAllocations) {
+            if (alloc.batchId && alloc.quantity > 0) {
+              const batch = await ProductBatch.findOne({ _id: alloc.batchId, userId }, null, opts).lean();
+              if (batch && batch.currentStock < alloc.quantity) {
+                throw new AppError(
+                  `Insufficient stock in batch '${alloc.batchNumber || batch.batchNumber}' to restore Invoice #${invoice.invoiceNumber}. Requires ${alloc.quantity} units, but available stock is ${batch.currentStock}.`,
+                  HTTP_STATUS.BAD_REQUEST
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Reapply inventory deductions
+      const deductionStockLedgerEntries = [];
+      for (const item of itemsToDeduct) {
+        if (item.productId && item.quantity > 0) {
+          const prod = await Product.findOneAndUpdate(
+            { _id: item.productId, userId },
+            { $inc: { totalStock: -item.quantity } },
+            { new: true, ...opts }
+          ).exec();
+
+          if (prod) {
+            deductionStockLedgerEntries.push({
+              userId,
+              transactionType: 'INVOICE_RESTORE_DEDUCTION',
+              referenceId: invoice._id,
+              referenceNumber: invoice.invoiceNumber,
+              productId: prod._id,
+              batchId: item.batchAllocations?.[0]?.batchId || null,
+              batchNumber: item.batchAllocations?.[0]?.batchNumber || item.batchNumber || '',
+              quantity: item.quantity,
+              purchaseRate: item.purchaseCostRate || prod.defaultPurchaseRate || 0,
+              sellingPrice: item.unitPrice || prod.defaultSellingPrice || 0,
+              previousStock: prod.totalStock + item.quantity,
+              currentStock: prod.totalStock,
+              createdBy: 'System (Invoice Restore)',
+              timestamp: new Date(),
+            });
+          }
+        }
+
+        if (item.batchAllocations && item.batchAllocations.length > 0) {
+          for (const alloc of item.batchAllocations) {
+            if (alloc.batchId && alloc.quantity > 0) {
+              await ProductBatch.updateOne(
+                { _id: alloc.batchId, userId },
+                { $inc: { currentStock: -alloc.quantity } },
+                opts
+              ).exec();
+            }
+          }
+        }
+      }
+
+      // 4. Record stock ledger entries for audit trail
+      if (deductionStockLedgerEntries.length > 0) {
+        await StockLedger.insertMany(deductionStockLedgerEntries, opts);
+      }
+
+      // 5. Restore/Update invoice document state
+      let updatedInvoice;
+      if (existDoc) {
+        existDoc.isActive = true;
+        existDoc.isStockDeducted = true;
+        if (existDoc.status === 'Cancelled') {
+          existDoc.status = 'Paid';
+        }
+        updatedInvoice = await existDoc.save(opts);
+      } else {
+        const cleanDoc = typeof invoice.toObject === 'function' ? invoice.toObject() : { ...invoice };
+        cleanDoc.isActive = true;
+        cleanDoc.isStockDeducted = true;
+        if (cleanDoc.status === 'Cancelled') {
+          cleanDoc.status = 'Paid';
+        }
+        const createdDocs = await SalesInvoice.create([cleanDoc], opts);
+        updatedInvoice = Array.isArray(createdDocs) ? createdDocs[0] : createdDocs;
+      }
+
+      if (isTransactionStarted) {
+        await session.commitTransaction();
+        isTransactionStarted = false;
+      }
+
+      // 6. Recalculate customer balance
+      if (invoice.customerId) {
+        await customerService.calculateCustomerBalance(invoice.customerId, userId);
+      } else if (invoice.customerMobile && invoice.customerType !== 'WALK_IN') {
+        const custDoc = await Customer.findOne({ userId, mobile: invoice.customerMobile }).exec();
+        if (custDoc) {
+          await customerService.calculateCustomerBalance(custDoc._id, userId);
+        }
+      }
+
+      return {
+        success: true,
+        message: `Invoice #${invoice.invoiceNumber} restored successfully and inventory deductions reapplied.`,
+        invoice: updatedInvoice,
+      };
+    } catch (error) {
+      if (isTransactionStarted) {
+        await session.abortTransaction();
+      }
+      throw error;
+    } finally {
+      session.endSession();
+    }
   },
 };

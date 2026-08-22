@@ -1,5 +1,4 @@
 import express from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
 import { requireAdminRole } from './middlewares/admin.middleware.js';
 import { adminController } from './controllers/admin.controller.js';
 
@@ -11,8 +10,7 @@ const router = express.Router();
 // Public Admin Auth Endpoints (/api/v1/admin/auth/send-otp, /verify-otp, etc.)
 router.use('/auth', adminAuthRoutes);
 
-// Require logged in user + admin role for all protected admin routes
-router.use(authenticate);
+// Require Admin role & token signed with ADMIN_JWT_SECRET for all protected admin routes
 router.use(requireAdminRole());
 
 // Dashboard & Stats
@@ -52,6 +50,8 @@ router.get('/admins', adminController.getAdminsList);
 router.post('/admins', adminController.createAdminUser);
 
 // Notifications
+router.post('/notifications/user', adminController.sendSingleUserNotification);
+router.post('/notifications/users', adminController.sendSingleUserNotification);
 router.post('/notifications/send', adminController.sendAdminNotification);
 router.get('/notifications/history', adminController.getNotificationsHistory);
 

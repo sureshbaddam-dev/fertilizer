@@ -14,12 +14,50 @@ export const validateRequest = (req, _res, next) => {
   next();
 };
 
-export const signupRules = [
-  body('ownerName').trim().notEmpty().withMessage('Owner name is required'),
+export const initiateSignupRules = [
+  body('email').trim().toLowerCase().isEmail().withMessage('Please enter a valid email address'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+  body('confirmPassword')
+    .custom((value, { req }) => value === req.body.password)
+    .withMessage('Passwords do not match'),
+  validateRequest,
+];
+
+export const verifySignupOtpRules = [
+  body('email').trim().toLowerCase().isEmail().withMessage('Valid email address is required'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('6-digit OTP is required'),
+  validateRequest,
+];
+
+export const completeOnboardingRules = [
+  body('ownerName').trim().notEmpty().withMessage('Name is required'),
   body('mobile')
     .trim()
+    .customSanitizer((val) => {
+      if (!val) return '';
+      let cleaned = val.toString().replace(/[\s\-\(\)]/g, '');
+      if (cleaned.startsWith('+91')) cleaned = cleaned.substring(3);
+      if (cleaned.startsWith('91') && cleaned.length === 12) cleaned = cleaned.substring(2);
+      if (cleaned.startsWith('0') && cleaned.length === 11) cleaned = cleaned.substring(1);
+      return cleaned;
+    })
     .matches(/^[6-9]\d{9}$/)
-    .withMessage('Please enter a valid 10-digit mobile number'),
+    .withMessage('Please enter a valid 10-digit Indian mobile number'),
+  body('shopName').optional({ checkFalsy: true }).trim(),
+  body('address').optional({ checkFalsy: true }).trim(),
+  body('gstNumber')
+    .optional({ checkFalsy: true })
+    .trim()
+    .toUpperCase()
+    .matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/)
+    .withMessage('Please enter a valid 15-character GSTIN number (e.g. 36AAAAA0000A1Z5)'),
+  body('city').optional({ checkFalsy: true }).trim(),
+  body('state').optional({ checkFalsy: true }).trim(),
+  body('pincode').optional({ checkFalsy: true }).trim(),
+  validateRequest,
+];
+
+export const signupRules = [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
   body('confirmPassword')
     .custom((value, { req }) => value === req.body.password)
@@ -28,10 +66,6 @@ export const signupRules = [
 ];
 
 export const verifyOtpRules = [
-  body('mobile')
-    .trim()
-    .matches(/^[6-9]\d{9}$/)
-    .withMessage('Valid 10-digit mobile number is required'),
   body('otp').isLength({ min: 6, max: 6 }).withMessage('6-digit OTP is required'),
   validateRequest,
 ];

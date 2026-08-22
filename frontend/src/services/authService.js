@@ -47,21 +47,31 @@ export const authService = {
 
   subscribe(fn) {
     listeners.push(fn);
-    try {
-      fn();
-    } catch (_e) {}
     return () => {
       listeners = listeners.filter((l) => l !== fn);
     };
   },
 
 
+  async checkEmailAvailability(email, options = {}) {
+    const { signal } = options;
+    return await apiClient.get('/auth/check-email', { params: { email }, signal });
+  },
+
   async signup(data) {
     return await apiClient.post('/auth/signup', data);
   },
 
+  async initiateSignupOtp(data) {
+    return await apiClient.post('/auth/signup/initiate-otp', data);
+  },
+
   async signupEmail(data) {
-    return await apiClient.post('/auth/signup/email', data);
+    return await apiClient.post('/auth/signup/initiate-otp', data);
+  },
+
+  async resendSignupOtp(email) {
+    return await apiClient.post('/auth/signup/resend-otp', { email });
   },
 
   async verifyEmail(token) {
@@ -91,8 +101,23 @@ export const authService = {
   },
 
   async verifySignupOtp(data) {
-    const response = await apiClient.post('/auth/verify-signup-otp', data);
+    const response = await apiClient.post('/auth/signup/verify-otp', data);
     if (response.success && response.data?.accessToken) {
+      // Store pending token so apiClient can authorize completeOnboarding,
+      // but DO NOT call notifyListeners() to prevent PublicOnlyRoute from redirecting /signup to /shop-setup!
+      localStorage.setItem('vedixa_access_token', response.data.accessToken);
+      localStorage.setItem('mandhi_access_token', response.data.accessToken);
+      if (response.data.user) {
+        localStorage.setItem('vedixa_user', JSON.stringify(response.data.user));
+        localStorage.setItem('mandhi_user', JSON.stringify(response.data.user));
+      }
+    }
+    return response;
+  },
+
+  async completeOnboarding(data) {
+    const response = await apiClient.post('/auth/complete-onboarding', data);
+    if (response.success && response.data?.user) {
       saveTokens(response.data);
       notifyListeners();
     }

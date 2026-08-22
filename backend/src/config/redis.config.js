@@ -24,7 +24,7 @@ export const connectRedis = () => {
   });
 
   redisClient.on('error', (err) => {
-    logger.warn({ err: err.message }, 'Redis client connection warning/error.');
+    // Suppress unhandled error crash when Redis is offline locally
   });
 
   return redisClient;

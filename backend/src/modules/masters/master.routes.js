@@ -37,7 +37,6 @@ import {
   restoreBrand,
 } from './controllers/brand.controller.js';
 import { brandService } from './services/brand.service.js';
-import { companyService } from './services/company.service.js';
 
 import { protect } from '../../middlewares/auth.middleware.js';
 
@@ -53,7 +52,7 @@ router.post(
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No logo image file selected' });
     }
-    const imageUrl = `/uploads/brands/${req.file.filename}`;
+    const imageUrl = req.file.path || req.file.secure_url || req.file.url || `/uploads/brands/${req.file.filename}`;
     return sendSuccess(res, 'Brand logo uploaded successfully', { imageUrl }, HTTP_STATUS.OK);
   })
 );

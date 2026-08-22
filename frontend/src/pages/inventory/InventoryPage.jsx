@@ -72,9 +72,25 @@ export default function InventoryPage() {
     rawProducts.forEach((p) => {
       const stock = Number(p.totalStock ?? p.currentStock ?? 0);
       const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-      const purchaseRate = Number(p.defaultPurchaseRate ?? p.purchasePrice ?? 0);
+      const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
 
-      totalValue += stock * purchaseRate;
+      let effectiveRate = 0;
+      if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
+        effectiveRate = Number(p.stockValue) / baseStock;
+      } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
+        effectiveRate = Number(p.totalStockValue) / baseStock;
+      } else {
+        effectiveRate = Number(
+          p.defaultPurchaseRate ||
+          p.purchaseRate ||
+          p.purchasePrice ||
+          p.currentActiveBatch?.purchaseRate ||
+          p.batches?.[0]?.purchaseRate ||
+          0
+        );
+      }
+
+      totalValue += stock * effectiveRate;
 
       if (stock === 0) {
         outOfStockCount++;
@@ -117,8 +133,16 @@ export default function InventoryPage() {
         const stockA = Number(a.totalStock ?? a.currentStock ?? 0);
         const stockB = Number(b.totalStock ?? b.currentStock ?? 0);
 
-        const rateA = Number(a.defaultPurchaseRate ?? a.purchasePrice ?? 0);
-        const rateB = Number(b.defaultPurchaseRate ?? b.purchasePrice ?? 0);
+        const baseA = Number(a.totalStock ?? a.currentStock ?? 0);
+        const baseB = Number(b.totalStock ?? b.currentStock ?? 0);
+
+        let rateA = 0;
+        if (a.stockValue && baseA > 0) rateA = a.stockValue / baseA;
+        else rateA = Number(a.defaultPurchaseRate || a.purchaseRate || a.purchasePrice || a.currentActiveBatch?.purchaseRate || 0);
+
+        let rateB = 0;
+        if (b.stockValue && baseB > 0) rateB = b.stockValue / baseB;
+        else rateB = Number(b.defaultPurchaseRate || b.purchaseRate || b.purchasePrice || b.currentActiveBatch?.purchaseRate || 0);
 
         const valA = stockA * rateA;
         const valB = stockB * rateB;
@@ -149,6 +173,8 @@ export default function InventoryPage() {
       [pId]: (prev[pId] || 0) + damageRecord.quantity,
     }));
     queryClient.invalidateQueries(['dashboard-summary']);
+    queryClient.invalidateQueries(['products-inventory']);
+    queryClient.invalidateQueries(['products']);
   };
 
   const handleSaveReturn = (returnRecord) => {
@@ -159,6 +185,8 @@ export default function InventoryPage() {
     }));
     queryClient.invalidateQueries(['dashboard-summary']);
     queryClient.invalidateQueries(['supplier-ledger']);
+    queryClient.invalidateQueries(['products-inventory']);
+    queryClient.invalidateQueries(['products']);
   };
 
   return (
@@ -201,11 +229,20 @@ export default function InventoryPage() {
           value={metrics.totalProducts}
           subtitle="Product Master Catalog"
           icon={Layers}
+          onClick={() => {
+            setStatusFilter('ALL');
+            setCurrentPage(1);
+          }}
+          className={`cursor-pointer transition-all ${
+            statusFilter === 'ALL'
+              ? 'ring-2 ring-emerald-500 border-emerald-300 bg-emerald-50/20'
+              : 'hover:border-slate-300'
+          }`}
         />
 
         <StatCard
           title="Total Stock Value (₹)"
-          value={`₹ ${metrics.totalInventoryValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+          value={`₹ ${Math.round(metrics.totalInventoryValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           subtitle="Valued at Landed Purchase Rate"
           icon={DollarSign}
         />
@@ -216,6 +253,15 @@ export default function InventoryPage() {
           subtitle="At or below reorder limit"
           icon={AlertTriangle}
           trendColor="amber"
+          onClick={() => {
+            setStatusFilter('LOW_STOCK');
+            setCurrentPage(1);
+          }}
+          className={`cursor-pointer transition-all ${
+            statusFilter === 'LOW_STOCK'
+              ? 'ring-2 ring-amber-500 border-amber-300 bg-amber-50/20'
+              : 'hover:border-amber-300'
+          }`}
         />
 
         <StatCard
@@ -224,6 +270,15 @@ export default function InventoryPage() {
           subtitle="Requires immediate purchase"
           icon={PackageX}
           trendColor="rose"
+          onClick={() => {
+            setStatusFilter('OUT_OF_STOCK');
+            setCurrentPage(1);
+          }}
+          className={`cursor-pointer transition-all ${
+            statusFilter === 'OUT_OF_STOCK'
+              ? 'ring-2 ring-rose-500 border-rose-300 bg-rose-50/20'
+              : 'hover:border-rose-300'
+          }`}
         />
       </div>
 
@@ -349,9 +404,25 @@ export default function InventoryPage() {
                     const rowIndex = startIndex + idx + 1;
                     const stock = Number(p.totalStock ?? p.currentStock ?? 0);
                     const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-                    const purchaseRate = Number(p.defaultPurchaseRate ?? p.purchasePrice ?? 0);
-                    const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
+                    const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
 
+                    let purchaseRate = 0;
+                    if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
+                      purchaseRate = Number(p.stockValue) / baseStock;
+                    } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
+                      purchaseRate = Number(p.totalStockValue) / baseStock;
+                    } else {
+                      purchaseRate = Number(
+                        p.defaultPurchaseRate ||
+                        p.purchaseRate ||
+                        p.purchasePrice ||
+                        p.currentActiveBatch?.purchaseRate ||
+                        p.batches?.[0]?.purchaseRate ||
+                        0
+                      );
+                    }
+
+                    const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
                     const stockVal = stock * purchaseRate;
 
                     const companyName = p.brandId?.name || p.companyId?.name || p.company || 'N/A';
@@ -421,7 +492,7 @@ export default function InventoryPage() {
 
                         {/* Stock Value */}
                         <td className="py-2.5 px-2.5 text-center font-mono font-bold text-gray-900 text-[11px] align-middle whitespace-nowrap">
-                          ₹ {stockVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹ {Math.round(stockVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
 
                         {/* Low Stock Status */}
@@ -474,7 +545,24 @@ export default function InventoryPage() {
                 const rowIndex = startIndex + idx + 1;
                 const stock = Number(p.totalStock ?? p.currentStock ?? 0);
                 const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-                const purchaseRate = Number(p.defaultPurchaseRate ?? p.purchasePrice ?? 0);
+                const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
+
+                let purchaseRate = 0;
+                if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
+                  purchaseRate = Number(p.stockValue) / baseStock;
+                } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
+                  purchaseRate = Number(p.totalStockValue) / baseStock;
+                } else {
+                  purchaseRate = Number(
+                    p.defaultPurchaseRate ||
+                    p.purchaseRate ||
+                    p.purchasePrice ||
+                    p.currentActiveBatch?.purchaseRate ||
+                    p.batches?.[0]?.purchaseRate ||
+                    0
+                  );
+                }
+
                 const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
                 const stockVal = stock * purchaseRate;
                 const companyName = p.brandId?.name || p.companyId?.name || p.company || 'N/A';
@@ -542,7 +630,7 @@ export default function InventoryPage() {
                       </div>
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold block uppercase font-sans">Stock Value</span>
-                        <span className="font-bold text-gray-900 block">₹ {stockVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-bold text-gray-900 block">₹ {Math.round(stockVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold block uppercase font-sans">Total Inward / Outward</span>

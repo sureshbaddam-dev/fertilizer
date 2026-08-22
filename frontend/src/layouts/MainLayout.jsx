@@ -4,6 +4,7 @@ import PageLayout from '../components/layout/PageLayout';
 import PageTracker from '../components/PageTracker';
 
 import { useSettings } from '../contexts/SettingsContext';
+import { authService } from '../services/authService';
 
 export default function MainLayout() {
   const navigate = useNavigate();
@@ -73,8 +74,9 @@ export default function MainLayout() {
 
   // --- RENDER LOGIC (AFTER ALL HOOKS HAVE BEEN EXECUTED UNCONDITIONALLY) ---
 
-  // A. While resolving ShopSettings / profile onboarding state, show VEDIXA loading UI — DO NOT mount Dashboard
-  if (isSettingsLoading || settings === undefined) {
+  // A. While resolving ShopSettings / profile onboarding state on initial load, show VEDIXA loading UI — DO NOT mount Dashboard until ready
+  const hasSettingsData = settings && Object.keys(settings).length > 0;
+  if ((isSettingsLoading && !hasSettingsData) || settings === undefined) {
     return (
       <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 font-sans text-white">
         <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
@@ -84,9 +86,17 @@ export default function MainLayout() {
     );
   }
 
-  // B. Once settings resolved: if shopName is missing/empty, redirect to /shop-setup WITHOUT mounting Dashboard
-  const currentShopName = settings?.shopName || settings?.shopSettings?.shopName || '';
-  if (!currentShopName || !currentShopName.trim()) {
+  // B. Once settings and auth resolved: check if valid shopName exists across SettingsContext and User Profile
+  const currentUser = authService.getCurrentUser();
+  const currentShopName =
+    settings?.shopName ||
+    settings?.shopSettings?.shopName ||
+    currentUser?.shopName ||
+    currentUser?.user?.shopName ||
+    '';
+
+  // Only redirect to /shop-setup if initialization is complete and NO valid shop name exists anywhere
+  if (!isSettingsLoading && !authService.isInitializing && (!currentShopName || !currentShopName.trim())) {
     return <Navigate to="/shop-setup" replace />;
   }
 

@@ -137,7 +137,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const { settings: shopSettingsData } = useSettings();
   const shopSettings = useMemo(() => shopSettingsData || {}, [shopSettingsData]);
   const isGstEnabled = shopSettingsData?.isGstEnabled !== false;
-  const defaultGstRate = Number(shopSettingsData?.defaultGst ?? 18);
+  const defaultGstRate = Number(shopSettingsData?.defaultGst ?? 0);
   const gstType = shopSettingsData?.gstType || 'CGST_SGST';
 
   const [lastSavedInvoice, setLastSavedInvoice] = useState(null);

@@ -8,7 +8,6 @@ export default function SubscriptionsTabs() {
   const tabs = [
     { label: 'Overview', path: '/admin/subscriptions' },
     { label: 'Plans', path: '/admin/subscriptions/settings' },
-    { label: 'Demo Requests', path: '/admin/subscriptions/demos' },
     { label: 'History', path: '/admin/subscriptions/history' },
   ];
 

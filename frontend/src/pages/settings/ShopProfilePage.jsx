@@ -16,6 +16,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
 import Button from '../../components/ui/Button';
+import { apiClient } from '../../services/apiClient';
 
 export default function ShopProfilePage() {
   const navigate = useNavigate();
@@ -92,36 +93,66 @@ export default function ShopProfilePage() {
     }
   }, [settings]);
 
-  const handleLogoUpload = (e) => {
+  const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setSaveErrorMsg('Logo file size must be less than 2MB');
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveErrorMsg('Logo file size must be less than 5 MB');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData((prev) => ({ ...prev, logoUrl: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setSaveErrorMsg('Only PNG, JPG, JPEG, and WEBP formats are supported');
+      return;
+    }
+
+    setSaveErrorMsg('');
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('image', file);
+      const res = await apiClient.post('/settings/upload-image', formDataUpload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const uploadedUrl = res.data?.imageUrl;
+      if (uploadedUrl) {
+        setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
+      }
+    } catch (err) {
+      setSaveErrorMsg(err.message || 'Logo upload failed');
+    }
   };
 
-  const handleOwnerPhotoUpload = (e) => {
+  const handleOwnerPhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setSaveErrorMsg('Owner photo size must be less than 2MB');
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveErrorMsg('Owner photo size must be less than 5 MB');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData((prev) => ({ ...prev, ownerPhotoUrl: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setSaveErrorMsg('Only PNG, JPG, JPEG, and WEBP formats are supported');
+      return;
+    }
+
+    setSaveErrorMsg('');
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append('image', file);
+      const res = await apiClient.post('/settings/upload-image', formDataUpload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const uploadedUrl = res.data?.imageUrl;
+      if (uploadedUrl) {
+        setFormData((prev) => ({ ...prev, ownerPhotoUrl: uploadedUrl }));
+      }
+    } catch (err) {
+      setSaveErrorMsg(err.message || 'Owner photo upload failed');
+    }
   };
 
   // 2. Save Settings Mutation

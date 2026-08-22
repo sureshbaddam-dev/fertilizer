@@ -39,7 +39,7 @@ const shopSettingsSchema = new mongoose.Schema(
     defaultPaymentMode: { type: String, default: 'Cash' },
     isGstEnabled: { type: Boolean, default: true },
     gstType: { type: String, enum: ['CGST_SGST', 'IGST'], default: 'CGST_SGST' },
-    defaultGst: { type: Number, default: 18 },
+    defaultGst: { type: Number, default: 0 },
     defaultDiscount: { type: Number, default: 0 },
     taxInclusive: { type: Boolean, default: true },
     invoiceNotes: { type: String, default: '' },

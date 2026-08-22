@@ -541,7 +541,7 @@ export default function CustomerListPage() {
       doc.text(`Total Customers: ${summary.totalCustomers}`, 18, 51);
       doc.text(`Customers with Due: ${summary.customersWithDue}`, 90, 51);
       doc.setTextColor(220, 38, 38);
-      doc.text(`Total Outstanding Due: Rs. ${summary.totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 175, 51);
+      doc.text(`Total Outstanding Due: Rs. ${Math.round(summary.totalOutstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 175, 51);
     };
 
     // Table Data Matrix
@@ -575,9 +575,9 @@ export default function CustomerListPage() {
         c.name || 'Customer',
         c.mobile || '-',
         c.village || c.address || 'Narketpally',
-        p.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        pd.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        d.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+        Math.round(p).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        Math.round(pd).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        Math.round(d).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       ];
     });
 
@@ -587,9 +587,9 @@ export default function CustomerListPage() {
       'GRAND TOTAL',
       '',
       '',
-      grandPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-      grandPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-      grandDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+      Math.round(grandPurchases).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      Math.round(grandPaid).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      Math.round(grandDue).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
     ]);
 
     autoTable(doc, {
@@ -852,18 +852,18 @@ export default function CustomerListPage() {
 
                           {/* Total Purchases */}
                           <td className="py-2.5 px-3 text-right font-mono font-medium text-gray-900 whitespace-nowrap">
-                            ₹ {(c.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(c.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
 
                           {/* Total Paid */}
                           <td className="py-2.5 px-3 text-right font-mono font-medium text-gray-900 whitespace-nowrap">
-                            ₹ {(c.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(c.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
 
                           {/* Due (Outstanding) */}
                           <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
                             <span className={dueVal > 0 ? 'text-red-600' : 'text-gray-900'}>
-                              ₹ {dueVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              ₹ {Math.round(dueVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                             </span>
                           </td>
 
@@ -1147,13 +1147,13 @@ export default function CustomerListPage() {
               <div className="flex justify-between items-center text-gray-600">
                 <span>Total Outstanding</span>
                 <span className="font-mono font-extrabold text-red-600 text-sm">
-                  ₹ {summary.totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(summary.totalOutstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
               <div className="flex justify-between items-center text-gray-600">
                 <span>Advance Amount</span>
                 <span className="font-mono font-bold text-[#047857]">
-                  ₹ {summary.advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(summary.advanceAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
             </div>
@@ -1185,7 +1185,7 @@ export default function CustomerListPage() {
                       <span className="font-bold text-gray-900 truncate">{c.name}</span>
                     </div>
                     <span className="font-mono font-extrabold text-red-600 shrink-0">
-                      ₹ {(c.outstandingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      ₹ {Math.round(c.outstandingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                     </span>
                   </div>
                 ))

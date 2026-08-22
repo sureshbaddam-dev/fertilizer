@@ -14,9 +14,15 @@ export const connectDatabase = async () => {
 
     await mongoose.connect(envConfig.mongo.uri, {
       autoIndex: envConfig.env !== 'production',
+      serverSelectionTimeoutMS: 10000,
+      family: 4,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      retryWrites: true,
     });
+    logger.info(`Primary MongoDB Atlas connected successfully to database: ${mongoose.connection.name}`);
   } catch (error) {
-    logger.error(error, 'Failed to connect to MongoDB');
+    logger.error(`Failed to connect to Primary MongoDB Atlas: ${error.message}. Primary database write operations are halted. Do NOT fall back to backup database.`);
     throw error;
   }
 };

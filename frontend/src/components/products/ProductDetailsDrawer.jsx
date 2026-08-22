@@ -324,7 +324,7 @@ export default function ProductDetailsDrawer({
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">GST Rate</span>
-                <span className="font-semibold text-gray-800 font-mono text-xs">{gstRate || '18%'}</span>
+                <span className="font-semibold text-gray-800 font-mono text-xs">{gstRate || '0%'}</span>
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">Created Date</span>
@@ -565,8 +565,8 @@ export default function ProductDetailsDrawer({
                               <td className={`py-2 px-2 text-center font-bold whitespace-nowrap ${isPositive ? 'text-emerald-700' : 'text-blue-700'}`}>
                                 {m.formattedQuantity || (isPositive ? `+${m.quantity}` : m.quantity)}
                               </td>
-                              <td className="py-2 px-2 text-right text-gray-700 whitespace-nowrap">₹ {Number(m.purchaseRate || 0).toFixed(2)}</td>
-                              <td className="py-2 px-2 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Number(m.sellingPrice || 0).toFixed(2)}</td>
+                              <td className="py-2 px-2 text-right text-gray-700 whitespace-nowrap">₹ {Math.round(Number(m.purchaseRate || 0)).toLocaleString('en-IN')}</td>
+                              <td className="py-2 px-2 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Math.round(Number(m.sellingPrice || 0)).toLocaleString('en-IN')}</td>
                               <td className="py-2 px-2 text-center font-bold text-gray-900 whitespace-nowrap">{m.stockAfter}</td>
                               <td className="py-2 px-2 text-gray-600 font-sans whitespace-nowrap truncate max-w-[100px]">{m.reference}</td>
                             </tr>
@@ -609,8 +609,8 @@ export default function ProductDetailsDrawer({
                             <td className="py-2 px-2.5 font-sans font-medium text-gray-900 whitespace-nowrap">{p.invoiceNumber}</td>
                             <td className="py-2 px-2.5 font-bold text-gray-900 whitespace-nowrap">{p.batchNumber}</td>
                             <td className="py-2 px-2.5 text-center font-bold text-emerald-700 whitespace-nowrap">+{p.quantity}</td>
-                            <td className="py-2 px-2.5 text-right text-gray-800 whitespace-nowrap">₹ {Number(p.purchaseRate || p.rate || 0).toFixed(2)}</td>
-                            <td className="py-2 px-2.5 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Number(p.sellingPrice || 0).toFixed(2)}</td>
+                            <td className="py-2 px-2.5 text-right text-gray-800 whitespace-nowrap">₹ {Math.round(Number(p.purchaseRate || p.rate || 0)).toLocaleString('en-IN')}</td>
+                            <td className="py-2 px-2.5 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Math.round(Number(p.sellingPrice || 0)).toLocaleString('en-IN')}</td>
                             <td className="py-2 px-2.5 font-sans text-gray-600 whitespace-nowrap truncate max-w-[120px]">{p.supplierName}</td>
                           </tr>
                         ))
@@ -653,10 +653,10 @@ export default function ProductDetailsDrawer({
                               <td className="py-2 px-2.5 font-sans font-medium text-gray-900 whitespace-nowrap">{s.invoiceNumber}</td>
                               <td className="py-2 px-2.5 font-bold text-gray-900 whitespace-nowrap">{s.batchNumber}</td>
                               <td className="py-2 px-2.5 text-center font-bold text-blue-700 whitespace-nowrap">{s.quantity}</td>
-                              <td className="py-2 px-2.5 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Number(s.sellingPrice || s.price || 0).toFixed(2)}</td>
-                              <td className="py-2 px-2.5 text-right text-gray-600 whitespace-nowrap">₹ {Number(s.cogs || 0).toFixed(2)}</td>
+                              <td className="py-2 px-2.5 text-right text-gray-900 font-bold whitespace-nowrap">₹ {Math.round(Number(s.sellingPrice || s.price || 0)).toLocaleString('en-IN')}</td>
+                              <td className="py-2 px-2.5 text-right text-gray-600 whitespace-nowrap">₹ {Math.round(Number(s.cogs || 0)).toLocaleString('en-IN')}</td>
                               <td className="py-2 px-2.5 text-right font-bold text-emerald-700 whitespace-nowrap">
-                                ₹ {Number(unitProfit).toFixed(2)} / unit
+                                ₹ {Math.round(Number(unitProfit)).toLocaleString('en-IN')} / unit
                               </td>
                             </tr>
                           );

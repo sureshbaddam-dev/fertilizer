@@ -7,7 +7,6 @@ import {
   Sparkles,
   UserPlus,
   HelpCircle,
-  Clock,
   AlertCircle,
   RefreshCw,
   ArrowUpRight,
@@ -41,7 +40,6 @@ export default function AdminDashboardPage() {
   });
 
   const [recentUsers, setRecentUsers] = useState([]);
-  const [demoRequests, setDemoRequests] = useState([]);
   const [supportTickets, setSupportTickets] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,17 +58,15 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, usersRes, demoRes, ticketsRes, analyticsRes] = await Promise.all([
+      const [statsRes, usersRes, ticketsRes, analyticsRes] = await Promise.all([
         adminApiService.getDashboardStats(),
         adminApiService.getUsersList({ page: 1, limit: 6 }),
-        adminApiService.getDemoRequests(),
         adminApiService.getSupportTickets({ status: 'ALL' }),
         adminApiService.getDashboardAnalytics(),
       ]);
 
       if (statsRes) setStats(statsRes);
       if (usersRes?.users) setRecentUsers(usersRes.users);
-      if (demoRes) setDemoRequests(demoRes);
       if (ticketsRes) setSupportTickets(ticketsRes);
       if (analyticsRes) setAnalyticsData(analyticsRes);
     } catch (err) {
@@ -107,7 +103,6 @@ export default function AdminDashboardPage() {
     count: item.count || 0,
   }));
 
-  const pendingDemoCount = demoRequests.filter((r) => r.status === 'PENDING').length;
   const pendingTicketsCount = supportTickets.filter((t) => t.status === 'PENDING' || t.status === 'OPEN').length;
 
   return (
@@ -135,8 +130,8 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* 2. COMPACT KPI SUMMARY (6 METRICS GRID) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 2. COMPACT KPI SUMMARY (5 METRICS GRID) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Total Users */}
         <div
           onClick={() => navigate('/admin/users')}
@@ -201,19 +196,6 @@ export default function AdminDashboardPage() {
           </div>
           <span className="text-[10px] text-slate-500 font-medium block">Customer Inquiries</span>
         </div>
-
-        {/* Pending Demo Requests */}
-        <div
-          onClick={() => navigate('/admin/subscriptions/demos')}
-          className="bg-white border border-slate-200 hover:border-amber-400 rounded-2xl p-4 shadow-xs space-y-1 border-l-4 border-l-amber-500 cursor-pointer transition"
-        >
-          <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Pending Demos</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-amber-700">{pendingDemoCount}</span>
-            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">Action Req</span>
-          </div>
-          <span className="text-[10px] text-amber-800 font-medium block">Awaiting Approval</span>
-        </div>
       </div>
 
       {/* 3. QUICK ACTIONS & ACTION REQUIRED PANELS */}
@@ -233,13 +215,6 @@ export default function AdminDashboardPage() {
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>+ Give Demo</span>
-            </button>
-            <button
-              onClick={() => navigate('/admin/subscriptions/demos')}
-              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200 flex items-center gap-1.5 cursor-pointer"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
-              <span>View Demo Requests ({pendingDemoCount})</span>
             </button>
             <button
               onClick={() => navigate('/admin/support')}
@@ -279,31 +254,18 @@ export default function AdminDashboardPage() {
               <AlertCircle className="w-4 h-4 text-amber-600" /> Action Required
             </span>
             <span className="text-[10px] font-extrabold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
-              {pendingDemoCount + pendingTicketsCount} Total Items
+              {pendingTicketsCount} Total Items
             </span>
           </div>
 
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between p-1.5 bg-white border border-amber-200 rounded-xl">
-              <span className="font-semibold text-slate-700">Pending Demo Requests</span>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-amber-700">{pendingDemoCount}</span>
-                <button
-                  onClick={() => navigate('/admin/subscriptions/demos')}
-                  className="px-2 py-0.5 bg-amber-600 text-white font-bold text-[10px] rounded-lg hover:bg-amber-700"
-                >
-                  View
-                </button>
-              </div>
-            </div>
-
             <div className="flex items-center justify-between p-1.5 bg-white border border-amber-200 rounded-xl">
               <span className="font-semibold text-slate-700">Open Support Tickets</span>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-blue-700">{pendingTicketsCount}</span>
                 <button
                   onClick={() => navigate('/admin/support')}
-                  className="px-2 py-0.5 bg-blue-600 text-white font-bold text-[10px] rounded-lg hover:bg-blue-700"
+                  className="px-2 py-0.5 bg-blue-600 text-white font-bold text-[10px] rounded-lg hover:bg-blue-700 cursor-pointer"
                 >
                   View
                 </button>

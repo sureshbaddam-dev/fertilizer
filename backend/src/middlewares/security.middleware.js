@@ -19,7 +19,12 @@ export const configureSecurityMiddlewares = (app) => {
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || envConfig.cors.allowedOrigins.includes(origin) || envConfig.env === 'development') {
+        if (
+          !origin ||
+          envConfig.env === 'development' ||
+          envConfig.cors.allowedOrigins.includes(origin) ||
+          /^http:\/\/(localhost|127\.0\.0\.1|172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
+        ) {
           callback(null, true);
         } else {
           callback(new AppError('Not allowed by CORS', HTTP_STATUS.FORBIDDEN));

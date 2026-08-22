@@ -83,26 +83,15 @@ export const recordVisitorHit = async ({ ip, path, userAgent, visitorId }) => {
       hourlyUniqueToday[hour] += 1;
     }
 
-    // 5. Update Daily Analytics in MongoDB
-    let analytics = await VisitorAnalytics.findOne({ dateStr: todayStr });
-    if (!analytics) {
-      analytics = new VisitorAnalytics({
-        dateStr: todayStr,
-        totalHits: 1,
-        uniqueVisitors: 1,
-        returningVisitors: 0,
-        visitorIps: [ip],
-      });
-    } else {
-      analytics.totalHits += 1;
-      if (!analytics.visitorIps.includes(ip)) {
-        analytics.uniqueVisitors += 1;
-        analytics.visitorIps.push(ip);
-      } else {
-        analytics.returningVisitors += 1;
-      }
-    }
-    await analytics.save();
+    // 5. Update Daily Analytics in MongoDB atomically
+    await VisitorAnalytics.updateOne(
+      { dateStr: todayStr },
+      {
+        $inc: { totalHits: 1 },
+        $addToSet: { visitorIps: { $each: [ip] } },
+      },
+      { upsert: true }
+    );
   } catch (_err) {
     // Non-blocking
   }
@@ -118,7 +107,7 @@ function hashCode(str) {
   return hash;
 }
 
-export const trackWebsiteVisitor = async (req, res, next) => {
+export const trackWebsiteVisitor = (req, res, next) => {
   try {
     const path = (req.path || req.originalUrl || '').toLowerCase();
     const userAgent = (req.headers['user-agent'] || '').toLowerCase();
@@ -166,7 +155,8 @@ export const trackWebsiteVisitor = async (req, res, next) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
     const visitorId = req.headers['x-visitor-id'] || req.cookies?.visitor_id;
 
-    await recordVisitorHit({ ip, path, userAgent, visitorId });
+    // Fire and forget non-blocking background hit logging
+    recordVisitorHit({ ip, path, userAgent, visitorId }).catch(() => {});
   } catch (_err) {
     // Non-blocking
   }

@@ -191,7 +191,7 @@ export const purchaseService = {
           sellingPrice: itemSellingPrice,
           discountPercent: Number(item.discountPercent) || 0,
           discountAmount: normalizeMoney(item.discountAmount || 0),
-          gstPercent: Number(item.gstPercent) || 18,
+          gstPercent: (item.gstPercent !== undefined && item.gstPercent !== null && item.gstPercent !== '') ? Number(item.gstPercent) : 0,
           taxAmount: normalizeMoney(item.taxAmount || 0),
           taxableAmount: normalizeMoney(item.taxableAmount || 0),
           lineTotal: normalizeMoney(itemQty * itemRate),
@@ -498,12 +498,21 @@ export const purchaseService = {
       ];
     }
 
-    const purchases = await Purchase.find(filter)
-      .populate('supplierId', 'name companyName mobile gstin')
-      .sort({ deletedAt: -1 })
-      .lean()
-      .exec();
+    const page = Math.max(1, parseInt(query.page || 1, 10));
+    const limit = Math.max(1, parseInt(query.limit || 50, 10));
+    const skip = (page - 1) * limit;
 
-    return { purchases, total: purchases.length };
+    const [purchases, total] = await Promise.all([
+      Purchase.find(filter)
+        .populate('supplierId', 'name companyName mobile gstin')
+        .sort({ deletedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      Purchase.countDocuments(filter),
+    ]);
+
+    return { purchases, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   },
 };

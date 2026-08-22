@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Smartphone, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, ArrowRight, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import OtpInput from '../../components/common/OtpInput';
 import { authService } from '../../services/authService';
+import BrandLogo from '../../components/common/BrandLogo';
 
 export default function OtpVerificationPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const mobileNumber = location.state?.mobileNumber || '';
+
+  const email = location.state?.email || '';
+  const mobileNumber = location.state?.mobile || location.state?.mobileNumber || '';
   const flow = location.state?.flow || 'signup';
 
   const [otp, setOtp] = useState('');
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(60);
   const [serverError, setServerError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     if (timer <= 0) return;
@@ -23,25 +28,40 @@ export default function OtpVerificationPage() {
     return () => clearInterval(interval);
   }, [timer]);
 
+  const maskEmail = (str) => {
+    if (!str || !str.includes('@')) return str || 'your email';
+    const [name, domain] = str.split('@');
+    if (name.length <= 2) return `${name.charAt(0)}***@${domain}`;
+    return `${name.charAt(0)}${'*'.repeat(Math.min(name.length - 2, 4))}${name.slice(-1)}@${domain}`;
+  };
+
   const handleResend = async () => {
-    if (timer > 0) return;
+    if (timer > 0 || isResending) return;
     setServerError('');
+    setSuccessMessage('');
+    setIsResending(true);
+
     try {
       if (flow === 'reset') {
         await authService.forgotPassword({ mobile: mobileNumber });
+        setSuccessMessage('Password reset OTP code resent to your mobile.');
       } else {
-        // Resend signup OTP logic can re-trigger signup or generate OTP
+        await authService.resendSignupOtp(email);
+        setSuccessMessage('A new verification code has been sent to your email.');
       }
-      setTimer(30);
+      setTimer(60);
     } catch (error) {
-      setServerError(error.message || 'Failed to resend OTP');
+      setServerError(error.message || 'Failed to resend verification OTP');
+    } finally {
+      setIsResending(false);
     }
   };
 
   const handleVerify = async (e) => {
     e.preventDefault();
-    if (otp.length < 6) return;
+    if (otp.length < 6 || isLoading) return;
     setServerError('');
+    setSuccessMessage('');
     setIsLoading(true);
 
     try {
@@ -51,14 +71,16 @@ export default function OtpVerificationPage() {
           navigate('/reset-password', { state: { mobileNumber, otp } });
         }
       } else {
-        const response = await authService.verifySignupOtp({ mobile: mobileNumber, otp });
+        const response = await authService.verifySignupOtp({ email, otp, mobile: mobileNumber });
         if (response.success) {
-          // Flow: Account Created -> Redirect to Login
-          navigate('/login', { state: { successMessage: 'Registration successful! Please log in.' } });
+          // Account verified & created -> Redirect to Shop Setup
+          navigate('/shop-setup', { replace: true });
+        } else {
+          setServerError(response.message || 'OTP verification failed. Please try again.');
         }
       }
     } catch (error) {
-      setServerError(error.message || 'Invalid or expired OTP');
+      setServerError(error.message || 'Invalid or expired OTP code. Please check and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -71,48 +93,52 @@ export default function OtpVerificationPage() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Top Device Icon Badge */}
-      <div className="flex justify-center">
-        <div className="w-12 h-12 rounded-full bg-emerald-700 text-white flex items-center justify-center shadow-md shadow-emerald-700/20">
-          <Smartphone className="w-6 h-6 stroke-[2.2]" />
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="text-center space-y-1">
-        <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight">Verify OTP</h3>
-        <p className="text-xs text-gray-500 font-medium">
-          Enter the 6-digit code sent to <br />
-          <span className="font-bold text-gray-800">+91 {mobileNumber || 'XXXXXXXXXX'}</span>
+    <div className="space-y-4 font-sans text-slate-800">
+      {/* Header with VEDIXA Brand Logo */}
+      <div className="flex flex-col items-center justify-center text-center space-y-1.5 pb-2 border-b border-slate-100">
+        <BrandLogo textScale="md" />
+        <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Verify Your Email</h3>
+        <p className="text-xs text-slate-500 font-medium">
+          Enter the 6-digit verification code sent to <br />
+          <span className="font-extrabold text-emerald-800">{maskEmail(email)}</span>
         </p>
       </div>
 
       {/* Server Error Alert */}
       {serverError && (
-        <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in duration-200">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
           <span>{serverError}</span>
+        </div>
+      )}
+
+      {/* Success Alert */}
+      {successMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2.5">
+          <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{successMessage}</span>
         </div>
       )}
 
       {/* Form */}
       <form onSubmit={handleVerify} className="space-y-4">
-        {/* 6 Digit Input */}
+        {/* 6-Digit OTP Cells */}
         <OtpInput length={6} onChange={setOtp} />
 
         {/* Resend Timer Row */}
-        <div className="text-center text-xs text-gray-500 font-medium">
-          <span>Didn't receive code? </span>
+        <div className="text-center text-xs text-slate-500 font-medium">
+          <span>Didn't receive the verification code? </span>
           {timer > 0 ? (
-            <span className="font-semibold text-emerald-700">Resend OTP ({formatTimer(timer)})</span>
+            <span className="font-bold text-emerald-700">Resend in {formatTimer(timer)}</span>
           ) : (
             <button
               type="button"
               onClick={handleResend}
-              className="font-bold text-emerald-700 hover:underline cursor-pointer"
+              disabled={isResending}
+              className="font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer inline-flex items-center gap-1"
             >
-              Resend OTP
+              {isResending ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              <span>Resend OTP Code</span>
             </button>
           )}
         </div>
@@ -121,25 +147,40 @@ export default function OtpVerificationPage() {
         <button
           type="submit"
           disabled={otp.length < 6 || isLoading}
-          className={`w-full py-2.5 px-4 font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          className={`w-full py-3 px-4 font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer ${
             otp.length === 6 && !isLoading
-              ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-800/20'
-              : 'bg-emerald-800/60 text-white/80 cursor-not-allowed'
+              ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-emerald-700/20'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >
-          <ArrowRight className="w-4 h-4" />
-          <span>{isLoading ? 'Verifying...' : flow === 'reset' ? 'Verify OTP' : 'Verify & Create Account'}</span>
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <span>Verifying OTP & Creating Account...</span>
+            </>
+          ) : (
+            <>
+              <span>Verify & Continue</span>
+              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            </>
+          )}
         </button>
       </form>
 
-      {/* Change Mobile Link */}
-      <div className="text-center pt-2">
+      {/* Back Link */}
+      <div className="text-center pt-2 pb-1 border-t border-slate-100">
         <Link
           to={flow === 'reset' ? '/forgot-password' : '/signup'}
-          className="text-xs font-semibold text-emerald-700 hover:underline"
+          className="text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
         >
-          Change Mobile Number
+          ← Edit Details / Back to Sign Up
         </Link>
+      </div>
+
+      {/* Security Badge */}
+      <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+        <span>SSL Encrypted Verification</span>
       </div>
     </div>
   );

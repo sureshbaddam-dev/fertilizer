@@ -1,47 +1,66 @@
+import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedRoute, PublicOnlyRoute } from './ProtectedRoute';
 import SubscriptionGuard from '../components/common/SubscriptionGuard';
 import AuthLayout from '../layouts/AuthLayout';
 import MainLayout from '../layouts/MainLayout';
+
+// Eagerly loaded critical landing / auth pages
 import LoginPage from '../pages/auth/LoginPage';
 import SignUpPage from '../pages/auth/SignUpPage';
-import OtpVerificationPage from '../pages/auth/OtpVerificationPage';
-import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
-import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 import HomePage from '../pages/dashboard/HomePage';
-import SettingsHubLayout from '../pages/settings/SettingsHubLayout';
-import ShopDiscountPage from '../pages/settings/ShopDiscountPage';
-import ShopProfilePage from '../pages/settings/ShopProfilePage';
-import UserProfilePage from '../pages/settings/UserProfilePage';
-import MasterDataHubPage from '../pages/settings/MasterDataHubPage';
-import TaxesGstPage from '../pages/settings/TaxesGstPage';
-import NotificationsPage from '../pages/settings/NotificationsPage';
-import SecurityPage from '../pages/settings/SecurityPage';
-import PreferencesPage from '../pages/settings/PreferencesPage';
-import SuppliersPage from '../pages/masters/SuppliersPage';
-import NewPurchasePage from '../pages/purchases/NewPurchasePage';
-import ProductsPage from '../pages/products/ProductsPage';
-import SupplierLedgerPage from '../pages/purchases/SupplierLedgerPage';
-import BillsHistoryPage from '../pages/sales/BillsHistoryPage';
-import InvoiceDetailsPage from '../pages/sales/InvoiceDetailsPage';
-import EditInvoicePage from '../pages/sales/EditInvoicePage';
-import CustomerListPage from '../pages/customers/CustomerListPage';
-import CustomerLedgerPage from '../pages/customers/CustomerLedgerPage';
-import GeneralCustomersPage from '../pages/customers/GeneralCustomersPage';
-import InventoryPage from '../pages/inventory/InventoryPage';
-import ReportsPage from '../pages/reports/ReportsPage';
-import SupportPage from '../pages/support/SupportPage';
-import FullScreenSubscriptionPage from '../pages/subscription/FullScreenSubscriptionPage';
 
-import ShopSetupPage from '../pages/auth/ShopSetupPage';
+// Lazy-loaded routes for code-splitting
+const OtpVerificationPage = lazy(() => import('../pages/auth/OtpVerificationPage'));
+const VerifyEmailPage = lazy(() => import('../pages/auth/VerifyEmailPage'));
+const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('../pages/auth/ResetPasswordPage'));
+const ShopSetupPage = lazy(() => import('../pages/auth/ShopSetupPage'));
+
+const SettingsHubLayout = lazy(() => import('../pages/settings/SettingsHubLayout'));
+const ShopDiscountPage = lazy(() => import('../pages/settings/ShopDiscountPage'));
+const ShopProfilePage = lazy(() => import('../pages/settings/ShopProfilePage'));
+const UserProfilePage = lazy(() => import('../pages/settings/UserProfilePage'));
+const MasterDataHubPage = lazy(() => import('../pages/settings/MasterDataHubPage'));
+const TaxesGstPage = lazy(() => import('../pages/settings/TaxesGstPage'));
+const NotificationsPage = lazy(() => import('../pages/settings/NotificationsPage'));
+const SecurityPage = lazy(() => import('../pages/settings/SecurityPage'));
+const PreferencesPage = lazy(() => import('../pages/settings/PreferencesPage'));
+
+const SuppliersPage = lazy(() => import('../pages/masters/SuppliersPage'));
+const NewPurchasePage = lazy(() => import('../pages/purchases/NewPurchasePage'));
+const ProductsPage = lazy(() => import('../pages/products/ProductsPage'));
+const SupplierLedgerPage = lazy(() => import('../pages/purchases/SupplierLedgerPage'));
+const BillsHistoryPage = lazy(() => import('../pages/sales/BillsHistoryPage'));
+const InvoiceDetailsPage = lazy(() => import('../pages/sales/InvoiceDetailsPage'));
+const EditInvoicePage = lazy(() => import('../pages/sales/EditInvoicePage'));
+const CustomerListPage = lazy(() => import('../pages/customers/CustomerListPage'));
+const CustomerLedgerPage = lazy(() => import('../pages/customers/CustomerLedgerPage'));
+const GeneralCustomersPage = lazy(() => import('../pages/customers/GeneralCustomersPage'));
+const InventoryPage = lazy(() => import('../pages/inventory/InventoryPage'));
+const ReportsPage = lazy(() => import('../pages/reports/ReportsPage'));
+const SupportPage = lazy(() => import('../pages/support/SupportPage'));
+const FullScreenSubscriptionPage = lazy(() => import('../pages/subscription/FullScreenSubscriptionPage'));
+
+const PageLoader = () => (
+  <div className="w-full h-[60vh] flex flex-col items-center justify-center gap-3">
+    <div className="w-8 h-8 border-3 border-[#00783C] border-t-transparent rounded-full animate-spin"></div>
+    <span className="text-xs font-semibold text-gray-500">Loading module...</span>
+  </div>
+);
+
+const withSuspense = (Component) => (
+  <Suspense fallback={<PageLoader />}>
+    <Component />
+  </Suspense>
+);
 
 export const appRouter = createBrowserRouter([
   {
     path: '/subscription/plans',
     element: (
       <ProtectedRoute>
-        <FullScreenSubscriptionPage />
+        {withSuspense(FullScreenSubscriptionPage)}
       </ProtectedRoute>
     ),
   },
@@ -49,7 +68,7 @@ export const appRouter = createBrowserRouter([
     path: '/subscription',
     element: (
       <ProtectedRoute>
-        <FullScreenSubscriptionPage />
+        {withSuspense(FullScreenSubscriptionPage)}
       </ProtectedRoute>
     ),
   },
@@ -73,17 +92,13 @@ export const appRouter = createBrowserRouter([
           </PublicOnlyRoute>
         ),
       },
-      { path: 'verify-otp', element: <OtpVerificationPage /> },
-      { path: 'verify-email', element: <VerifyEmailPage /> },
-      { path: 'forgot-password', element: <ForgotPasswordPage /> },
-      { path: 'reset-password', element: <ResetPasswordPage /> },
+      { path: 'verify-otp', element: withSuspense(OtpVerificationPage) },
+      { path: 'verify-email', element: withSuspense(VerifyEmailPage) },
+      { path: 'forgot-password', element: withSuspense(ForgotPasswordPage) },
+      { path: 'reset-password', element: withSuspense(ResetPasswordPage) },
       {
         path: 'shop-setup',
-        element: (
-          <ProtectedRoute>
-            <ShopSetupPage />
-          </ProtectedRoute>
-        ),
+        element: withSuspense(ShopSetupPage),
       },
     ],
   },
@@ -98,8 +113,8 @@ export const appRouter = createBrowserRouter([
       // UNRESTRICTED ROUTES (Always accessible to logged-in users)
       { index: true, element: <HomePage /> },
       { path: 'dashboard', element: <HomePage /> },
-      { path: 'support', element: <SupportPage /> },
-      { path: 'subscription', element: <FullScreenSubscriptionPage /> },
+      { path: 'support', element: withSuspense(SupportPage) },
+      { path: 'subscription', element: withSuspense(FullScreenSubscriptionPage) },
 
       // PROTECTED PAID ERP MODULE ROUTES (Wrapped with SubscriptionGuard)
       {
@@ -107,22 +122,22 @@ export const appRouter = createBrowserRouter([
         element: <Navigate to="/dashboard" replace />,
       },
       // UNRESTRICTED MASTER DATA & CORE FEATURES (Accessible without subscription)
-      { path: 'products', element: <ProductsPage /> },
-      { path: 'customers', element: <CustomerListPage /> },
-      { path: 'general-customers', element: <GeneralCustomersPage /> },
-      { path: 'customers/general', element: <GeneralCustomersPage /> },
-      { path: 'customers/ledger', element: <CustomerLedgerPage /> },
-      { path: 'customers/:customerId/ledger', element: <CustomerLedgerPage /> },
-      { path: 'inventory', element: <InventoryPage /> },
-      { path: 'suppliers', element: <SuppliersPage /> },
-      { path: 'suppliers/:supplierId/ledger', element: <SupplierLedgerPage /> },
+      { path: 'products', element: withSuspense(ProductsPage) },
+      { path: 'customers', element: withSuspense(CustomerListPage) },
+      { path: 'general-customers', element: withSuspense(GeneralCustomersPage) },
+      { path: 'customers/general', element: withSuspense(GeneralCustomersPage) },
+      { path: 'customers/ledger', element: withSuspense(CustomerLedgerPage) },
+      { path: 'customers/:customerId/ledger', element: withSuspense(CustomerLedgerPage) },
+      { path: 'inventory', element: withSuspense(InventoryPage) },
+      { path: 'suppliers', element: withSuspense(SuppliersPage) },
+      { path: 'suppliers/:supplierId/ledger', element: withSuspense(SupplierLedgerPage) },
 
       // PROTECTED FINANCIAL TRANSACTION ERP MODULES (Require Subscription)
       {
         path: 'stock-entry',
         element: (
           <SubscriptionGuard featureName="Purchases">
-            <NewPurchasePage />
+            {withSuspense(NewPurchasePage)}
           </SubscriptionGuard>
         ),
       },
@@ -130,7 +145,7 @@ export const appRouter = createBrowserRouter([
         path: 'purchases',
         element: (
           <SubscriptionGuard featureName="Purchases">
-            <NewPurchasePage />
+            {withSuspense(NewPurchasePage)}
           </SubscriptionGuard>
         ),
       },
@@ -138,7 +153,7 @@ export const appRouter = createBrowserRouter([
         path: 'purchases/new',
         element: (
           <SubscriptionGuard featureName="Purchases">
-            <NewPurchasePage />
+            {withSuspense(NewPurchasePage)}
           </SubscriptionGuard>
         ),
       },
@@ -146,7 +161,7 @@ export const appRouter = createBrowserRouter([
         path: 'purchases/ledger',
         element: (
           <SubscriptionGuard featureName="Purchases">
-            <SupplierLedgerPage />
+            {withSuspense(SupplierLedgerPage)}
           </SubscriptionGuard>
         ),
       },
@@ -154,7 +169,7 @@ export const appRouter = createBrowserRouter([
         path: 'purchases/ledger/:supplierId',
         element: (
           <SubscriptionGuard featureName="Purchases">
-            <SupplierLedgerPage />
+            {withSuspense(SupplierLedgerPage)}
           </SubscriptionGuard>
         ),
       },
@@ -164,7 +179,7 @@ export const appRouter = createBrowserRouter([
         path: 'invoices',
         element: (
           <SubscriptionGuard featureName="Billing & Invoices">
-            <BillsHistoryPage />
+            {withSuspense(BillsHistoryPage)}
           </SubscriptionGuard>
         ),
       },
@@ -172,7 +187,7 @@ export const appRouter = createBrowserRouter([
         path: 'invoices/:invoiceId',
         element: (
           <SubscriptionGuard featureName="Billing & Invoices">
-            <InvoiceDetailsPage />
+            {withSuspense(InvoiceDetailsPage)}
           </SubscriptionGuard>
         ),
       },
@@ -180,7 +195,7 @@ export const appRouter = createBrowserRouter([
         path: 'invoices/:invoiceId/edit',
         element: (
           <SubscriptionGuard featureName="Billing & Invoices">
-            <EditInvoicePage />
+            {withSuspense(EditInvoicePage)}
           </SubscriptionGuard>
         ),
       },
@@ -188,7 +203,7 @@ export const appRouter = createBrowserRouter([
         path: 'reports',
         element: (
           <SubscriptionGuard featureName="Reports">
-            <ReportsPage />
+            {withSuspense(ReportsPage)}
           </SubscriptionGuard>
         ),
       },
@@ -199,20 +214,20 @@ export const appRouter = createBrowserRouter([
       // Unified Settings Hub Routes (Unlocked for account management)
       {
         path: 'settings',
-        element: <SettingsHubLayout />,
+        element: withSuspense(SettingsHubLayout),
         children: [
-          { path: 'user-profile', element: <UserProfilePage /> },
-          { path: 'shop-discount', element: <ShopDiscountPage /> },
-          { path: 'shop', element: <ShopProfilePage /> },
+          { path: 'user-profile', element: withSuspense(UserProfilePage) },
+          { path: 'shop-discount', element: withSuspense(ShopDiscountPage) },
+          { path: 'shop', element: withSuspense(ShopProfilePage) },
           { path: 'shop-profile', element: <Navigate to="/settings/shop" replace /> },
-          { path: 'master-data', element: <MasterDataHubPage /> },
+          { path: 'master-data', element: withSuspense(MasterDataHubPage) },
           { path: 'users', element: <Navigate to="/settings" replace /> },
-          { path: 'taxes', element: <TaxesGstPage /> },
+          { path: 'taxes', element: withSuspense(TaxesGstPage) },
           { path: 'printers', element: <Navigate to="/settings" replace /> },
-          { path: 'notifications', element: <NotificationsPage /> },
+          { path: 'notifications', element: withSuspense(NotificationsPage) },
           { path: 'backup', element: <Navigate to="/settings" replace /> },
-          { path: 'security', element: <SecurityPage /> },
-          { path: 'preferences', element: <PreferencesPage /> },
+          { path: 'security', element: withSuspense(SecurityPage) },
+          { path: 'preferences', element: withSuspense(PreferencesPage) },
         ],
       },
     ],

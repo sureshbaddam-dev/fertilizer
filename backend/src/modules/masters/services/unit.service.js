@@ -17,7 +17,7 @@ export const unitService = {
     }
 
     const sort = { name: 1 };
-    const units = await Unit.find(filter).sort(sort).exec();
+    const units = await Unit.find(filter).sort(sort).lean().exec();
     const total = await Unit.countDocuments(filter);
 
     return { units, total };

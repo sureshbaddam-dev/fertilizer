@@ -85,45 +85,46 @@ export const getOrCreateSubscriptionSettings = async () => {
 export const adminService = {
   // 1. DASHBOARD STATS & ANALYTICS
   getDashboardStats: async () => {
-    const totalUsers = await User.countDocuments({ role: { $ne: 'admin' } });
-    const activeUsers = await User.countDocuments({ role: { $ne: 'admin' }, isActive: true });
-    
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const newUsersToday = await User.countDocuments({ createdAt: { $gte: startOfToday } });
-
-    const activeSubscriptions = await UserSubscription.countDocuments({ status: 'ACTIVE', expiryDate: { $gte: now } });
-    const demoSubscriptions = await UserSubscription.countDocuments({ activationType: 'ADMIN_MANUAL', couponCode: 'DEMO' });
-    
     const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const expiringSoon = await UserSubscription.countDocuments({
-      status: 'ACTIVE',
-      expiryDate: { $gte: now, $lte: next7Days },
-    });
-
-    const expiredSubscriptions = await UserSubscription.countDocuments({
-      $or: [{ status: 'EXPIRED' }, { expiryDate: { $lt: now } }],
-    });
-
-    // Revenue calculation
-    const revenueAgg = await UserSubscription.aggregate([
-      { $match: { paymentStatus: 'SUCCESS' } },
-      { $group: { _id: null, total: { $sum: '$amountPaid' } } },
-    ]);
-    const totalRevenue = revenueAgg[0]?.total || 0;
-
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthlyRevenueAgg = await UserSubscription.aggregate([
-      { $match: { paymentStatus: 'SUCCESS', createdAt: { $gte: startOfMonth } } },
-      { $group: { _id: null, total: { $sum: '$amountPaid' } } },
-    ]);
-    const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
-
-    const totalBusinesses = await ShopSettings.countDocuments();
-
-    // Visitor analytics
     const todayStr = now.toISOString().split('T')[0];
-    const todayVisitor = await VisitorAnalytics.findOne({ dateStr: todayStr });
+
+    const [
+      totalUsers,
+      activeUsers,
+      newUsersToday,
+      activeSubscriptions,
+      demoSubscriptions,
+      expiringSoon,
+      expiredSubscriptions,
+      revenueAgg,
+      monthlyRevenueAgg,
+      totalBusinesses,
+      todayVisitor,
+    ] = await Promise.all([
+      User.countDocuments({ role: { $ne: 'admin' } }),
+      User.countDocuments({ role: { $ne: 'admin' }, isActive: true }),
+      User.countDocuments({ createdAt: { $gte: startOfToday } }),
+      UserSubscription.countDocuments({ status: 'ACTIVE', expiryDate: { $gte: now } }),
+      UserSubscription.countDocuments({ activationType: 'ADMIN_MANUAL', couponCode: 'DEMO' }),
+      UserSubscription.countDocuments({ status: 'ACTIVE', expiryDate: { $gte: now, $lte: next7Days } }),
+      UserSubscription.countDocuments({ $or: [{ status: 'EXPIRED' }, { expiryDate: { $lt: now } }] }),
+      UserSubscription.aggregate([
+        { $match: { paymentStatus: 'SUCCESS' } },
+        { $group: { _id: null, total: { $sum: '$amountPaid' } } },
+      ]),
+      UserSubscription.aggregate([
+        { $match: { paymentStatus: 'SUCCESS', createdAt: { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: '$amountPaid' } } },
+      ]),
+      ShopSettings.countDocuments(),
+      VisitorAnalytics.findOne({ dateStr: todayStr }).lean(),
+    ]);
+
+    const totalRevenue = revenueAgg[0]?.total || 0;
+    const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
     const totalWebsiteVisitors = todayVisitor?.totalHits || 0;
 
     return {
@@ -183,7 +184,15 @@ export const adminService = {
 
   // 2. USER MANAGEMENT & 360 PROFILE
   getUsersList: async ({ filter = 'ALL', search = '', page = 1, limit = 20 }) => {
-    const query = { role: { $ne: 'admin' } };
+    const adminRoles = ['admin', 'super_admin', 'SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'];
+    const envAdminPhone = process.env.ADMIN_PHONE_NUMBER || '+919848081875';
+    const cleanAdminPhone = envAdminPhone.replace(/\D/g, '');
+    const last10AdminPhone = cleanAdminPhone.slice(-10);
+
+    const query = {
+      role: { $nin: adminRoles },
+      mobile: { $nin: [envAdminPhone, cleanAdminPhone, last10AdminPhone, `+91${last10AdminPhone}`] },
+    };
     const now = new Date();
 
     if (search) {
@@ -219,16 +228,34 @@ export const adminService = {
     if (filter === 'ACTIVE') query.isActive = true;
     if (filter === 'INACTIVE') query.isActive = false;
 
+    if (['DEMO', 'PAID', 'EXPIRED', 'EXPIRING_SOON'].includes(filter)) {
+      let subQuery = {};
+      if (filter === 'DEMO') subQuery = { couponCode: 'DEMO' };
+      if (filter === 'PAID') subQuery = { activationType: 'ONLINE_PAYMENT' };
+      if (filter === 'EXPIRED') subQuery = { $or: [{ status: 'EXPIRED' }, { expiryDate: { $lt: now } }] };
+      if (filter === 'EXPIRING_SOON') {
+        const next7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        subQuery = { status: 'ACTIVE', expiryDate: { $gte: now, $lte: next7 } };
+      }
+
+      const matchingSubs = await UserSubscription.find(subQuery).select('userId').lean();
+      const targetUserIds = matchingSubs.map((s) => s.userId).filter(Boolean);
+      query._id = { $in: targetUserIds };
+    }
+
     const totalUsers = await User.countDocuments(query);
     const users = await User.find(query)
+      .select('-passwordHash')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean();
 
     const userIds = users.map((u) => u._id);
-    const subscriptions = await UserSubscription.find({ userId: { $in: userIds } }).lean();
-    const shops = await ShopSettings.find({ userId: { $in: userIds } }).lean();
+    const [subscriptions, shops] = await Promise.all([
+      UserSubscription.find({ userId: { $in: userIds } }).lean(),
+      ShopSettings.find({ userId: { $in: userIds } }).select('userId shopName').lean(),
+    ]);
 
     const subMap = new Map(subscriptions.map((s) => [String(s.userId), s]));
     const shopMap = new Map(shops.map((s) => [String(s.userId), s]));
@@ -255,51 +282,54 @@ export const adminService = {
       };
     });
 
-    // Apply sub status filters if requested
-    let filteredResult = result;
-    if (filter === 'DEMO') filteredResult = result.filter((u) => u.subscriptionStatus === 'DEMO');
-    if (filter === 'PAID') filteredResult = result.filter((u) => u.activationType === 'ONLINE_PAYMENT');
-    if (filter === 'EXPIRED') filteredResult = result.filter((u) => u.subscriptionStatus === 'EXPIRED');
-    if (filter === 'EXPIRING_SOON') {
-      const next7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      filteredResult = result.filter((u) => u.expiryDate && u.expiryDate >= now && u.expiryDate <= next7);
-    }
-
     return {
-      users: filteredResult,
+      users: result,
       total: totalUsers,
       page,
-      totalPages: Math.ceil(totalUsers / limit),
+      totalPages: Math.ceil(totalUsers / limit) || 1,
     };
   },
 
   getUserDetails: async (userId) => {
-    const user = await User.findById(userId).lean();
+    const user = await User.findById(userId).select('-passwordHash').lean();
     if (!user) throw new Error('User not found');
 
-    const shop = await ShopSettings.findOne({ userId }).lean();
-    const subscription = await UserSubscription.findOne({ userId }).lean();
-    const subHistory = await SubscriptionHistory.find({ userId }).sort({ createdAt: -1 }).lean();
-
-    // Business record counts (Active only for soft-deletable models)
-    const customersCount = await Customer.countDocuments({ userId, isActive: { $ne: false } });
-    const suppliersCount = await Supplier.countDocuments({ userId, isActive: { $ne: false } });
-    const productsCount = await Product.countDocuments({ userId, isActive: { $ne: false } });
-    const purchasesCount = await Purchase.countDocuments({ userId });
-    const invoicesCount = await SalesInvoice.countDocuments({ userId });
-
-    // Payment Summary Calculation from MongoDB Subscription & Payment History
     const userObjectId = mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-    const paymentAgg = await SubscriptionHistory.aggregate([
-      { $match: { userId: userObjectId } },
-      {
-        $group: {
-          _id: null,
-          totalAmountPaid: { $sum: { $ifNull: ['$amountPaid', 0] } },
-          successfulPaymentCount: { $sum: 1 },
-          lastPaymentDate: { $max: '$createdAt' },
+
+    const [
+      shop,
+      subscription,
+      subHistory,
+      customersCount,
+      suppliersCount,
+      productsCount,
+      purchasesCount,
+      invoicesCount,
+      paymentAgg,
+      auditLogs,
+      tickets,
+    ] = await Promise.all([
+      ShopSettings.findOne({ userId }).lean(),
+      UserSubscription.findOne({ userId }).lean(),
+      SubscriptionHistory.find({ userId }).sort({ createdAt: -1 }).lean(),
+      Customer.countDocuments({ userId, isActive: { $ne: false } }),
+      Supplier.countDocuments({ userId, isActive: { $ne: false } }),
+      Product.countDocuments({ userId, isActive: { $ne: false } }),
+      Purchase.countDocuments({ userId }),
+      SalesInvoice.countDocuments({ userId }),
+      SubscriptionHistory.aggregate([
+        { $match: { userId: userObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalAmountPaid: { $sum: { $ifNull: ['$amountPaid', 0] } },
+            successfulPaymentCount: { $sum: 1 },
+            lastPaymentDate: { $max: '$createdAt' },
+          },
         },
-      },
+      ]),
+      AdminAuditLog.find({ targetId: String(userId) }).sort({ createdAt: -1 }).limit(10).lean(),
+      SupportTicket.find({ userId }).sort({ createdAt: -1 }).lean(),
     ]);
 
     let totalAmountPaid = paymentAgg[0]?.totalAmountPaid || 0;
@@ -313,17 +343,11 @@ export const adminService = {
     }
 
     const paymentSummary = {
-      totalAmountPaid,
+      totalAmountPaid: Math.round(totalAmountPaid),
       successfulPaymentCount,
-      lastPaymentDate: lastPaymentDate ? lastPaymentDate.toISOString() : null,
-      currentSubscriptionAmount: subscription?.amountPaid !== undefined ? subscription.amountPaid : null,
+      lastPaymentDate: lastPaymentDate ? new Date(lastPaymentDate).toISOString() : null,
+      currentSubscriptionAmount: subscription?.amountPaid !== undefined ? Math.round(subscription.amountPaid) : 0,
     };
-
-    const auditLogs = await AdminAuditLog.find({ targetId: String(userId) }).sort({ createdAt: -1 }).limit(10).lean();
-
-    // Support tickets for User 360 Context
-    const { SupportTicket } = await import('../../support/supportTicket.model.js');
-    const tickets = await SupportTicket.find({ userId }).sort({ createdAt: -1 }).lean();
 
     return {
       user,
@@ -784,11 +808,18 @@ export const adminService = {
   },
 
   // 7. PAYMENTS & TRANSACTIONS
-  getPaymentsList: async () => {
-    return await UserSubscription.find()
+  getPaymentsList: async ({ page, limit } = {}) => {
+    let query = UserSubscription.find()
       .populate('userId', 'ownerName mobile email')
-      .sort({ createdAt: -1 })
-      .lean();
+      .sort({ createdAt: -1 });
+
+    if (page && limit) {
+      const p = Math.max(1, parseInt(page, 10));
+      const l = Math.max(1, parseInt(limit, 10));
+      query = query.skip((p - 1) * l).limit(l);
+    }
+
+    return await query.lean();
   },
 
   // 8. ADMINS & ROLES
@@ -830,6 +861,80 @@ export const adminService = {
   },
 
   // 9. NOTIFICATIONS
+  sendSingleUserNotification: async (notifData, adminUser, req) => {
+    const { userId, title, message } = notifData || {};
+    const rawType = notifData?.notificationType || notifData?.type || 'GENERAL';
+    const typeUpper = String(rawType).toUpperCase();
+
+    const allowedTypes = [
+      'SUBSCRIPTION_EXPIRY',
+      'PAYMENT',
+      'SYSTEM_ANNOUNCEMENT',
+      'MAINTENANCE',
+      'PROMOTIONAL',
+      'GENERAL',
+      'IMPORTANT',
+      'SUBSCRIPTION',
+      'ACCOUNT',
+      'SYSTEM',
+    ];
+
+    const notificationType = allowedTypes.includes(typeUpper) ? typeUpper : 'GENERAL';
+    const cleanType = notificationType.toLowerCase();
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      const err = new Error('Valid userId is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!title || !title.trim()) {
+      const err = new Error('Notification title is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!message || !message.trim()) {
+      const err = new Error('Notification message is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      const err = new Error('Target user not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const notif = await AdminNotification.create({
+      recipient: user._id,
+      title: title.trim(),
+      message: message.trim(),
+      type: cleanType,
+      notificationType,
+      targetAudience: 'SPECIFIC_USER',
+      targetUserIds: [user._id],
+      sentByAdminId: adminUser._id,
+      sentByAdminName: adminUser.ownerName || adminUser.username || 'Admin',
+      deliveredCount: 1,
+    });
+
+    await logAdminAuditAction({
+      adminId: adminUser._id,
+      adminName: adminUser.ownerName || 'Admin',
+      adminRole: adminUser.role,
+      action: 'SEND_NOTIFICATION_SINGLE_USER',
+      targetType: 'USER',
+      targetId: user._id,
+      targetName: user.ownerName || user.username || user.phoneNumber || 'User',
+      details: `Sent single-user notification "${notif.title}" to user ${user._id}.`,
+      req,
+    });
+
+    return notif;
+  },
+
   sendAdminNotification: async (notifData, adminUser, req) => {
     let targetUsers = [];
     const now = new Date();
@@ -874,12 +979,12 @@ export const adminService = {
   },
 
   getNotificationsHistory: async () => {
-    return await AdminNotification.find().sort({ createdAt: -1 }).lean();
+    return await AdminNotification.find().sort({ createdAt: -1 }).limit(100).lean();
   },
 
   // 10. AUDIT LOGS
   getAuditLogs: async () => {
-    return await AdminAuditLog.find().sort({ createdAt: -1 }).lean();
+    return await AdminAuditLog.find().sort({ createdAt: -1 }).limit(100).lean();
   },
 
   // 11. SYSTEM SETTINGS (PERSISTENCE)

@@ -235,3 +235,22 @@ export function buildWhatsAppStatementMessage({
 
   return msg;
 }
+
+/**
+ * Shared Formatter for Customer Ledger Address (Web + PDF).
+ * Constructs address stopping at District. Intentionally excludes State and PIN Code.
+ */
+export function formatCustomerLedgerAddress(customer = {}) {
+  const rawAddr = (customer?.address || '').trim();
+  const village = (customer?.village || customer?.area || '').trim();
+  const mandal = (customer?.mandal || '').trim();
+  const district = (customer?.district || '').trim();
+
+  const parts = [];
+  if (rawAddr) parts.push(rawAddr);
+  if (village && !rawAddr.toLowerCase().includes(village.toLowerCase())) parts.push(village);
+  if (mandal && !rawAddr.toLowerCase().includes(mandal.toLowerCase())) parts.push(mandal);
+  if (district && !rawAddr.toLowerCase().includes(district.toLowerCase())) parts.push(district);
+
+  return parts.length > 0 ? parts.join(', ') : 'N/A';
+}

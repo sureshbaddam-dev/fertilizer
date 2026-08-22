@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { settingService } from '../services/settingService';
 import { authService } from '../services/authService';
@@ -56,17 +56,32 @@ export function SettingsProvider({ children }) {
     },
   });
 
+  const updateRef = useRef(updateMutation.mutateAsync);
+  const patchRef = useRef(patchMutation.mutateAsync);
+  const resetRef = useRef(resetMutation.mutateAsync);
+
+  updateRef.current = updateMutation.mutateAsync;
+  patchRef.current = patchMutation.mutateAsync;
+  resetRef.current = resetMutation.mutateAsync;
+
+  const updateSettings = useCallback((newSettings) => updateRef.current(newSettings), []);
+  const patchSettings = useCallback((patchData) => patchRef.current(patchData), []);
+  const resetSettings = useCallback(() => resetRef.current(), []);
+  const isUpdating = updateMutation.isPending || patchMutation.isPending || resetMutation.isPending;
+
+  const isInitialLoading = isLoading && !settingsApi && isAuthenticated && !!currentUserId;
+
   const value = useMemo(
     () => ({
       settings,
-      isLoading: isLoading && isAuthenticated && !!currentUserId,
+      isLoading: isInitialLoading,
       refetchSettings: refetch,
-      updateSettings: updateMutation.mutateAsync,
-      patchSettings: patchMutation.mutateAsync,
-      resetSettings: resetMutation.mutateAsync,
-      isUpdating: updateMutation.isPending || patchMutation.isPending || resetMutation.isPending,
+      updateSettings,
+      patchSettings,
+      resetSettings,
+      isUpdating,
     }),
-    [settings, isLoading, isAuthenticated, currentUserId, refetch, updateMutation, patchMutation, resetMutation]
+    [settings, isInitialLoading, refetch, updateSettings, patchSettings, resetSettings, isUpdating]
   );
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

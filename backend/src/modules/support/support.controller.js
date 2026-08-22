@@ -32,7 +32,7 @@ export const uploadAttachment = asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No attachment file uploaded' });
   }
-  const fileUrl = `/uploads/support/${req.file.filename}`;
+  const fileUrl = req.file.path || req.file.secure_url || req.file.url || `/uploads/support/${req.file.filename}`;
   return sendSuccess(res, 'Attachment uploaded successfully.', { url: fileUrl }, HTTP_STATUS.OK);
 });
 

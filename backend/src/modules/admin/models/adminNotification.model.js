@@ -17,8 +17,27 @@ const adminNotificationSchema = new mongoose.Schema(
     },
     notificationType: {
       type: String,
-      enum: ['SUBSCRIPTION_EXPIRY', 'PAYMENT', 'SYSTEM_ANNOUNCEMENT', 'MAINTENANCE', 'PROMOTIONAL'],
-      default: 'SYSTEM_ANNOUNCEMENT',
+      enum: [
+        'SUBSCRIPTION_EXPIRY',
+        'PAYMENT',
+        'SYSTEM_ANNOUNCEMENT',
+        'MAINTENANCE',
+        'PROMOTIONAL',
+        'GENERAL',
+        'IMPORTANT',
+        'SUBSCRIPTION',
+        'ACCOUNT',
+        'SYSTEM',
+      ],
+      default: 'GENERAL',
+    },
+    recipient: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    type: {
+      type: String,
+      default: 'general',
     },
     targetUserIds: [
       {

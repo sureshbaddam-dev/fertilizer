@@ -92,4 +92,7 @@ const userSubscriptionSchema = new mongoose.Schema(
   }
 );
 
+userSubscriptionSchema.index({ paymentStatus: 1, createdAt: -1 });
+userSubscriptionSchema.index({ status: 1, expiryDate: 1 });
+
 export const UserSubscription = mongoose.model('UserSubscription', userSubscriptionSchema);

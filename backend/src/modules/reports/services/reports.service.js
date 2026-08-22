@@ -29,18 +29,63 @@ export const reportsService = {
 
     const startOfYear = new Date(currentYear, 0, 1);
 
+    // Build base SalesInvoice match query excluding cancelled/void invoices
+    const salesMatch = {
+      userId: userObjId,
+      status: { $ne: 'Cancelled' },
+    };
+
+    if (filters.customer && filters.customer !== 'ALL') {
+      if (mongoose.Types.ObjectId.isValid(filters.customer)) {
+        salesMatch.customerId = new mongoose.Types.ObjectId(filters.customer);
+      } else {
+        salesMatch.customerName = new RegExp(filters.customer, 'i');
+      }
+    }
+
+    if (filters.paymentMode && filters.paymentMode !== 'ALL') {
+      salesMatch.paymentMode = filters.paymentMode;
+    }
+
+    // Build base Purchase match query excluding cancelled purchases
+    const purchaseMatch = {
+      userId: userObjId,
+      status: { $ne: 'Cancelled' },
+    };
+
+    if (filters.supplier && filters.supplier !== 'ALL') {
+      if (mongoose.Types.ObjectId.isValid(filters.supplier)) {
+        purchaseMatch.supplierId = new mongoose.Types.ObjectId(filters.supplier);
+      } else {
+        purchaseMatch.supplierName = new RegExp(filters.supplier, 'i');
+      }
+    }
+
+    // Build CustomerPayment match query
+    const paymentMatch = {
+      userId: userObjId,
+    };
+
+    if (filters.paymentMode && filters.paymentMode !== 'ALL') {
+      paymentMatch.paymentMode = filters.paymentMode;
+    }
+
+    if (filters.customer && filters.customer !== 'ALL' && mongoose.Types.ObjectId.isValid(filters.customer)) {
+      paymentMatch.customer = new mongoose.Types.ObjectId(filters.customer);
+    }
+
     const [
-      salesFacetResult,
+      salesHeaderFacetResult,
+      salesItemFacetResult,
       purchaseFacetResult,
       productFacetResult,
       customerBalanceResult,
       supplierBalanceResult,
-      customerCashPaymentResult,
-      supplierCashPaymentResult,
+      validPaymentResult,
     ] = await Promise.all([
-      // 1. SalesInvoice MongoDB Facet Aggregation Pipeline
+      // 1a. SalesInvoice Header-Level MongoDB Facet Aggregation Pipeline
       SalesInvoice.aggregate([
-        { $match: { userId: userObjId } },
+        { $match: salesMatch },
         {
           $facet: {
             todaySales: [
@@ -70,15 +115,63 @@ export const reportsService = {
                   taxableSalesVal: { $sum: { $ifNull: ['$subtotal', { $subtract: ['$totalAmount', '$taxAmount'] }] } },
                   totalGstCollected: { $sum: { $ifNull: ['$taxAmount', 0] } },
                   grandTotalVal: { $sum: '$totalAmount' },
-                  totalSalesVal: { $sum: { $ifNull: ['$subtotal', '$totalAmount'] } },
+                  totalSalesVal: { $sum: { $ifNull: ['$totalAmount', '$subtotal'] } },
                   totalPaid: { $sum: '$paidAmount' },
                   totalDue: { $sum: '$dueAmount' },
                   totalInvoices: { $sum: 1 },
                 },
               },
             ],
+            topCustomers: [
+              {
+                $group: {
+                  _id: { $ifNull: ['$customerName', 'Walk-in Customer'] },
+                  name: { $first: { $ifNull: ['$customerName', 'Walk-in Customer'] } },
+                  revenue: { $sum: { $ifNull: ['$totalAmount', '$subtotal'] } },
+                  paid: { $sum: '$paidAmount' },
+                  dues: { $sum: '$dueAmount' },
+                  billsCount: { $sum: 1 },
+                },
+              },
+              { $sort: { revenue: -1 } },
+              { $limit: 10 },
+            ],
+            recentSales: [
+              { $sort: { createdAt: -1 } },
+              { $limit: 10 },
+              {
+                $project: {
+                  id: '$_id',
+                  docNo: { $ifNull: ['$invoiceNumber', 'INV-000'] },
+                  date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                  party: { $ifNull: ['$customerName', 'Walk-in Customer'] },
+                  amount: { $ifNull: ['$totalAmount', '$subtotal'] },
+                  status: { $ifNull: ['$status', 'Paid'] },
+                },
+              },
+            ],
+            dailySalesTrend: [
+              { $match: { createdAt: { $gte: startOfMonth, $lte: endOfToday } } },
+              {
+                $group: {
+                  _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                  sales: { $sum: '$totalAmount' },
+                  count: { $sum: 1 },
+                },
+              },
+              { $sort: { _id: 1 } },
+            ],
+          },
+        },
+      ]),
+
+      // 1b. SalesInvoice Item-Level Single-Unwind Aggregation Pipeline
+      SalesInvoice.aggregate([
+        { $match: salesMatch },
+        { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
+        {
+          $facet: {
             totalProfit: [
-              { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
               {
                 $group: {
                   _id: null,
@@ -99,22 +192,7 @@ export const reportsService = {
                 },
               },
             ],
-            topCustomers: [
-              {
-                $group: {
-                  _id: { $ifNull: ['$customerName', 'Walk-in Customer'] },
-                  name: { $first: { $ifNull: ['$customerName', 'Walk-in Customer'] } },
-                  revenue: { $sum: { $ifNull: ['$subtotal', '$totalAmount'] } },
-                  paid: { $sum: '$paidAmount' },
-                  dues: { $sum: '$dueAmount' },
-                  billsCount: { $sum: 1 },
-                },
-              },
-              { $sort: { revenue: -1 } },
-              { $limit: 10 },
-            ],
             topProducts: [
-              { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
               {
                 $group: {
                   _id: { $ifNull: ['$items.productId', '$items.productName'] },
@@ -148,22 +226,7 @@ export const reportsService = {
               { $sort: { salesValue: -1 } },
               { $limit: 10 },
             ],
-            recentSales: [
-              { $sort: { createdAt: -1 } },
-              { $limit: 10 },
-              {
-                $project: {
-                  id: '$_id',
-                  docNo: { $ifNull: ['$invoiceNumber', 'INV-000'] },
-                  date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                  party: { $ifNull: ['$customerName', 'Walk-in Customer'] },
-                  amount: { $ifNull: ['$subtotal', '$totalAmount'] },
-                  status: { $ifNull: ['$status', 'Paid'] },
-                },
-              },
-            ],
             monthlySalesTrend: [
-              { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
               {
                 $group: {
                   _id: { $month: '$createdAt' },
@@ -195,7 +258,6 @@ export const reportsService = {
               { $sort: { _id: 1 } },
             ],
             yearlySalesTrend: [
-              { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
               {
                 $group: {
                   _id: { $year: '$createdAt' },
@@ -232,7 +294,7 @@ export const reportsService = {
 
       // 2. Purchase MongoDB Facet Aggregation Pipeline
       Purchase.aggregate([
-        { $match: { userId: userObjId } },
+        { $match: purchaseMatch },
         {
           $facet: {
             todayPurchase: [
@@ -441,9 +503,29 @@ export const reportsService = {
         },
       ]),
 
-      // 6. CustomerPayment MongoDB Aggregation Pipeline
+      // 6. Valid CustomerPayment Aggregation Pipeline (Excludes orphaned/cancelled payments)
       CustomerPayment.aggregate([
-        { $match: { userId: userObjId } },
+        { $match: paymentMatch },
+        {
+          $lookup: {
+            from: 'salesinvoices',
+            localField: 'invoiceId',
+            foreignField: '_id',
+            as: 'linkedInvoice',
+          },
+        },
+        {
+          $match: {
+            $or: [
+              { invoiceId: { $exists: false } },
+              { invoiceId: null },
+              {
+                'linkedInvoice.0': { $exists: true },
+                'linkedInvoice.0.status': { $ne: 'Cancelled' },
+              },
+            ],
+          },
+        },
         {
           $group: {
             _id: null,
@@ -456,56 +538,61 @@ export const reportsService = {
           },
         },
       ]),
-
-      // 7. SupplierLedger MongoDB Aggregation Pipeline
-      SupplierLedger.aggregate([
-        { $match: { userId: userObjId, transactionType: 'PAYMENT' } },
-        {
-          $group: {
-            _id: null,
-            totalSupplierPaid: { $sum: '$paidAmount' },
-          },
-        },
-      ]),
     ]);
 
-    const salesDataObj = salesFacetResult[0] || {};
+    const salesDataObj = { ...(salesHeaderFacetResult[0] || {}), ...(salesItemFacetResult[0] || {}) };
     const purchaseDataObj = purchaseFacetResult[0] || {};
     const productDataObj = productFacetResult[0] || {};
 
-    const todaySales = salesDataObj.todaySales?.[0]?.total || 0;
-    const weeklySales = salesDataObj.weeklySales?.[0]?.total || 0;
-    const monthlySales = salesDataObj.monthlySales?.[0]?.total || 0;
-    const prevMonthlySales = salesDataObj.prevMonthlySales?.[0]?.total || 0;
-    const yearlySales = salesDataObj.yearlySales?.[0]?.total || 0;
-    const totalSalesVal = salesDataObj.totalSales?.[0]?.totalSalesVal || 0;
-    const totalSalesPaid = salesDataObj.totalSales?.[0]?.totalPaid || 0;
-    const totalSalesDue = salesDataObj.totalSales?.[0]?.totalDue || 0;
     const totalInvoicesCount = salesDataObj.totalSales?.[0]?.totalInvoices || 0;
 
-    const todayPurchase = purchaseDataObj.todayPurchase?.[0]?.total || 0;
-    const weeklyPurchase = purchaseDataObj.weeklyPurchase?.[0]?.total || 0;
-    const monthlyPurchase = purchaseDataObj.monthlyPurchase?.[0]?.total || 0;
-    const prevMonthlyPurchase = purchaseDataObj.prevMonthlyPurchase?.[0]?.total || 0;
-    const yearlyPurchase = purchaseDataObj.yearlyPurchase?.[0]?.total || 0;
-    const totalPurchaseVal = purchaseDataObj.totalPurchase?.[0]?.totalPurchaseVal || 0;
-    const totalPurchasePaid = purchaseDataObj.totalPurchase?.[0]?.totalPaid || 0;
+    const todaySales = Math.round(totalInvoicesCount > 0 ? (salesDataObj.todaySales?.[0]?.total || 0) : 0);
+    const weeklySales = Math.round(totalInvoicesCount > 0 ? (salesDataObj.weeklySales?.[0]?.total || 0) : 0);
+    const monthlySales = Math.round(totalInvoicesCount > 0 ? (salesDataObj.monthlySales?.[0]?.total || 0) : 0);
+    const prevMonthlySales = Math.round(salesDataObj.prevMonthlySales?.[0]?.total || 0);
+    const yearlySales = Math.round(totalInvoicesCount > 0 ? (salesDataObj.yearlySales?.[0]?.total || 0) : 0);
+    const totalSalesVal = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalSalesVal || 0) : 0);
+    const totalSalesPaid = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalPaid || 0) : 0);
+    const totalSalesDue = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalDue || 0) : 0);
 
-    const currentStockVal = productDataObj.inventorySummary?.[0]?.totalInventoryValue || 0;
+    const todayPurchase = Math.round(purchaseDataObj.todayPurchase?.[0]?.total || 0);
+    const weeklyPurchase = Math.round(purchaseDataObj.weeklyPurchase?.[0]?.total || 0);
+    const monthlyPurchase = Math.round(purchaseDataObj.monthlyPurchase?.[0]?.total || 0);
+    const prevMonthlyPurchase = Math.round(purchaseDataObj.prevMonthlyPurchase?.[0]?.total || 0);
+    const yearlyPurchase = Math.round(purchaseDataObj.yearlyPurchase?.[0]?.total || 0);
+    const totalPurchaseVal = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPurchaseVal || 0);
+    const totalPurchasePaid = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPaid || 0);
+
+    const currentStockVal = Math.round(productDataObj.inventorySummary?.[0]?.totalInventoryValue || 0);
     const lowStockCount = productDataObj.lowStockCount?.[0]?.count || 0;
     const outOfStockCount = productDataObj.outOfStockCount?.[0]?.count || 0;
 
-    const finalCustomerOutstanding = customerBalanceResult[0]?.totalOutstanding || totalSalesDue;
-    const totalAdvanceCollections = customerBalanceResult[0]?.totalAdvance || 0;
-    const finalSupplierOutstanding = supplierBalanceResult[0]?.totalOutstanding || 0;
+    const finalCustomerOutstanding = Math.round(totalInvoicesCount > 0 ? (customerBalanceResult[0]?.totalOutstanding || totalSalesDue) : 0);
+    const totalAdvanceCollections = Math.round(customerBalanceResult[0]?.totalAdvance || 0);
+    const finalSupplierOutstanding = Math.round(supplierBalanceResult[0]?.totalOutstanding || 0);
 
-    const extraCashCollection = customerCashPaymentResult[0]?.cashCollection || 0;
-    const cashCollectionOnly = totalSalesPaid + extraCashCollection;
+    // Total Collections is calculated dynamically from valid CustomerPayment records or valid bill payments
+    const validPaymentsCollection = Math.round(validPaymentResult[0]?.totalCollection || 0);
+    const totalCollection = Math.round(totalInvoicesCount > 0 ? Math.max(totalSalesPaid, validPaymentsCollection) : validPaymentsCollection);
 
-    const totalGrossProfit = Math.round(salesDataObj.totalProfit?.[0]?.totalGrossProfit || 0);
+    const totalGrossProfit = totalInvoicesCount > 0 ? Math.round(salesDataObj.totalProfit?.[0]?.totalGrossProfit || 0) : 0;
 
-    const salesGrowthPct = prevMonthlySales > 0 ? Number((((monthlySales - prevMonthlySales) / prevMonthlySales) * 100).toFixed(1)) : 0;
-    const purchaseGrowthPct = prevMonthlyPurchase > 0 ? Number((((monthlyPurchase - prevMonthlyPurchase) / prevMonthlyPurchase) * 100).toFixed(1)) : 0;
+    // Safe Sales Growth % calculation
+    let salesGrowthPct = 0;
+    if (prevMonthlySales > 0) {
+      salesGrowthPct = Number((((monthlySales - prevMonthlySales) / prevMonthlySales) * 100).toFixed(1));
+    } else if (monthlySales > 0) {
+      salesGrowthPct = 100;
+    }
+
+    // Safe Purchase Growth % calculation
+    let purchaseGrowthPct = 0;
+    if (prevMonthlyPurchase > 0) {
+      purchaseGrowthPct = Number((((monthlyPurchase - prevMonthlyPurchase) / prevMonthlyPurchase) * 100).toFixed(1));
+    } else if (monthlyPurchase > 0) {
+      purchaseGrowthPct = 100;
+    }
+
     const avgBillValue = totalInvoicesCount > 0 ? Math.round(totalSalesVal / totalInvoicesCount) : 0;
     const profitPctVal = totalSalesVal > 0 ? Number(((totalGrossProfit / totalSalesVal) * 100).toFixed(1)) : 0;
 
@@ -534,6 +621,12 @@ export const reportsService = {
         cashFlow: sVal - pVal,
       });
     }
+
+    const dailySalesTrend = (salesDataObj.dailySalesTrend || []).map((d) => ({
+      date: d._id,
+      sales: d.sales || 0,
+      count: d.count || 0,
+    }));
 
     const yearlySalesTrend = (salesDataObj.yearlySalesTrend || []).map((y) => ({
       year: `${y._id}`,
@@ -590,20 +683,20 @@ export const reportsService = {
         monthlySales,
         yearlySales,
         totalSales: totalSalesVal,
-        totalCollection: cashCollectionOnly,
+        totalCollection,
         outstandingCollection: finalCustomerOutstanding,
         salesGrowth: salesGrowthPct,
         avgBillValue,
         charts: {
-          dailySalesTrend: [],
+          dailySalesTrend,
           monthlySalesTrend,
           yearlySalesTrend,
         },
         tables: {
-          topCustomers: salesDataObj.topCustomers || [],
-          topSellingProducts: salesDataObj.topProducts || [],
-          recentSales: salesDataObj.recentSales || [],
-          outstandingCustomers: (salesDataObj.topCustomers || []).filter((c) => c.dues > 0),
+          topCustomers: totalInvoicesCount > 0 ? (salesDataObj.topCustomers || []) : [],
+          topSellingProducts: totalInvoicesCount > 0 ? (salesDataObj.topProducts || []) : [],
+          recentSales: totalInvoicesCount > 0 ? (salesDataObj.recentSales || []) : [],
+          outstandingCustomers: totalInvoicesCount > 0 ? (salesDataObj.topCustomers || []).filter((c) => c.dues > 0) : [],
         },
       },
       purchases: {
@@ -633,7 +726,7 @@ export const reportsService = {
         grossProfit: totalGrossProfit,
         profitPct: profitPctVal,
         inventoryValue: currentStockVal,
-        cashCollection: cashCollectionOnly,
+        cashCollection: totalCollection,
         customerOutstanding: finalCustomerOutstanding,
         supplierOutstanding: finalSupplierOutstanding,
         currentStockValue: currentStockVal,
@@ -652,8 +745,8 @@ export const reportsService = {
           businessGrowth: yearlySalesTrend,
         },
         tables: {
-          topProfitableProducts: salesDataObj.topProducts || [],
-          fastMovingProducts: salesDataObj.topProducts || [],
+          topProfitableProducts: totalInvoicesCount > 0 ? (salesDataObj.topProducts || []) : [],
+          fastMovingProducts: totalInvoicesCount > 0 ? (salesDataObj.topProducts || []) : [],
           slowMovingProducts: [],
           deadStock: [],
         },

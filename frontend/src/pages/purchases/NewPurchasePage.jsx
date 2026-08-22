@@ -111,9 +111,9 @@ export default function NewPurchasePage() {
 
     const effectiveDiscountType = prod.discountType || rawProd.discountType || 'Percentage';
 
-    const effectiveGstRate = prod.gstRate !== undefined && prod.gstRate !== null && Number(prod.gstRate) !== 0
+    const effectiveGstRate = prod.gstRate !== undefined && prod.gstRate !== null
       ? prod.gstRate
-      : (rawProd.gstRate ?? '');
+      : (rawProd.gstRate ?? 0);
 
     const newItem = {
       tempId: Date.now() + Math.random(),

@@ -66,7 +66,7 @@ const purchaseItemSchema = new mongoose.Schema(
     },
     gstPercent: {
       type: Number,
-      default: 18,
+      default: 0,
     },
     taxAmount: {
       type: Number,

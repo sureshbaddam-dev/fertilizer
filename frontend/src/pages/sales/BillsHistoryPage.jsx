@@ -287,13 +287,13 @@ export default function BillsHistoryPage() {
                             {inv.customerMobile || '—'}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-gray-900 text-xs whitespace-nowrap">
-                            ₹ {totalAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(totalAmt).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-[#047857] text-xs whitespace-nowrap">
-                            ₹ {paidAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(paidAmt).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-red-600 text-xs whitespace-nowrap">
-                            {dueAmt > 0 ? `₹ ${dueAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹ 0.00'}
+                            {dueAmt > 0 ? `₹ ${Math.round(dueAmt).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ 0'}
                           </td>
                           <td className="py-3 px-3 text-center whitespace-nowrap">
                             <span
@@ -505,21 +505,21 @@ export default function BillsHistoryPage() {
           <div className="p-3 bg-amber-50/40 border border-amber-100 rounded-2xl shadow-2xs space-y-1">
             <span className="text-[11px] text-amber-800 font-medium block">Total Amount</span>
             <span className="text-base font-bold text-amber-900 font-mono block whitespace-nowrap">
-              ₹ {summary.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹ {Math.round(summary.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </span>
           </div>
 
           <div className="p-3 bg-emerald-50/40 border border-emerald-100 rounded-2xl shadow-2xs space-y-1">
             <span className="text-[11px] text-[#047857] font-medium block">Total Paid</span>
             <span className="text-base font-bold text-[#047857] font-mono block whitespace-nowrap">
-              ₹ {summary.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹ {Math.round(summary.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </span>
           </div>
 
           <div className="p-3 bg-red-50/40 border border-red-100 rounded-2xl shadow-2xs space-y-1">
             <span className="text-[11px] text-red-600 font-medium block">Total Due</span>
             <span className="text-base font-bold text-red-600 font-mono block whitespace-nowrap">
-              ₹ {summary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹ {Math.round(summary.totalDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </span>
           </div>
 

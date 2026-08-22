@@ -8,11 +8,12 @@ export const getBackupDbConnection = async () => {
     if (backupConnection.readyState === 1) return backupConnection;
   }
 
-  const uri = process.env.BACKUP_MONGODB_URI || envConfig.mongo.backupUri || envConfig.mongo.mainUri || envConfig.mongo.uri;
+  const uri = process.env.BACKUP_MONGODB_URI || envConfig.mongo.backupUri;
   
   let finalUri = uri;
   // If no separate BACKUP_MONGODB_URI was specified, isolate in 'vedixa_backups' database
-  if (!process.env.BACKUP_MONGODB_URI && finalUri.includes('/')) {
+  if ((!process.env.BACKUP_MONGODB_URI || finalUri.includes('mandhi_erp_backups')) && envConfig.mongo.mainUri) {
+    finalUri = envConfig.mongo.mainUri;
     if (finalUri.includes('?')) {
       const parts = finalUri.split('?');
       const lastSlash = parts[0].lastIndexOf('/');
@@ -25,7 +26,13 @@ export const getBackupDbConnection = async () => {
   }
 
   try {
-    backupConnection = await mongoose.createConnection(finalUri).asPromise();
+    backupConnection = await mongoose.createConnection(finalUri, {
+      serverSelectionTimeoutMS: 10000,
+      family: 4,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      retryWrites: true,
+    }).asPromise();
     console.log('✅ Backup MongoDB Atlas Connection established to database:', backupConnection.name);
     return backupConnection;
   } catch (err) {

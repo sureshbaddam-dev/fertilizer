@@ -217,7 +217,7 @@ export default function SupplierLedgerPage() {
         <div className="bg-amber-50/40 border border-amber-100/80 rounded-2xl p-3.5 space-y-1">
           <span className="text-xs font-medium text-gray-500 block">Total Purchases</span>
           <span className="text-lg font-bold text-amber-900 font-mono block whitespace-nowrap">
-            ₹ {summary.totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summary.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
           <span className="text-[10px] text-gray-400 font-normal block">Database Lifetime Sum</span>
         </div>
@@ -226,7 +226,7 @@ export default function SupplierLedgerPage() {
         <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-3.5 space-y-1">
           <span className="text-xs font-medium text-gray-500 block">Total Payments</span>
           <span className="text-lg font-bold text-sky-900 font-mono block whitespace-nowrap">
-            ₹ {summary.totalPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summary.totalPayments || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
           <span className="text-[10px] text-gray-400 font-normal block">Database Lifetime Sum</span>
         </div>
@@ -238,8 +238,8 @@ export default function SupplierLedgerPage() {
           </span>
           <span className={`text-lg font-bold font-mono block whitespace-nowrap ${isAdvance ? 'text-[#047857]' : 'text-red-600'}`}>
             {isAdvance
-              ? `-₹ ${Math.abs(summary.closingBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-              : `₹ ${summary.closingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+              ? `-₹ ${Math.round(Math.abs(summary.closingBalance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+              : `₹ ${Math.round(summary.closingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           </span>
           <span className="text-[10px] text-gray-400 font-normal block">Current Database Balance</span>
         </div>
@@ -248,7 +248,7 @@ export default function SupplierLedgerPage() {
         <div className="bg-purple-50/40 border border-purple-100/80 rounded-2xl p-3.5 space-y-1">
           <span className="text-xs font-medium text-gray-500 block">Average Purchase Value</span>
           <span className="text-lg font-bold text-purple-900 font-mono block whitespace-nowrap">
-            ₹ {summary.avgPurchaseValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summary.avgPurchaseValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
           <span className="text-[10px] text-gray-400 font-normal block">Per Order Average</span>
         </div>
@@ -402,17 +402,17 @@ export default function SupplierLedgerPage() {
 
                           {/* Purchase Amount */}
                           <td className="py-3.5 px-3.5 text-center align-middle font-mono font-bold text-gray-900 whitespace-nowrap">
-                            {purchaseAmt > 0 ? `₹ ${purchaseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                            {purchaseAmt > 0 ? `₹ ${Math.round(purchaseAmt).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'}
                           </td>
 
                           {/* Payment Amount */}
                           <td className="py-3.5 px-3.5 text-center align-middle font-mono font-bold text-[#047857] whitespace-nowrap">
-                            {paymentAmt > 0 ? `₹ ${paymentAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                            {paymentAmt > 0 ? `₹ ${Math.round(paymentAmt).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'}
                           </td>
 
                           {/* Running Balance */}
                           <td className="py-3.5 px-3.5 text-center align-middle font-mono font-bold text-gray-900 whitespace-nowrap">
-                            ₹ {runningBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(runningBal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
 
                           {/* Status Badge */}
@@ -576,21 +576,21 @@ export default function SupplierLedgerPage() {
               <div className="flex items-center justify-between text-gray-600">
                 <span>Current Due</span>
                 <span className="font-bold text-red-600 font-mono text-sm whitespace-nowrap">
-                  ₹ {summary.closingBalance > 0 ? summary.closingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                  ₹ {summary.closingBalance > 0 ? Math.round(summary.closingBalance).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-gray-600">
                 <span>Overdue (&gt; 30 Days)</span>
                 <span className="font-bold text-red-600 font-mono whitespace-nowrap">
-                  ₹ {summary.overdueAmount ? summary.overdueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                  ₹ {summary.overdueAmount ? Math.round(summary.overdueAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0'}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-gray-600">
                 <span>Due in 30 Days</span>
                 <span className="font-bold text-amber-600 font-mono whitespace-nowrap">
-                  ₹ {summary.dueIn30Days ? summary.dueIn30Days.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                  ₹ {summary.dueIn30Days ? Math.round(summary.dueIn30Days).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0'}
                 </span>
               </div>
             </div>
@@ -624,7 +624,7 @@ export default function SupplierLedgerPage() {
                       </div>
                       <div className="text-right whitespace-nowrap shrink-0">
                         <span className="font-bold text-[#047857] font-mono text-xs whitespace-nowrap">
-                          ₹ {p.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹ {Math.round(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                         <span className="text-[10px] text-gray-500 font-medium ml-1.5 whitespace-nowrap">Payment</span>
                       </div>
@@ -645,7 +645,7 @@ export default function SupplierLedgerPage() {
               <div className="flex justify-between text-gray-600">
                 <span>Total Purchases</span>
                 <span className="font-bold text-gray-900 font-mono whitespace-nowrap">
-                  ₹ {summary.totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(summary.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
               <div className="flex justify-between text-gray-600">
@@ -661,7 +661,7 @@ export default function SupplierLedgerPage() {
               <div className="flex justify-between text-gray-600">
                 <span>Average Purchase Value</span>
                 <span className="font-bold text-gray-900 font-mono whitespace-nowrap">
-                  ₹ {summary.avgPurchaseValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(summary.avgPurchaseValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
             </div>

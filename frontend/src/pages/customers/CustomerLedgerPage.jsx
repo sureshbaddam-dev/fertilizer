@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Phone,
   MapPin,
+  Building,
+  UserCheck,
   Plus,
   MessageSquare,
   Printer,
@@ -28,7 +30,7 @@ import { customerService } from '../../services/customerService';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentReceiptPdf, generateMonthlyStatementPdf, printMonthlyStatementPdf, buildMonthlyStatementPdfDoc } from '../../utils/pdfGenerator';
-import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
+import { calculateCustomerStatement, buildWhatsAppStatementMessage, formatCustomerLedgerAddress } from '../../utils/statementCalculator';
 import PdfCanvasViewer from '../../components/PdfCanvasViewer';
 import vedixaLogoImg from '../../assets/vedixa_logo.png';
 
@@ -639,7 +641,6 @@ export default function CustomerLedgerPage() {
     setRefTypeInput('All');
     setAppliedTxType('All');
     setAppliedRefType('All');
-    setSearchQuery('');
     setCurrentPage(1);
   };
 
@@ -816,6 +817,10 @@ export default function CustomerLedgerPage() {
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       <span>Village: <strong className="text-gray-800">{customer.village || 'N/A'}</strong></span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Building className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <span>Mandal: <strong className="text-gray-800">{customer.mandal || 'N/A'}</strong></span>
                     </span>
                     <span className="flex items-center gap-1">
                       <Building className="w-3.5 h-3.5 text-gray-400 shrink-0" />
@@ -1107,11 +1112,11 @@ export default function CustomerLedgerPage() {
                             </td>
 
                             <td className="py-2.5 px-4 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
-                              {(tx.debit || 0) > 0 ? (tx.debit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}
+                              {(tx.debit || 0) > 0 ? Math.round(tx.debit).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                             </td>
 
                             <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                              {(tx.credit || 0) > 0 ? (tx.credit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}
+                              {(tx.credit || 0) > 0 ? Math.round(tx.credit).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
                             </td>
 
                             <td className="py-2.5 px-4 text-right whitespace-nowrap font-mono font-bold">
@@ -1122,10 +1127,10 @@ export default function CustomerLedgerPage() {
                               ) : (
                                 <span className={(tx.runningBalance || tx.balance || 0) > 0 ? 'text-red-600 font-black' : (tx.runningBalance || tx.balance || 0) < 0 ? 'text-emerald-700 font-black' : 'text-gray-700 font-bold'}>
                                   {(tx.runningBalance || tx.balance || 0) > 0
-                                    ? `Outstanding ₹${Math.abs(tx.runningBalance || tx.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                                    ? `Outstanding ₹${Math.round(Math.abs(tx.runningBalance || tx.balance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                                     : (tx.runningBalance || tx.balance || 0) < 0
-                                      ? `Advance ₹${Math.abs(tx.runningBalance || tx.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
-                                      : '₹ 0.00'}
+                                      ? `Advance ₹${Math.round(Math.abs(tx.runningBalance || tx.balance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                      : '₹ 0'}
                                 </span>
                               )}
                             </td>
@@ -2120,10 +2125,7 @@ export default function CustomerLedgerPage() {
                 Customer Phone : <span className="font-mono">{customer?.mobile || 'N/A'}</span>
               </p>
               <p>
-                Customer Address: {' '}
-                {[customer?.address, customer?.village || customer?.area, customer?.mandal, customer?.district, customer?.state]
-                  .filter(Boolean)
-                  .join(', ') || 'N/A'}
+                Customer Address: {formatCustomerLedgerAddress(customer)}
               </p>
               <p className="text-[10px] text-gray-600">
                 Statement Period: {statementType === 'MONTHLY' ? (monthlyCalculation?.monthLabel || 'Current Month') : (statementType === 'FULL' ? 'Full History' : `${fromDate || ''} to ${toDate || ''}`)} | Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}

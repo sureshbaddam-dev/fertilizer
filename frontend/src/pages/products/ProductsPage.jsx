@@ -148,9 +148,10 @@ export default function ProductsPage() {
       const unit = p.defaultUnitId?.shortName || p.unit || 'Bag';
       return {
         name: p.name,
+        image: p.image || p.imageUrl || p.productPicUrl || p.images?.[0],
         alertBelow: `${alert} ${unit}`,
         qty: `${stock} ${unit}`,
-        color: stock <= alert / 2 ? 'text-red-600 font-bold' : 'text-amber-600 font-medium',
+        color: stock === 0 ? 'text-red-600 font-bold' : 'text-amber-600 font-medium',
       };
     });
 

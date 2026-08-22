@@ -183,7 +183,7 @@ export const adminController = {
   // 6. PAYMENTS
   getPaymentsList: async (req, res, next) => {
     try {
-      const payments = await adminService.getPaymentsList();
+      const payments = await adminService.getPaymentsList(req.query);
       return sendSuccess(res, 'Payments list fetched successfully', payments);
     } catch (err) {
       next(err);
@@ -210,6 +210,15 @@ export const adminController = {
   },
 
   // 8. NOTIFICATIONS
+  sendSingleUserNotification: async (req, res, next) => {
+    try {
+      const notif = await adminService.sendSingleUserNotification(req.body, req.adminUser, req);
+      return sendSuccess(res, 'Notification sent successfully.', notif);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   sendAdminNotification: async (req, res, next) => {
     try {
       const notif = await adminService.sendAdminNotification(req.body, req.adminUser, req);

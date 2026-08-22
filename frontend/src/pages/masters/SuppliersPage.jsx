@@ -235,7 +235,7 @@ export default function SuppliersPage() {
       accessorKey: 'lastPaymentAmount',
       render: (row) => (
         <span className="font-mono font-bold text-[#047857] whitespace-nowrap">
-          {row.lastPaymentAmount > 0 ? `₹ ${Number(row.lastPaymentAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+          {row.lastPaymentAmount > 0 ? `₹ ${Math.round(Number(row.lastPaymentAmount)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'}
         </span>
       ),
     },
@@ -244,7 +244,7 @@ export default function SuppliersPage() {
       accessorKey: 'totalPurchases',
       render: (row) => (
         <span className="font-mono font-bold text-gray-900">
-          ₹ {Number(row.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          ₹ {Math.round(Number(row.totalPurchases || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </span>
       ),
     },
@@ -256,7 +256,7 @@ export default function SuppliersPage() {
         const isAdv = due < 0;
         return (
           <span className={`font-mono font-bold ${isAdv ? 'text-[#047857]' : due > 0 ? 'text-red-600' : 'text-gray-600'}`}>
-            {isAdv ? `-₹ ${Math.abs(due).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (Adv)` : `₹ ${due.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+            {isAdv ? `-₹ ${Math.round(Math.abs(due)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} (Adv)` : `₹ ${Math.round(due).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           </span>
         );
       },
@@ -347,21 +347,21 @@ export default function SuppliersPage() {
         <div className="p-3 bg-amber-50/40 border border-amber-100/80 rounded-2xl shadow-2xs space-y-1">
           <span className="text-[11px] text-amber-800 font-medium block">Total Purchases</span>
           <span className="text-base font-bold text-amber-900 font-mono block">
-            ₹ {summaryStats.totalPurchasesAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summaryStats.totalPurchasesAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
         </div>
 
         <div className="p-3 bg-sky-50/50 border border-sky-100 rounded-2xl shadow-2xs space-y-1">
           <span className="text-[11px] text-sky-800 font-medium block">Total Payments</span>
           <span className="text-base font-bold text-sky-900 font-mono block">
-            ₹ {summaryStats.totalPaymentsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summaryStats.totalPaymentsAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
         </div>
 
         <div className="p-3 bg-red-50/40 border border-red-100 rounded-2xl shadow-2xs space-y-1">
           <span className="text-[11px] text-red-600 font-medium block">Total Outstanding</span>
           <span className="text-base font-bold text-red-600 font-mono block">
-            ₹ {summaryStats.totalOutstandingDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            ₹ {Math.round(summaryStats.totalOutstandingDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
         </div>
       </div>

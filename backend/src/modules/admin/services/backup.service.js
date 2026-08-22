@@ -135,6 +135,25 @@ export const backupService = {
         snapshotData: snapshotMap,
       });
 
+      // 3b. UPSERT RAW COLLECTION DOCUMENTS IN VEDIXA_BACKUPS (PRESERVE _id, NO DUPLICATES)
+      for (const [colName, records] of Object.entries(snapshotMap)) {
+        if (records && records.length > 0) {
+          try {
+            const rawCollection = backupConn.collection(colName);
+            const bulkOps = records.map((doc) => ({
+              replaceOne: {
+                filter: { _id: doc._id },
+                replacement: doc,
+                upsert: true,
+              },
+            }));
+            await rawCollection.bulkWrite(bulkOps);
+          } catch (colErr) {
+            console.error(`Warning: Failed to sync raw collection ${colName} into backup DB:`, colErr.message);
+          }
+        }
+      }
+
       // 4. MARK METADATA COMPLETED
       createdMetadata.status = 'COMPLETED';
       createdMetadata.collectionsCount = Object.keys(snapshotMap).length;

@@ -23,66 +23,68 @@ export const supplierService = {
     if (query.status === 'inactive') filter.isActive = false;
 
     const sort = { name: 1 };
-    const suppliersDocs = await Supplier.find(filter).sort(sort).exec();
+    const [suppliersDocs, allLedgerDocs] = await Promise.all([
+      Supplier.find(filter).sort(sort).lean().exec(),
+      SupplierLedger.find({ userId, isDeleted: { $ne: true } }).sort({ date: -1 }).lean().exec(),
+    ]);
+
+    const ledgerMap = new Map();
+    for (const item of allLedgerDocs) {
+      const sKey = item.supplierId?.toString();
+      if (sKey) {
+        if (!ledgerMap.has(sKey)) ledgerMap.set(sKey, []);
+        ledgerMap.get(sKey).push(item);
+      }
+    }
 
     let overallOutstanding = 0;
     let overallPurchases = 0;
     let overallPayments = 0;
 
-    const enrichedSuppliers = await Promise.all(
-      suppliersDocs.map(async (sup) => {
-        const supObj = sup.toObject ? sup.toObject() : { ...sup };
-        const sId = supObj._id;
+    const enrichedSuppliers = suppliersDocs.map((supObj) => {
+      const sId = supObj._id.toString();
+      const ledger = ledgerMap.get(sId) || [];
 
-        let ledger = [];
-        try {
-          ledger = await SupplierLedger.find({ userId, supplierId: sId, isDeleted: { $ne: true } }).sort({ date: -1 }).exec();
-        } catch (err) {
-          logger.error({ err }, `Failed to fetch ledger for supplier ${sId}`);
-          ledger = [];
+      let supTotalPurchases = 0;
+      let supTotalPayments = 0;
+      let lastPurchaseDate = null;
+      let lastPaymentDate = null;
+      let lastPaymentAmount = 0;
+
+      ledger.forEach((item) => {
+        const pAmt = Number(item.purchaseAmount) || 0;
+        const pdAmt = Number(item.paidAmount) || 0;
+
+        if (item.transactionType === 'PURCHASE') {
+          supTotalPurchases += pAmt;
+          if (!lastPurchaseDate) lastPurchaseDate = item.date;
         }
 
-        let supTotalPurchases = 0;
-        let supTotalPayments = 0;
-        let lastPurchaseDate = null;
-        let lastPaymentDate = null;
-        let lastPaymentAmount = 0;
-
-        ledger.forEach((item) => {
-          const pAmt = Number(item.purchaseAmount) || 0;
-          const pdAmt = Number(item.paidAmount) || 0;
-
-          if (item.transactionType === 'PURCHASE') {
-            supTotalPurchases += pAmt;
-            if (!lastPurchaseDate) lastPurchaseDate = item.date;
-          }
-
-          if (pdAmt > 0) {
-            if (!(item.transactionType === 'PAYMENT' && item.referenceNumber?.startsWith('PAY-PUR-'))) {
-              supTotalPayments += pdAmt;
-              if (!lastPaymentDate) {
-                lastPaymentDate = item.date;
-                lastPaymentAmount = pdAmt;
-              }
+        if (pdAmt > 0) {
+          if (!(item.transactionType === 'PAYMENT' && item.referenceNumber?.startsWith('PAY-PUR-'))) {
+            supTotalPayments += pdAmt;
+            if (!lastPaymentDate) {
+              lastPaymentDate = item.date;
+              lastPaymentAmount = pdAmt;
             }
           }
-        });
+        }
+      });
 
-        const due = Number(supObj.outstandingBalance) || 0;
-        overallOutstanding += due;
-        overallPurchases += supTotalPurchases;
-        overallPayments += supTotalPayments;
+      const due = Number(supObj.outstandingBalance) || 0;
+      overallOutstanding += due;
+      overallPurchases += supTotalPurchases;
+      overallPayments += supTotalPayments;
 
-        return {
-          ...supObj,
-          totalPurchases: supTotalPurchases,
-          totalPayments: supTotalPayments,
-          lastPurchaseDate,
-          lastPaymentDate,
-          lastPaymentAmount,
-        };
-      })
-    );
+      return {
+        ...supObj,
+        totalPurchases: supTotalPurchases,
+        totalPayments: supTotalPayments,
+        lastPurchaseDate,
+        lastPaymentDate,
+        lastPaymentAmount,
+      };
+    });
 
     let finalSuppliers = enrichedSuppliers;
     if (query.status === 'outstanding') {
@@ -239,27 +241,51 @@ export const supplierService = {
       ledgerEntries = [];
     }
 
-    const enrichedEntries = await Promise.all(
-      ledgerEntries.map(async (entry) => {
-        if (entry.purchaseId && entry.purchaseId._id) {
-          try {
-            const [purchaseItems, linkedPayments] = await Promise.all([
-              PurchaseItem.find({ userId, purchaseId: entry.purchaseId._id }).populate('productId').lean().exec(),
-              SupplierLedger.find({ userId, purchaseId: entry.purchaseId._id, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).lean().exec(),
-            ]);
-            entry.purchaseId.items = purchaseItems || [];
-            entry.purchaseId.payments = linkedPayments || [];
-            entry.payments = linkedPayments || [];
-          } catch (err) {
-            logger.error({ err }, `Error populating items/payments for purchase ${entry.purchaseId._id}`);
-            entry.purchaseId.items = [];
-            entry.purchaseId.payments = [];
-            entry.payments = [];
-          }
-        }
-        return entry;
-      })
-    );
+    const purchaseIds = ledgerEntries.map((e) => e.purchaseId?._id).filter(Boolean);
+
+    let allPurchaseItems = [];
+    let allLinkedPayments = [];
+
+    if (purchaseIds.length > 0) {
+      try {
+        [allPurchaseItems, allLinkedPayments] = await Promise.all([
+          PurchaseItem.find({ userId, purchaseId: { $in: purchaseIds } }).populate('productId').lean().exec(),
+          SupplierLedger.find({ userId, purchaseId: { $in: purchaseIds }, transactionType: 'PAYMENT', isDeleted: { $ne: true } }).lean().exec(),
+        ]);
+      } catch (err) {
+        logger.error({ err }, 'Error batch fetching purchase items/payments for supplier ledger');
+      }
+    }
+
+    const itemsMap = new Map();
+    allPurchaseItems.forEach((pi) => {
+      const pKey = pi.purchaseId?.toString();
+      if (pKey) {
+        if (!itemsMap.has(pKey)) itemsMap.set(pKey, []);
+        itemsMap.get(pKey).push(pi);
+      }
+    });
+
+    const paymentsMap = new Map();
+    allLinkedPayments.forEach((lp) => {
+      const pKey = lp.purchaseId?.toString();
+      if (pKey) {
+        if (!paymentsMap.has(pKey)) paymentsMap.set(pKey, []);
+        paymentsMap.get(pKey).push(lp);
+      }
+    });
+
+    const enrichedEntries = ledgerEntries.map((entry) => {
+      if (entry.purchaseId && entry.purchaseId._id) {
+        const pKey = entry.purchaseId._id.toString();
+        const purchaseItems = itemsMap.get(pKey) || [];
+        const linkedPayments = paymentsMap.get(pKey) || [];
+        entry.purchaseId.items = purchaseItems;
+        entry.purchaseId.payments = linkedPayments;
+        entry.payments = linkedPayments;
+      }
+      return entry;
+    });
 
     const activeEntries = enrichedEntries.filter((entry) => {
       if (entry.transactionType === 'PAYMENT' && entry.referenceNumber?.startsWith('PAY-PUR-')) {
@@ -415,6 +441,7 @@ export const supplierService = {
     const ledger = await SupplierLedger.find({ userId, supplierId, isDeleted: { $ne: true } }).sort({ date: 1, createdAt: 1 }).exec();
 
     let balance = 0;
+    const bulkOps = [];
     for (const entry of ledger) {
       if (entry.transactionType === 'PURCHASE') {
         const purchaseAmt = normalizeMoney(entry.purchaseAmount || 0);
@@ -428,8 +455,19 @@ export const supplierService = {
         balance += normalizeMoney(entry.purchaseAmount || 0) - normalizeMoney(entry.paidAmount || 0);
       }
       balance = normalizeMoney(balance);
-      entry.runningBalance = balance;
-      await entry.save();
+      if (entry.runningBalance !== balance) {
+        entry.runningBalance = balance;
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: entry._id },
+            update: { $set: { runningBalance: balance } },
+          },
+        });
+      }
+    }
+
+    if (bulkOps.length > 0) {
+      await SupplierLedger.bulkWrite(bulkOps);
     }
 
     balance = normalizeMoney(balance);

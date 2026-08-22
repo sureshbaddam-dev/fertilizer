@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { protect } from '../../middlewares/auth.middleware.js';
+import { requireAdminRole } from '../admin/middlewares/admin.middleware.js';
 import { uploadSupportAttachmentMiddleware } from '../../middlewares/upload.middleware.js';
 import {
   createTicket,
@@ -19,25 +20,23 @@ import {
 
 const router = Router();
 
-router.use(protect);
+// Attachment Upload (User/Admin protected)
+router.post('/upload-attachment', protect, uploadSupportAttachmentMiddleware.single('file'), uploadAttachment);
 
-// Attachment Upload
-router.post('/upload-attachment', uploadSupportAttachmentMiddleware.single('file'), uploadAttachment);
+// User endpoints (Protected by user protect middleware)
+router.post('/tickets', protect, createTicket);
+router.get('/tickets', protect, getUserTickets);
+router.get('/tickets/:id', protect, getTicketById);
+router.post('/tickets/:id/reply', protect, addReplyUser);
+router.post('/tickets/:id/reopen', protect, reopenTicketUser);
 
-// User endpoints
-router.post('/tickets', createTicket);
-router.get('/tickets', getUserTickets);
-router.get('/tickets/:id', getTicketById);
-router.post('/tickets/:id/reply', addReplyUser);
-router.post('/tickets/:id/reopen', reopenTicketUser);
-
-// Admin endpoints
-router.get('/admin/tickets', getAllTicketsAdmin);
-router.get('/admin/tickets/:id', getTicketByIdAdmin);
-router.post('/admin/tickets/:id/reply', addReplyAdmin);
-router.post('/admin/tickets/:id/resolve', resolveTicketAdmin);
-router.patch('/admin/tickets/:id/status', updateTicketStatusAdmin);
-router.get('/admin/notifications/unread', getUnreadNotificationsAdmin);
-router.patch('/admin/notifications/:id/read', markNotificationReadAdmin);
+// Admin endpoints (Protected by requireAdminRole middleware)
+router.get('/admin/tickets', requireAdminRole(), getAllTicketsAdmin);
+router.get('/admin/tickets/:id', requireAdminRole(), getTicketByIdAdmin);
+router.post('/admin/tickets/:id/reply', requireAdminRole(), addReplyAdmin);
+router.post('/admin/tickets/:id/resolve', requireAdminRole(), resolveTicketAdmin);
+router.patch('/admin/tickets/:id/status', requireAdminRole(), updateTicketStatusAdmin);
+router.get('/admin/notifications/unread', requireAdminRole(), getUnreadNotificationsAdmin);
+router.patch('/admin/notifications/:id/read', requireAdminRole(), markNotificationReadAdmin);
 
 export default router;

@@ -60,4 +60,7 @@ const adminAuditLogSchema = new mongoose.Schema(
   }
 );
 
+adminAuditLogSchema.index({ createdAt: -1 });
+adminAuditLogSchema.index({ targetId: 1, createdAt: -1 });
+
 export const AdminAuditLog = mongoose.model('AdminAuditLog', adminAuditLogSchema);

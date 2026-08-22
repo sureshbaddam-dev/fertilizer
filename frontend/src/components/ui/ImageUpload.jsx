@@ -1,14 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Image as ImageIcon, X, Loader2 } from 'lucide-react';
-import { apiClient } from '../../services/apiClient';
-
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
-  return `http://${host}:5000/api/v1`;
-};
+import { apiClient, getApiBaseUrl } from '../../services/apiClient';
 
 const API_BASE_URL = getApiBaseUrl();
 const SERVER_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
@@ -38,9 +30,9 @@ export default function ImageUpload({
     }
 
     // Validate type (PNG, JPG, JPEG, WEBP)
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'image/svg+xml'];
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
-      setErrorMsg('Only PNG, JPG, JPEG, WEBP, and SVG images are supported');
+      setErrorMsg('Only PNG, JPG, JPEG, and WEBP images are supported (SVG disabled for security)');
       return;
     }
 
@@ -92,7 +84,7 @@ export default function ImageUpload({
       <input
         type="file"
         ref={fileInputRef}
-        accept="image/jpeg,image/png,image/webp,image/jpg,image/svg+xml"
+        accept="image/jpeg,image/png,image/webp,image/jpg"
         onChange={(e) => {
           if (e.target.files && e.target.files[0]) {
             handleFileSelected(e.target.files[0]);

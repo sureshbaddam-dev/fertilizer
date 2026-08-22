@@ -1,12 +1,10 @@
 import express from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
 import { requireAdminRole } from './middlewares/admin.middleware.js';
 import { backupController } from './controllers/backup.controller.js';
 
 const router = express.Router();
 
-// Require logged in admin user for all backup & restore operations
-router.use(authenticate);
+// Require Admin role & Admin JWT verification for all backup operations
 router.use(requireAdminRole());
 
 // Admin Database Backup Endpoints

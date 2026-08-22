@@ -24,7 +24,7 @@ export const categoryService = {
     }
 
     const sort = { name: 1 };
-    const categories = await Category.find(filter).sort(sort).exec();
+    const categories = await Category.find(filter).sort(sort).lean().exec();
 
     // Case-insensitive deduplication by category name
     const uniqueMap = new Map();

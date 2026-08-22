@@ -294,14 +294,14 @@ export default function GeneralCustomersPage() {
                           {cust.totalBillsCount || 1}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
-                          ₹ {totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹ {Math.round(totalPurchases).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700">
-                          ₹ {totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹ {Math.round(totalPaid).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold">
                           <span className={dueVal > 0 ? 'text-red-600' : 'text-gray-700'}>
-                            ₹ {dueVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            ₹ {Math.round(dueVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-center font-mono text-gray-500 text-[10px]">
@@ -716,11 +716,11 @@ export default function GeneralCustomersPage() {
                               <td className="py-2 px-3 text-center font-mono">{q}</td>
                               <td className="py-2 px-3 text-right font-mono">₹ {p.toLocaleString('en-IN')}</td>
                               <td className="py-2 px-3 text-right font-mono font-bold text-[#047857]">
-                                ₹ {itemDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                ₹ {Math.round(itemDisc).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-gray-500">{item.gstRate || 5}%</td>
+                              <td className="py-2 px-3 text-right font-mono text-gray-500">{item.gstRate ?? 0}%</td>
                               <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
-                                ₹ {itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                ₹ {Math.round(itemTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                               </td>
                             </tr>
                           );
@@ -740,7 +740,7 @@ export default function GeneralCustomersPage() {
                           quantity: 2,
                           sellingPrice: 270,
                           discountAmount: 0,
-                          gstRate: 5,
+                          gstRate: 0,
                           totalAmount: 540,
                         },
                       ]
@@ -767,7 +767,7 @@ export default function GeneralCustomersPage() {
                         </div>
                         <div>
                           <span className="text-[9px] text-gray-400 block uppercase font-sans">GST</span>
-                          <span className="text-gray-600">{item.gstRate || 5}%</span>
+                          <span className="text-gray-600">{item.gstRate ?? 0}%</span>
                         </div>
                       </div>
                     </div>

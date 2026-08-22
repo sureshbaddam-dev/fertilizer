@@ -58,7 +58,10 @@ app.use(cookieParser());
 // Security Middlewares (CORS, Helmet, Rate Limiter, Compression, Mongo Sanitize)
 configureSecurityMiddlewares(app);
 
-// System Health Check Endpoint
+// System Health & Ping Endpoints (Render Free-Tier Friendly)
+app.get('/health', (_req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() }));
+app.get('/ping', (_req, res) => res.status(200).send('pong'));
+
 app.get(`${envConfig.apiPrefix}/health`, (_req, res) => {
   return sendSuccess(res, 'MANDHI ERP API System is Healthy', {
     status: 'UP',
@@ -100,7 +103,6 @@ app.use(`${envConfig.apiPrefix}/reports`, reportsRoutes);
 import supportRoutes from './modules/support/support.routes.js';
 import subscriptionRoutes from './modules/subscription/subscription.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
-import backupRoutes from './modules/admin/backup.routes.js';
 import { trackWebsiteVisitor, recordVisitorHit } from './modules/admin/middlewares/visitorTracking.middleware.js';
 
 // Public Visitor Ping Endpoint for live tracking
@@ -127,9 +129,6 @@ app.use(`${envConfig.apiPrefix}/subscriptions`, subscriptionRoutes);
 
 // Admin Control Panel Routes
 app.use(`${envConfig.apiPrefix}/admin`, adminRoutes);
-
-// User Profile Backup Download Routes
-app.use(`${envConfig.apiPrefix}/backups`, backupRoutes);
 
 // 404 Not Found Handler
 app.use(notFoundHandler);

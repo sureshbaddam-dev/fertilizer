@@ -1,6 +1,12 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const envConfig = {
   env: process.env.NODE_ENV || 'development',
@@ -32,5 +38,16 @@ export const envConfig = {
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',
     keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+  },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  },
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY || '',
+    senderEmail: process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || 'info@vedixaerp.com',
+    senderName: process.env.EMAIL_FROM_NAME || process.env.BREVO_SENDER_NAME || 'VEDIXA ERP',
+    templateId: parseInt(process.env.BREVO_TEMPLATE_ID || '2', 10),
   },
 };

@@ -9,6 +9,7 @@ export default function StatCard({
   trend = null,
   trendColor = 'emerald',
   className = '',
+  onClick = null,
 }) {
   const trendBg =
     trendColor === 'rose'
@@ -18,7 +19,14 @@ export default function StatCard({
       : 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
   return (
-    <div className={cn('app-card p-3.5 space-y-2', className)}>
+    <div
+      onClick={onClick}
+      className={cn(
+        'app-card p-3.5 space-y-2',
+        onClick ? 'cursor-pointer select-none transition-all duration-150' : '',
+        className
+      )}
+    >
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{title}</span>
         {Icon && (

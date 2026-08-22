@@ -1,6 +1,7 @@
 import { ShopSettings } from '../models/shopSettings.model.js';
 import { User } from '../../auth/user.model.js';
 import { logger } from '../../../config/logger.config.js';
+import { deleteFromCloudinary } from '../../../utils/cloudinary.utils.js';
 
 export const shopSettingsService = {
   async getSettings(userId) {
@@ -27,6 +28,19 @@ export const shopSettingsService = {
     const cleanData = { ...updateData };
     delete cleanData.userId;
     delete cleanData._id;
+
+    const current = await ShopSettings.findOne({ userId }).exec();
+    if (current) {
+      if (cleanData.logoUrl && current.logoUrl && current.logoUrl !== cleanData.logoUrl && current.logoUrl.includes('res.cloudinary.com')) {
+        deleteFromCloudinary(current.logoUrl).catch(() => {});
+      }
+      if (cleanData.ownerPhotoUrl && current.ownerPhotoUrl && current.ownerPhotoUrl !== cleanData.ownerPhotoUrl && current.ownerPhotoUrl.includes('res.cloudinary.com')) {
+        deleteFromCloudinary(current.ownerPhotoUrl).catch(() => {});
+      }
+      if (cleanData.signatureUrl && current.signatureUrl && current.signatureUrl !== cleanData.signatureUrl && current.signatureUrl.includes('res.cloudinary.com')) {
+        deleteFromCloudinary(current.signatureUrl).catch(() => {});
+      }
+    }
 
     const settings = await ShopSettings.findOneAndUpdate(
       { userId },

@@ -32,4 +32,19 @@ export const shopSettingsController = {
       next(err);
     }
   },
+
+  async uploadShopImage(req, res, next) {
+    try {
+      if (!req.file) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          message: 'No image file uploaded',
+        });
+      }
+      const imageUrl = req.file.path || req.file.secure_url || req.file.url || `/uploads/shops/${req.file.filename}`;
+      return sendSuccess(res, 'Shop image uploaded successfully', { imageUrl }, HTTP_STATUS.OK);
+    } catch (err) {
+      next(err);
+    }
+  },
 };

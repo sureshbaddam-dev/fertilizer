@@ -55,7 +55,7 @@ export default function LowStockProducts({ productsData }) {
               onClick={() => navigate('/products')}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <ProductAvatar src={item.image} name={item.name} size={32} />
+                <ProductAvatar src={item.image || item.imageUrl || item.productPicUrl} name={item.name} size={32} />
                 <div className="space-y-0.5 min-w-0">
                   <span className="font-extrabold text-gray-900 block leading-tight truncate text-xs">{item.name}</span>
                   <span className="text-[11px] text-gray-500 font-medium block truncate">{item.stock}</span>

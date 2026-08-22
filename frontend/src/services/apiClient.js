@@ -1,11 +1,17 @@
 import axios from 'axios';
 
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
+export const getApiBaseUrl = () => {
+  let url = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+  if (url.includes('192.168.31.85')) {
+    url = 'http://localhost:5000/api/v1';
   }
-  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
-  return `http://${host}:5000/api/v1`;
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const currentHost = window.location.hostname;
+    if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+      return url.replace(/localhost|127\.0\.0\.1/, currentHost);
+    }
+  }
+  return url;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -109,9 +115,16 @@ apiClient.interceptors.response.use(
       }
     }
 
+    const errorMessage =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      (typeof error.response?.data === 'string' ? error.response.data : null) ||
+      error.message ||
+      'An unexpected error occurred';
+
     const formattedError = {
       success: false,
-      message: error.response?.data?.message || 'An unexpected error occurred',
+      message: errorMessage,
       errors: error.response?.data?.errors || null,
       statusCode: error.response?.status || 500,
     };

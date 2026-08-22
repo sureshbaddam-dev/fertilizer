@@ -58,19 +58,19 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
       <div className="bg-gray-50/70 p-3 rounded-2xl border border-gray-100 space-y-1.5">
         <div className="flex justify-between text-gray-600 font-medium text-xs">
           <span>Subtotal</span>
-          <span className="font-bold text-gray-800">₹ {subtotal.toFixed(2)}</span>
+          <span className="font-bold text-gray-800">₹ {Math.round(subtotal).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex justify-between text-gray-600 font-medium text-xs">
           <span>Discount</span>
-          <span className="font-bold text-red-600">- ₹ {numDiscount.toFixed(2)}</span>
+          <span className="font-bold text-red-600">- ₹ {Math.round(numDiscount).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex justify-between text-gray-600 font-medium text-xs">
           <span>GST (12%)</span>
-          <span className="font-bold text-gray-800">₹ {gstAmount.toFixed(2)}</span>
+          <span className="font-bold text-gray-800">₹ {Math.round(gstAmount).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex justify-between text-sm font-extrabold text-gray-900 border-t border-gray-200/80 pt-1.5">
           <span>Total Amount</span>
-          <span className="text-emerald-700 text-base">₹ {totalAmount.toFixed(2)}</span>
+          <span className="text-emerald-700 text-base">₹ {Math.round(totalAmount).toLocaleString('en-IN')}</span>
         </div>
       </div>
 
@@ -80,7 +80,7 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
         <div className="grid grid-cols-2 gap-3 items-center">
           <div>
             <span className="text-[10px] text-gray-400 block font-normal">Bill Amount</span>
-            <span className="text-sm font-extrabold text-gray-900">₹ {totalAmount.toFixed(2)}</span>
+            <span className="text-sm font-extrabold text-gray-900">₹ {Math.round(totalAmount).toLocaleString('en-IN')}</span>
           </div>
 
           <div>
@@ -133,15 +133,15 @@ export default function PaymentSection({ subtotal, oldDue = 2450 }) {
       <div className="bg-red-50/40 p-3 rounded-2xl border border-red-100 space-y-1.5">
         <div className="flex justify-between text-xs font-bold text-red-600">
           <span>Due Amount (Pending)</span>
-          <span>₹ {dueAmount.toFixed(2)}</span>
+          <span>₹ {Math.round(dueAmount).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex justify-between text-[11px] text-gray-600 font-medium">
           <span>Previous Due</span>
-          <span className="font-bold text-gray-800">₹ {oldDue.toFixed(2)}</span>
+          <span className="font-bold text-gray-800">₹ {Math.round(oldDue).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex justify-between text-xs font-extrabold text-red-700 border-t border-red-100 pt-1">
           <span>Total Due After This Bill</span>
-          <span>₹ {totalDueAfterBill.toFixed(2)}</span>
+          <span>₹ {Math.round(totalDueAfterBill).toLocaleString('en-IN')}</span>
         </div>
       </div>
     </div>

@@ -45,5 +45,7 @@ customerSchema.index(
     partialFilterExpression: { customerType: 'ADDED' },
   }
 );
+customerSchema.index({ userId: 1, customerType: 1, isActive: 1 });
+customerSchema.index({ userId: 1, name: 1, mobile: 1 });
 
 export const Customer = mongoose.model('Customer', customerSchema);

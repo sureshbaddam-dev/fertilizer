@@ -36,23 +36,21 @@ export default function AdminLoginPage() {
       return;
     }
 
-    if (cleanMobile !== '9848081875') {
-      setError('This mobile number is not authorized for Admin access.');
-      return;
-    }
-
     setLoading(true);
     try {
-      await adminApiService.sendAdminOtp(cleanMobile);
+      const res = await adminApiService.sendAdminOtp(cleanMobile);
       setStep(2);
-      setCountdown(30);
+      setCountdown(res?.cooldownSeconds || 60);
     } catch (err) {
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
       if (err.response?.status === 403) {
-        setError('This mobile number is not authorized for Admin access.');
+        setError(serverMsg || 'This mobile number is not authorized for Admin access.');
+      } else if (err.response?.status === 429) {
+        setError(serverMsg || 'Please wait before requesting another OTP.');
       } else if (err.code === 'ERR_NETWORK' || !err.response) {
         setError('Unable to connect to the server. Please check your backend connection.');
       } else {
-        setError('Unable to send OTP. Please try again.');
+        setError(serverMsg || 'Unable to send OTP. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -78,10 +76,11 @@ export default function AdminLoginPage() {
         navigate('/admin/dashboard', { replace: true });
       }, 300);
     } catch (err) {
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
       if (err.code === 'ERR_NETWORK' || !err.response) {
         setError('Unable to connect to the server. Please try again.');
       } else {
-        setError('Invalid or expired OTP. Please try again.');
+        setError(serverMsg || 'Invalid or expired OTP. Please try again.');
       }
     } finally {
       setLoading(false);

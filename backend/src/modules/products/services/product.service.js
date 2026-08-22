@@ -18,6 +18,7 @@ import { Brand } from '../../masters/models/brand.model.js';
 import { Company } from '../../masters/models/company.model.js';
 import { Unit } from '../../masters/models/unit.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
+import { deleteFromCloudinary } from '../../../utils/cloudinary.utils.js';
 
 export async function generateNextBatchNumber(userId, session = null) {
   if (!userId) throw new Error('userId is required');
@@ -488,20 +489,19 @@ export const productService = {
 
     if (!batches || batches.length === 0) return null;
 
-    const salesFilter = userId ? { userId, 'items.productId': productId } : { 'items.productId': productId };
-    const invoices = await SalesInvoice.find(salesFilter)
-      .sort({ date: 1, createdAt: 1 })
-      .lean()
-      .exec();
+    const prodObjId = new mongoose.Types.ObjectId(productId);
+    const matchFilter = userId
+      ? { userId: new mongoose.Types.ObjectId(userId), isDeleted: { $ne: true }, 'items.productId': prodObjId }
+      : { isDeleted: { $ne: true }, 'items.productId': prodObjId };
 
-    let totalSoldQty = 0;
-    invoices.forEach((inv) => {
-      (inv.items || []).forEach((item) => {
-        if (item.productId && item.productId.toString() === productId.toString()) {
-          totalSoldQty += Number(item.quantity || 0);
-        }
-      });
-    });
+    const soldAgg = await SalesInvoice.aggregate([
+      { $match: matchFilter },
+      { $unwind: '$items' },
+      { $match: { 'items.productId': prodObjId } },
+      { $group: { _id: null, totalSold: { $sum: { $toDouble: '$items.quantity' } } } },
+    ]);
+
+    const totalSoldQty = soldAgg[0]?.totalSold || 0;
 
     let remainingSoldToAllocate = totalSoldQty;
     let totalStockAcc = 0;
@@ -686,12 +686,23 @@ export const productService = {
           isDuplicate = true;
         }
       } else {
+        const allMatchingBatches = await ProductBatch.find({
+          userId,
+          productId: { $in: matchingProductIds },
+          isActive: true,
+        }).lean();
+
+        const prodBatchMap = new Map();
+        allMatchingBatches.forEach((b) => {
+          const pKey = b.productId?.toString();
+          if (pKey) {
+            if (!prodBatchMap.has(pKey)) prodBatchMap.set(pKey, []);
+            prodBatchMap.get(pKey).push(b);
+          }
+        });
+
         for (const p of matchingProducts) {
-          const pBatches = await ProductBatch.find({
-            userId,
-            productId: p._id,
-            isActive: true,
-          }).lean();
+          const pBatches = prodBatchMap.get(p._id.toString()) || [];
           const hasNonEmptyBatch = pBatches.some((b) => b.batchNumber && b.batchNumber.toString().trim().length > 0);
           if (!hasNonEmptyBatch || pBatches.length === 0) {
             isDuplicate = true;
@@ -718,7 +729,7 @@ export const productService = {
       categoryId: data.categoryId,
       defaultUnitId,
       hsnCode: (data.hsnCode && typeof data.hsnCode === 'string') ? data.hsnCode.trim() : undefined,
-      gstRate: Number(data.gstRate) || 18,
+      gstRate: (data.gstRate !== undefined && data.gstRate !== null && data.gstRate !== '') ? Number(data.gstRate) : 0,
       minimumStockAlert: Number(data.minimumStockAlert || data.minStockAlert) || 10,
       defaultPurchaseRate: Number(data.defaultPurchaseRate) || 0,
       defaultMrp: Number(data.defaultMrp) || 0,
@@ -767,7 +778,13 @@ export const productService = {
     if (data.name) payload.name = data.name.trim();
     if (data.code !== undefined) payload.code = data.code?.trim() || undefined;
     if (data.barcode !== undefined) payload.barcode = data.barcode?.trim() || undefined;
-    if (data.image !== undefined) payload.image = (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '/assets/urea_bag.png';
+    if (data.image !== undefined) {
+      const newImg = (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '/assets/urea_bag.png';
+      if (product.image && product.image !== newImg && product.image.includes('res.cloudinary.com')) {
+        deleteFromCloudinary(product.image).catch(() => {});
+      }
+      payload.image = newImg;
+    }
 
     const brandId = data.brandId || data.companyId;
     if (brandId) {
@@ -932,6 +949,7 @@ export const productService = {
         populate: { path: 'supplierId', select: 'name' },
       })
       .sort({ createdAt: -1 })
+      .limit(50)
       .lean()
       .exec();
 
@@ -973,6 +991,7 @@ export const productService = {
     // 2. Fetch Sales Invoices containing this product from DB
     const rawSalesInvoices = await SalesInvoice.find({ userId, 'items.productId': productId })
       .sort({ date: -1, createdAt: -1 })
+      .limit(50)
       .lean()
       .exec();
 

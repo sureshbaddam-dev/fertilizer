@@ -25,13 +25,13 @@ export const customerService = {
       ];
     }
 
-    const customers = await Customer.find(filter).sort({ name: 1 }).lean().exec();
-
-    // Summary statistics for ADDED (Customer Master) Customers ONLY
-    const totalCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED' });
-    const activeCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Active' });
-    const inactiveCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Inactive' });
-    const blockedCustomers = await Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Blocked' });
+    const [customers, totalCustomers, activeCustomers, inactiveCustomers, blockedCustomers] = await Promise.all([
+      Customer.find(filter).sort({ name: 1 }).lean().exec(),
+      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED' }),
+      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Active' }),
+      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Inactive' }),
+      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Blocked' }),
+    ]);
 
     const totalOutstanding = customers.reduce((acc, c) => acc + (c.outstandingBalance || 0), 0);
     const customersWithDue = customers.filter((c) => (c.outstandingBalance || 0) > 0).length;
@@ -82,7 +82,11 @@ export const customerService = {
       ];
     }
 
-    const generalInvoices = await SalesInvoice.find(filter).sort({ date: -1, createdAt: -1 }).lean().exec();
+    const generalInvoices = await SalesInvoice.find(filter)
+      .select('_id invoiceNumber customerName customerMobile customerVillage totalAmount paidAmount dueAmount date createdAt updatedAt')
+      .sort({ date: -1, createdAt: -1 })
+      .lean()
+      .exec();
 
     const customerGroupMap = {};
 
@@ -207,7 +211,7 @@ export const customerService = {
         { customerId: customer._id },
         { customerMobile: customer.mobile, customerType: 'ADDED' },
       ],
-    }).sort({ date: 1, createdAt: 1 }).exec();
+    }).sort({ date: 1, createdAt: 1 }).lean().exec();
 
     const payments = await CustomerPayment.find({
       userId,
@@ -216,7 +220,7 @@ export const customerService = {
         { customer: customer._id },
         { customerMobile: customer.mobile },
       ],
-    }).sort({ date: 1, createdAt: 1 }).exec();
+    }).sort({ date: 1, createdAt: 1 }).lean().exec();
 
     // Linked invoice IDs that already have a CustomerPayment record
     const linkedInvoiceIds = new Set(
@@ -225,18 +229,19 @@ export const customerService = {
         .map((p) => p.invoiceId.toString())
     );
 
-    const totalPurchases = invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0);
+    const totalPurchases = Math.round(invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0));
 
     // Sum canonical payments from CustomerPayment documents
-    let totalPaid = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    let totalPaidRaw = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
 
     // Add paidAmount for legacy invoices that do NOT have a linked CustomerPayment
     invoices.forEach((inv) => {
       if (inv.paidAmount > 0 && !linkedInvoiceIds.has(inv._id.toString())) {
-        totalPaid += Number(inv.paidAmount) || 0;
+        totalPaidRaw += Number(inv.paidAmount) || 0;
       }
     });
 
+    const totalPaid = Math.round(totalPaidRaw);
     const netBalance = totalPurchases - totalPaid;
     const outstandingBalance = Math.max(0, netBalance);
     const advanceBalance = Math.max(0, -netBalance);
@@ -249,14 +254,32 @@ export const customerService = {
     customer.advanceBalance = advanceBalance;
     await customer.save();
 
+    const invoiceBulkOps = [];
     for (const inv of invoices) {
       const invTotal = Number(inv.totalAmount) || 0;
       const effectiveDue = Math.max(0, invTotal - (inv.paidAmount || 0));
+      const newStatus = calculateInvoicePaymentStatus(invTotal, inv.paidAmount, effectiveDue, inv.status);
+      const newDueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
 
-      inv.dueAmount = effectiveDue;
-      inv.status = calculateInvoicePaymentStatus(invTotal, inv.paidAmount, effectiveDue, inv.status);
-      inv.dueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
-      await inv.save();
+      if (
+        inv.dueAmount !== effectiveDue ||
+        inv.status !== newStatus ||
+        inv.dueStatus !== newDueStatus
+      ) {
+        inv.dueAmount = effectiveDue;
+        inv.status = newStatus;
+        inv.dueStatus = newDueStatus;
+        invoiceBulkOps.push({
+          updateOne: {
+            filter: { _id: inv._id },
+            update: { $set: { dueAmount: effectiveDue, status: newStatus, dueStatus: newDueStatus } },
+          },
+        });
+      }
+    }
+
+    if (invoiceBulkOps.length > 0) {
+      await SalesInvoice.bulkWrite(invoiceBulkOps);
     }
 
     return {

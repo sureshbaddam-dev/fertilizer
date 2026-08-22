@@ -11,7 +11,7 @@ export default function SubscriptionGuard({ children, featureName = 'this featur
 
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
-  if (isLoading) {
+  if (isLoading && !subRes) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />

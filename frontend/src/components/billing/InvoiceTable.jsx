@@ -51,10 +51,10 @@ export default function InvoiceTable({ items, onUpdateQty, onDeleteItem, onClear
                         </button>
                       </div>
                     </td>
-                    <td className="py-2 px-2 text-center align-middle font-semibold">{item.price.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-center align-middle font-semibold">₹ {Math.round(item.price).toLocaleString('en-IN')}</td>
                     <td className="py-2 px-2 text-center align-middle font-medium text-gray-500">{item.disc || 0}</td>
                     <td className="py-2 px-2 text-center align-middle font-medium text-gray-500">{item.gstRate || 0}%</td>
-                    <td className="py-2 px-2 text-center align-middle font-extrabold text-gray-900">{lineTotal.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-center align-middle font-extrabold text-gray-900">₹ {Math.round(lineTotal).toLocaleString('en-IN')}</td>
                     <td className="py-2 px-2 text-center align-middle">
                       <button
                         onClick={() => onDeleteItem(item.id)}
@@ -117,7 +117,7 @@ export default function InvoiceTable({ items, onUpdateQty, onDeleteItem, onClear
 
                   <div className="text-right font-mono">
                     <span className="text-[10px] text-gray-400 block font-sans uppercase">Total</span>
-                    <span className="font-extrabold text-sm text-gray-900">₹ {lineTotal.toFixed(2)}</span>
+                    <span className="font-extrabold text-sm text-gray-900">₹ {Math.round(lineTotal).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>

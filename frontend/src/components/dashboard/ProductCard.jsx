@@ -40,7 +40,6 @@ export default function ProductCard({ product, onQuickAdd }) {
     }
   }
 
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [hasImageError, setHasImageError] = useState(false);
 
   const rawImage = product.image || product.imageUrl || product.thumbnail;
@@ -70,13 +69,7 @@ export default function ProductCard({ product, onQuickAdd }) {
       )}
 
       {/* 1. PRODUCT IMAGE CONTAINER — EXPANDED VISUAL HERO AREA */}
-      <div className="relative w-full h-[118px] sm:h-[128px] flex items-center justify-center p-1 bg-white border-b border-slate-100 overflow-hidden shrink-0">
-        {!isImageLoaded && !hasImageError && (
-          <div className="absolute inset-0 bg-slate-100 animate-pulse flex items-center justify-center">
-            <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin opacity-40" />
-          </div>
-        )}
-
+      <div className="relative w-full h-[118px] sm:h-[128px] flex items-center justify-center p-1 bg-slate-50/80 border-b border-slate-100 overflow-hidden shrink-0">
         {hasImageError ? (
           <div className="w-full h-full flex flex-col items-center justify-center text-center p-1 text-emerald-800">
             <div className="w-8 h-8 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center mb-0.5 shadow-2xs group-hover:scale-105 transition-transform">
@@ -89,14 +82,8 @@ export default function ProductCard({ product, onQuickAdd }) {
             src={resolvedImageUrl}
             alt={prodName}
             loading="lazy"
-            onLoad={() => setIsImageLoaded(true)}
-            onError={() => {
-              setHasImageError(true);
-              setIsImageLoaded(true);
-            }}
-            className={`h-full w-full object-contain object-center transition-transform duration-300 group-hover:scale-105 p-0.5 ${
-              isImageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
+            onError={() => setHasImageError(true)}
+            className="h-full w-full object-contain object-center transition-transform duration-300 group-hover:scale-105 p-0.5"
           />
         )}
       </div>

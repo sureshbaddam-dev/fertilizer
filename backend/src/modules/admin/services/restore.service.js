@@ -18,6 +18,7 @@ import { SubscriptionPlan } from '../../subscription/subscriptionPlan.model.js';
 import { SupportTicket } from '../../support/supportTicket.model.js';
 import { SystemSetting } from '../models/systemSetting.model.js';
 import { SubscriptionHistory } from '../models/subscriptionHistory.model.js';
+import { salesInvoiceService } from '../../sales/services/salesInvoice.service.js';
 
 const MODEL_MAP = {
   users: User,
@@ -303,6 +304,12 @@ export const restoreService = {
 
         for (const rawDoc of missingRecords) {
           try {
+            if (colName === 'salesInvoices') {
+              await salesInvoiceService.restoreInvoice(rawDoc._id, rawDoc.userId, rawDoc);
+              colRestored++;
+              continue;
+            }
+
             const idStr = String(rawDoc._id);
             const liveExist = await Model.findById(idStr).lean();
 

@@ -15,5 +15,6 @@ router.get('/:id', salesInvoiceController.getInvoiceById);
 router.post('/', salesInvoiceController.createInvoice);
 router.put('/:id', salesInvoiceController.updateInvoice);
 router.delete('/:id', salesInvoiceController.deleteInvoice);
+router.post('/:id/restore', salesInvoiceController.restoreInvoice);
 
 export default router;

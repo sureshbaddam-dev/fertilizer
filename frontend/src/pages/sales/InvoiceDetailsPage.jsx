@@ -58,9 +58,14 @@ export default function InvoiceDetailsPage() {
     mutationFn: (id) => invoiceService.deleteInvoice(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['invoices']);
+      queryClient.invalidateQueries(['sales-invoices']);
       queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries(['dashboard-stats']);
       queryClient.invalidateQueries(['customer-ledger-profile']);
+      queryClient.invalidateQueries(['customers']);
+      queryClient.invalidateQueries(['payments']);
       queryClient.invalidateQueries(['products-inventory']);
+      queryClient.invalidateQueries(['products']);
       queryClient.invalidateQueries(['reports-bi']);
       setIsDeleteModalOpen(false);
       navigate(-1);
@@ -515,12 +520,12 @@ export default function InvoiceDetailsPage() {
                         <td className="py-2.5 px-2 text-center font-sans text-gray-400 align-middle">{idx + 1}</td>
                         <td className="py-2.5 px-3 text-center font-bold text-gray-900 align-middle break-words font-sans">{pName}</td>
                         <td className="py-2.5 px-2 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">{qty} {unit}</td>
-                        <td className="py-2.5 px-3 text-center font-sans font-medium text-gray-900 align-middle whitespace-nowrap">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2.5 px-3 text-center font-sans font-medium text-gray-900 align-middle whitespace-nowrap">₹ {Math.round(rate).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
                         <td className="py-2.5 px-3 text-center font-sans font-bold text-[#047857] align-middle whitespace-nowrap">
-                          {effectiveDisc > 0 ? `₹ ${effectiveDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹ 0.00'}
+                          {effectiveDisc > 0 ? `₹ ${Math.round(effectiveDisc).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ 0'}
                         </td>
                         <td className="py-2.5 px-3 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">
-                          ₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹ {Math.round(rowTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                       </tr>
                     );
@@ -553,7 +558,7 @@ export default function InvoiceDetailsPage() {
                     <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
                       <span className="font-extrabold text-gray-900 text-xs">{pName}</span>
                       <span className="font-mono font-black text-[#047857] text-xs">
-                        ₹ {rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹ {Math.round(rowTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs font-mono">
@@ -563,11 +568,11 @@ export default function InvoiceDetailsPage() {
                       </div>
                       <div>
                         <span className="text-[9px] text-gray-400 block uppercase font-sans">Rate</span>
-                        <span className="font-bold text-gray-800">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-bold text-gray-800">₹ {Math.round(rate).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                       <div>
                         <span className="text-[9px] text-gray-400 block uppercase font-sans">Discount</span>
-                        <span className="font-bold text-[#047857]">₹ {effectiveDisc.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-bold text-[#047857]">₹ {Math.round(effectiveDisc).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                     </div>
                   </div>
@@ -761,11 +766,11 @@ export default function InvoiceDetailsPage() {
                             <tr key={idx} className="hover:bg-gray-50/50">
                               <td className="py-2.5 px-3 border-r border-gray-300 font-bold text-left">{item.productName || item.name || 'Agri Product'}</td>
                               <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono">{item.quantity || item.qty || 1} {item.unit || 'Bag'}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono">₹ {(item.sellingPrice || item.rate || item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-500">₹ {(item.discountAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-600">{item.gstRate || 5}%</td>
+                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono">₹ {Math.round(item.sellingPrice || item.rate || item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-500">₹ {Math.round(item.discountAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-600">{item.gstRate ?? 0}%</td>
                               <td className="py-2.5 px-3 text-center font-mono font-bold">
-                                ₹ {(item.totalAmount || (item.quantity * item.sellingPrice) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                ₹ {Math.round(item.totalAmount || (item.quantity * item.sellingPrice) || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                               </td>
                             </tr>
                           ))}
@@ -784,15 +789,15 @@ export default function InvoiceDetailsPage() {
                     <div className="w-64 bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-1.5 text-xs">
                       <div className="flex justify-between items-center text-gray-600 font-medium">
                         <span className="text-left">Subtotal:</span>
-                        <span className="font-mono text-right pr-3">₹ {subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono text-right pr-3">₹ {Math.round(subtotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex justify-between items-center text-emerald-700 font-semibold">
                         <span className="text-left">Paid Amount:</span>
-                        <span className="font-mono text-right pr-3">₹ {paidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono text-right pr-3">₹ {Math.round(paidAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex justify-between items-center text-red-600 font-bold pt-1.5 border-t border-gray-300">
                         <span className="text-left">Due Amount:</span>
-                        <span className="font-mono text-right pr-3">₹ {dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-mono text-right pr-3">₹ {Math.round(dueAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                       </div>
                     </div>
                   </div>

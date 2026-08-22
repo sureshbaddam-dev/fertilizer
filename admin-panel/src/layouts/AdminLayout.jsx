@@ -142,6 +142,14 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans antialiased overflow-x-hidden">
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden transition-opacity"
+        />
+      )}
+
       {/* SIDEBAR */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 ${

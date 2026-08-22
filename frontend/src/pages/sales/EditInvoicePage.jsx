@@ -72,7 +72,7 @@ export default function EditInvoicePage() {
             unit: it.unit || 'Bag',
             unitPrice: price,
             discountAmount: Number(it.discountAmount || 0),
-            gstRate: Number(it.gstRate || 5),
+            gstRate: Number(it.gstRate ?? 0),
             totalAmount: total,
           };
         })
@@ -133,7 +133,7 @@ export default function EditInvoicePage() {
         unit: prod.unit || 'Bag',
         unitPrice: price,
         discountAmount: Number(prod.discountAmount || 0),
-        gstRate: Number(prod.gstRate || 5),
+        gstRate: Number(prod.gstRate ?? 0),
         hsnCode: prod.hsnCode || '',
         totalAmount: total,
       },
@@ -225,7 +225,7 @@ export default function EditInvoicePage() {
       quantity: Number(it.quantity || 1),
       unitPrice: Number(it.unitPrice !== undefined && it.unitPrice !== null ? it.unitPrice : 0),
       discountAmount: Number(it.discountAmount || 0),
-      gstRate: Number(it.gstRate || 5),
+      gstRate: Number(it.gstRate ?? 0),
       totalAmount: Number(it.totalAmount),
     }));
 

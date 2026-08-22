@@ -10,7 +10,7 @@ const stockLedgerSchema = new mongoose.Schema(
     },
     transactionType: {
       type: String,
-      enum: ['PURCHASE', 'SALE', 'SALE_RETURN', 'PURCHASE_RETURN', 'ADJUSTMENT', 'DAMAGE', 'OPENING_STOCK'],
+      enum: ['PURCHASE', 'SALE', 'SALE_RETURN', 'PURCHASE_RETURN', 'ADJUSTMENT', 'DAMAGE', 'OPENING_STOCK', 'INVOICE_DELETE_REVERSAL', 'INVOICE_RESTORE_DEDUCTION'],
       default: 'PURCHASE',
       required: true,
       index: true,

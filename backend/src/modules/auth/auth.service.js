@@ -257,116 +257,193 @@ export const authService = {
     return { rawToken, verifyUrl };
   },
 
-  async emailPasswordSignup({ email, ownerName, mobile, password, confirmPassword }) {
+  async initiateSignupOtp({ email, password, confirmPassword }) {
     if (!email || typeof email !== 'string' || !email.trim()) {
+      logger.warn('[Auth Service] Signup OTP failed: Missing email address');
       throw new AppError('Email address is required', HTTP_STATUS.BAD_REQUEST);
     }
     const cleanEmail = email.trim().toLowerCase();
+    const maskedEmail = cleanEmail.replace(/(.{2})(.*)(?=@)/, (_m, p1, p2) => p1 + '*'.repeat(p2.length));
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      logger.warn(`[Auth Service] Signup OTP failed: Invalid email format for ${maskedEmail}`);
       throw new AppError('Please enter a valid email address', HTTP_STATUS.BAD_REQUEST);
     }
 
     if (!password || typeof password !== 'string' || password.length < 6) {
+      logger.warn(`[Auth Service] Signup OTP failed: Password length validation failed for ${maskedEmail}`);
       throw new AppError('Password must be at least 6 characters long', HTTP_STATUS.BAD_REQUEST);
     }
 
     if (password !== confirmPassword) {
+      logger.warn(`[Auth Service] Signup OTP failed: Password mismatch for ${maskedEmail}`);
       throw new AppError('Password and Confirm Password do not match', HTTP_STATUS.BAD_REQUEST);
     }
 
-    // 1. Check if an account already exists with this email address
-    const existingUser = await User.findOne({ email: cleanEmail });
+    logger.info(`[Auth Service] Input validation passed for ${maskedEmail}`);
 
-    if (existingUser) {
-      // If email exists AND emailVerified === true -> Return duplicate account conflict
-      if (existingUser.emailVerified) {
-        throw new AppError('An account with this email address already exists. Please sign in instead.', HTTP_STATUS.CONFLICT);
-      }
-
-      // If email exists AND emailVerified === false -> Re-send new verification email without creating duplicate user
-      const salt = await bcrypt.genSalt(10);
-      existingUser.passwordHash = await bcrypt.hash(password, salt);
-      if (ownerName && ownerName.trim()) {
-        existingUser.ownerName = ownerName.trim();
-      }
-
-      try {
-        await this._generateAndSendVerificationEmail(existingUser);
-      } catch (err) {
-        logger.error(`[Auth Service] Verification email delivery failed for unverified user ${cleanEmail}: ${err.message}`);
-        throw new AppError(
-          `Verification email could not be sent: ${err.message}. Please configure valid SMTP_USER and SMTP_PASSWORD in backend/.env.`,
-          HTTP_STATUS.INTERNAL_SERVER_ERROR
-        );
-      }
-
-      return {
-        message: 'This email is registered but not verified. A new verification email has been sent to your inbox.',
-        email: cleanEmail,
-        userId: existingUser._id,
-        isUnverifiedResend: true,
-      };
+    // 1. Check if email is already registered in User database
+    const existingEmailUser = await User.findOne({ email: cleanEmail });
+    if (existingEmailUser) {
+      logger.warn(`[Auth Service] Duplicate user check: Account already exists for ${maskedEmail}`);
+      throw new AppError('An account with this email address already exists. Please log in instead.', HTTP_STATUS.CONFLICT);
     }
 
-    // 2. Email does not exist -> Create new user with emailVerified = false
-    let finalMobile = mobile && mobile.trim() ? mobile.trim() : `+91_unverified_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    if (mobile && mobile.trim() && !mobile.includes('_unverified_')) {
-      const existingMobile = await User.findOne({ mobile: finalMobile });
-      if (existingMobile) {
-        throw new AppError('This mobile number is already registered with another account.', HTTP_STATUS.CONFLICT);
-      }
-    }
-
+    // DO NOT CREATE THE PERMANENT USER ACCOUNT BEFORE OTP VERIFICATION
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
+    const otpHash = crypto.createHash('sha256').update(otpCode).digest('hex');
 
-    let newUser;
+    const pendingData = {
+      email: cleanEmail,
+      passwordHash,
+      otpHash,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      attempts: 0,
+      resendCooldown: Date.now() + 60 * 1000, // 60 seconds
+    };
+
     try {
-      newUser = await User.create({
-        ownerName: (ownerName && ownerName.trim()) || cleanEmail.split('@')[0],
-        email: cleanEmail,
-        mobile: finalMobile,
-        passwordHash,
-        emailVerified: false,
-        isProfileComplete: false,
-        role: 'owner',
-        isActive: true,
-      });
-    } catch (dbErr) {
-      // Handle MongoDB E11000 duplicate email race condition
-      if (dbErr.code === 11000 && dbErr.keyPattern && dbErr.keyPattern.email) {
-        const racedUser = await User.findOne({ email: cleanEmail });
-        if (racedUser && racedUser.emailVerified) {
-          throw new AppError('An account with this email address already exists. Please sign in instead.', HTTP_STATUS.CONFLICT);
-        } else if (racedUser) {
-          await this._generateAndSendVerificationEmail(racedUser);
-          return {
-            message: 'This email is registered but not verified. A new verification email has been sent to your inbox.',
-            email: cleanEmail,
-            userId: racedUser._id,
-            isUnverifiedResend: true,
-          };
-        }
-      }
-      throw dbErr;
+      await redisService.set(`otp:signup:${cleanEmail}`, pendingData, 600);
+      logger.info(`[Auth Service] Stored pending OTP session state for ${maskedEmail}`);
+    } catch (redisErr) {
+      logger.error(`[Auth Service] Redis operation failed for ${maskedEmail}: ${redisErr.message}`);
     }
 
+    logger.info(`[Signup OTP] Recipient: ${cleanEmail}`);
+
+    // Send OTP through Brevo API (params: { otp })
     try {
-      await this._generateAndSendVerificationEmail(newUser);
-    } catch (err) {
-      logger.error(`[Auth Service] Verification email delivery failed for ${cleanEmail}: ${err.message}`);
+      await emailService.sendBrevoOtpEmail({
+        toEmail: cleanEmail,
+        toName: 'Valued User',
+        otp: otpCode,
+      });
+      logger.info(`[Signup OTP] OTP email dispatched successfully to recipient: ${cleanEmail}`);
+    } catch (sendErr) {
+      logger.error(`[Auth Service] Failed to send Brevo OTP email to ${maskedEmail}: ${sendErr.message}`);
       throw new AppError(
-        `Account created, but verification email could not be sent: ${err.message}. Please configure valid SMTP_USER and SMTP_PASSWORD in backend/.env.`,
+        `Unable to send verification OTP email: ${sendErr.message}. Please check your email address and try again.`,
         HTTP_STATUS.INTERNAL_SERVER_ERROR
       );
     }
 
     return {
-      message: 'Account created successfully! Please check your email to verify your account.',
+      message: 'Verification OTP sent to your email address. Please enter the 6-digit code to complete registration.',
       email: cleanEmail,
-      userId: newUser._id,
+      resendCooldownSeconds: 60,
+      expiresInSeconds: 600,
     };
+  },
+
+  async verifySignupOtp({ email, otp }) {
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
+    if (!cleanEmail) {
+      throw new AppError('Email address is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const key = `otp:signup:${cleanEmail}`;
+    let pendingData = await redisService.get(key);
+
+    if (!pendingData) {
+      throw new AppError('Verification OTP code has expired or does not exist. Please request a new OTP.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    if (Date.now() > pendingData.expiresAt) {
+      await redisService.del(key);
+      throw new AppError('OTP verification code has expired. Please request a new OTP.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    if (pendingData.attempts >= 5) {
+      throw new AppError('Too many failed OTP attempts. Please request a new OTP code.', HTTP_STATUS.TOO_MANY_REQUESTS);
+    }
+
+    const submittedHash = crypto.createHash('sha256').update(otp.trim()).digest('hex');
+    if (submittedHash !== pendingData.otpHash) {
+      pendingData.attempts += 1;
+      await redisService.set(key, pendingData, 600);
+      throw new AppError('Invalid OTP verification code. Please check the 6-digit code and try again.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // SINGLE-USE: Delete pending OTP store
+    await redisService.del(key);
+
+    // CREATE PERMANENT USER ACCOUNT NOW (Pending Business Details Onboarding)
+    let user;
+    const tempMobile = `pending_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      user = await User.create({
+        ownerName: 'Pending Setup',
+        email: pendingData.email,
+        mobile: tempMobile,
+        passwordHash: pendingData.passwordHash,
+        emailVerified: true,
+        isMobileVerified: false,
+        isProfileComplete: false,
+        role: 'owner',
+        isActive: true,
+      });
+    } catch (createErr) {
+      if (createErr.code === 11000) {
+        const existing = await User.findOne({ email: pendingData.email });
+        if (existing) {
+          return this._generateAuthResponse(existing, true);
+        }
+      }
+      throw createErr;
+    }
+
+    const response = await this._generateAuthResponse(user, false);
+    return {
+      ...response,
+      message: 'Email verified successfully! Please complete your business details.',
+    };
+  },
+
+  async resendSignupOtp({ email }) {
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      throw new AppError('Email address is required', HTTP_STATUS.BAD_REQUEST);
+    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    const key = `otp:signup:${cleanEmail}`;
+    const pendingData = await redisService.get(key);
+
+    if (!pendingData) {
+      throw new AppError('No pending signup found for this email address. Please sign up again.', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (pendingData.resendCooldown && Date.now() < pendingData.resendCooldown) {
+      const remainingSecs = Math.ceil((pendingData.resendCooldown - Date.now()) / 1000);
+      throw new AppError(`Please wait ${remainingSecs} seconds before requesting another OTP code.`, HTTP_STATUS.TOO_MANY_REQUESTS);
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash('sha256').update(otpCode).digest('hex');
+
+    pendingData.otpHash = otpHash;
+    pendingData.attempts = 0;
+    pendingData.resendCooldown = Date.now() + 60 * 1000;
+    pendingData.expiresAt = Date.now() + 10 * 60 * 1000;
+
+    await redisService.set(key, pendingData, 600);
+
+    await emailService.sendBrevoOtpEmail({
+      toEmail: cleanEmail,
+      toName: pendingData.ownerName,
+      otp: otpCode,
+    });
+
+    return {
+      message: 'A new verification OTP code has been sent to your email address.',
+      email: cleanEmail,
+      resendCooldownSeconds: 60,
+    };
+  },
+
+  async emailPasswordSignup(data) {
+    return await this.initiateSignupOtp(data);
   },
 
   async verifyEmailToken(token) {
@@ -444,8 +521,16 @@ export const authService = {
       }
     } catch (_e) {}
 
+    const isProfileComplete = Boolean(
+      user.isProfileComplete ||
+      (user.ownerName &&
+        user.ownerName !== 'Pending Setup' &&
+        user.mobile &&
+        !user.mobile.startsWith('pending_'))
+    );
+
     return {
-      isProfileComplete: true,
+      isProfileComplete,
       isExisting,
       user: {
         id: user._id,
@@ -455,12 +540,100 @@ export const authService = {
         mobile: user.mobile,
         role: user.role,
         profilePicUrl: user.profilePicUrl,
-        isProfileComplete: user.isProfileComplete,
+        isProfileComplete,
         shopName,
       },
       accessToken,
       refreshToken,
     };
+  },
+
+  async checkEmailAvailability(email) {
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      throw new AppError('Email address is required', HTTP_STATUS.BAD_REQUEST);
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new AppError('Please enter a valid email address', HTTP_STATUS.BAD_REQUEST);
+    }
+    const existing = await User.findOne({ email: cleanEmail }).select('_id').lean();
+    if (existing) {
+      return { available: false, exists: true, email: cleanEmail };
+    }
+    return { available: true, exists: false, email: cleanEmail };
+  },
+
+  async completeOnboarding(userId, onboardingData) {
+    const { ownerName, mobile, shopName, address, gstNumber, city, state, pincode } = onboardingData || {};
+
+    if (!userId) {
+      throw new AppError('User authentication required', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const cleanName = ownerName ? ownerName.trim() : '';
+    const cleanMobile = mobile ? this.normalizeIndianMobile(mobile) : '';
+    const tenDigitMobile = cleanMobile.startsWith('+91') ? cleanMobile.slice(3) : cleanMobile;
+
+    if (!cleanName) {
+      throw new AppError('Name is required', HTTP_STATUS.BAD_REQUEST);
+    }
+    if (!/^\+91[6-9]\d{9}$/.test(cleanMobile) && !/^[6-9]\d{9}$/.test(tenDigitMobile)) {
+      throw new AppError('Please enter a valid 10-digit Indian mobile number', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const cleanGst = gstNumber ? gstNumber.trim().toUpperCase() : '';
+    if (cleanGst && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(cleanGst)) {
+      throw new AppError('Please enter a valid 15-character GSTIN number (e.g. 36AAAAA0000A1Z5)', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const existingMobileUser = await User.findOne({
+      _id: { $ne: userId },
+      mobile: { $in: [cleanMobile, tenDigitMobile] },
+    });
+    if (existingMobileUser) {
+      throw new AppError('This mobile number is already registered with another account.', HTTP_STATUS.CONFLICT);
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          ownerName: cleanName,
+          mobile: cleanMobile,
+          isMobileVerified: true,
+          isProfileComplete: true,
+        },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const cleanShopName = shopName ? shopName.trim() : '';
+    const cleanAddress = address ? address.trim() : '';
+
+    await ShopSettings.findOneAndUpdate(
+      { userId: user._id },
+      {
+        $set: {
+          userId: user._id,
+          shopName: cleanShopName,
+          ownerName: cleanName,
+          mobile: cleanMobile,
+          email: user.email,
+          address: cleanAddress,
+          gstNumber: cleanGst,
+          ...(city && city.trim() ? { district: city.trim() } : {}),
+          ...(state && state.trim() ? { state: state.trim() } : {}),
+          ...(pincode && pincode.trim() ? { pincode: pincode.trim() } : {}),
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    return this._generateAuthResponse(user, true);
   },
 
   async login({ mobile, email, password }) {

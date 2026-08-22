@@ -33,4 +33,6 @@ const supportNotificationSchema = new mongoose.Schema(
   }
 );
 
+supportNotificationSchema.index({ isRead: 1, createdAt: -1 });
+
 export const SupportNotification = mongoose.model('SupportNotification', supportNotificationSchema);
