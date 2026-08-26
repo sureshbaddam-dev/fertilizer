@@ -31,9 +31,17 @@ export default function ShopSetupPage() {
   // React Query cached shop settings check
   const { data: settingsRes, isLoading: isCheckingExisting } = useQuery({
     queryKey: ['shop-settings-global', currentUserId],
-    queryFn: () => settingService.getSettings(),
+    queryFn: async () => {
+      try {
+        return await settingService.getSettings();
+      } catch (err) {
+        console.warn('[ShopSetupPage] getSettings check failed silently:', err);
+        return null;
+      }
+    },
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
+    retry: false,
     enabled: !!currentUserId,
   });
 
@@ -152,6 +160,9 @@ export default function ShopSetupPage() {
 
     setIsLoading(true);
     try {
+      const activeToken = authService.getAccessToken();
+      console.log(`[ShopSetupPage] Submitting completeOnboarding. Active token present: ${Boolean(activeToken)}, Len: ${activeToken ? activeToken.length : 0}`);
+
       const res = await authService.completeOnboarding({
         ownerName: ownerName.trim(),
         mobile: mobile.trim(),

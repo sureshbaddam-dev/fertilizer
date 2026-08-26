@@ -36,6 +36,9 @@ apiClient.interceptors.request.use(
     const token = localStorage.getItem('vedixa_access_token') || localStorage.getItem('mandhi_access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log(`[apiClient] ${config.method?.toUpperCase()} ${config.url} - Authorization header attached. Token len: ${token.length}`);
+    } else {
+      console.warn(`[apiClient] ${config.method?.toUpperCase()} ${config.url} - NO token found in localStorage!`);
     }
     return config;
   },
@@ -107,13 +110,17 @@ apiClient.interceptors.response.use(
         }
       } catch (refreshErr) {
         processQueue(refreshErr, null);
-        try {
-          const { authService } = await import('./authService');
-          authService.handleForceLogout();
-        } catch (_e) {}
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+        const isOnboarding = currentPath.includes('/shop-setup') || currentPath.includes('/signup') || currentPath.includes('/verify-otp');
+        if (!isOnboarding) {
+          try {
+            const { authService } = await import('./authService');
+            authService.handleForceLogout();
+          } catch (_e) {}
+        }
         return Promise.reject({
           success: false,
-          message: 'Session expired. Please log in again.',
+          message: error.response?.data?.message || refreshErr.message || 'Session expired. Please log in again.',
           statusCode: 401,
         });
       } finally {
