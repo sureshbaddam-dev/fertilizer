@@ -1,10 +1,15 @@
 import axios from 'axios';
 
 export const getApiBaseUrl = () => {
-  let url = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
-  if (url.includes('192.168.31.85')) {
-    url = 'http://localhost:5000/api/v1';
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && envUrl.trim()) {
+    let cleanUrl = envUrl.trim().replace(/\/+$/, '');
+    if (!cleanUrl.endsWith('/api/v1')) {
+      cleanUrl = `${cleanUrl}/api/v1`;
+    }
+    return cleanUrl;
   }
+  let url = 'http://localhost:5000/api/v1';
   if (typeof window !== 'undefined' && window.location.hostname) {
     const currentHost = window.location.hostname;
     if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {

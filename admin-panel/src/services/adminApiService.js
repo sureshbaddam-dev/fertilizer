@@ -1,8 +1,13 @@
 import axios from 'axios';
 
 const getBackendBase = () => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  let envUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.trim() : '';
+  if (envUrl) {
+    envUrl = envUrl.replace(/\/+$/, '');
+    if (envUrl.endsWith('/api/v1')) {
+      envUrl = envUrl.substring(0, envUrl.length - '/api/v1'.length);
+    }
+    return envUrl;
   }
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
   return `http://${host}:5000`;
