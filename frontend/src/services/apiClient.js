@@ -69,12 +69,13 @@ apiClient.interceptors.response.use(
         requestUrl.includes('/auth/refresh') ||
         requestUrl.includes('/auth/login') ||
         requestUrl.includes('/auth/signup') ||
-        requestUrl.includes('/auth/verify-signup-otp')
+        requestUrl.includes('/auth/verify-signup-otp') ||
+        requestUrl.includes('/auth/complete-onboarding')
       ) {
         return Promise.reject({
           success: false,
           message: error.response?.data?.message || 'Authentication failed',
-          statusCode: 401,
+          statusCode: error.response?.status || 401,
         });
       }
 

@@ -18,6 +18,10 @@ const saveTokens = (data) => {
     localStorage.setItem('vedixa_access_token', data.accessToken);
     localStorage.setItem('mandhi_access_token', data.accessToken);
   }
+  if (data?.refreshToken) {
+    localStorage.setItem('vedixa_refresh_token', data.refreshToken);
+    localStorage.setItem('mandhi_refresh_token', data.refreshToken);
+  }
   if (data?.user) {
     localStorage.setItem('vedixa_user', JSON.stringify(data.user));
     localStorage.setItem('mandhi_user', JSON.stringify(data.user));
@@ -102,11 +106,15 @@ export const authService = {
 
   async verifySignupOtp(data) {
     const response = await apiClient.post('/auth/signup/verify-otp', data);
-    if (response.success && response.data?.accessToken) {
-      // Store pending token so apiClient can authorize completeOnboarding,
-      // but DO NOT call notifyListeners() to prevent PublicOnlyRoute from redirecting /signup to /shop-setup!
-      localStorage.setItem('vedixa_access_token', response.data.accessToken);
-      localStorage.setItem('mandhi_access_token', response.data.accessToken);
+    if (response.success && response.data) {
+      if (response.data.accessToken) {
+        localStorage.setItem('vedixa_access_token', response.data.accessToken);
+        localStorage.setItem('mandhi_access_token', response.data.accessToken);
+      }
+      if (response.data.refreshToken) {
+        localStorage.setItem('vedixa_refresh_token', response.data.refreshToken);
+        localStorage.setItem('mandhi_refresh_token', response.data.refreshToken);
+      }
       if (response.data.user) {
         localStorage.setItem('vedixa_user', JSON.stringify(response.data.user));
         localStorage.setItem('mandhi_user', JSON.stringify(response.data.user));
@@ -147,7 +155,10 @@ export const authService = {
 
   async refreshToken() {
     try {
-      const response = await apiClient.post('/auth/refresh', {});
+      const storedRefreshToken = localStorage.getItem('vedixa_refresh_token') || localStorage.getItem('mandhi_refresh_token');
+      const response = await apiClient.post('/auth/refresh', { refreshToken: storedRefreshToken }, {
+        headers: storedRefreshToken ? { Authorization: `Bearer ${storedRefreshToken}` } : {}
+      });
       const payload = response.data || response;
       if (payload?.accessToken) {
         saveTokens(payload);

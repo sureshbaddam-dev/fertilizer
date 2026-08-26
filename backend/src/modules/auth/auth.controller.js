@@ -36,8 +36,7 @@ export const verifySignupOtp = asyncHandler(async (req, res) => {
   if (result.refreshToken) {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Mobile verified and user registered successfully.', clientData, HTTP_STATUS.CREATED);
+  return sendSuccess(res, 'Mobile verified and user registered successfully.', result, HTTP_STATUS.CREATED);
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -48,8 +47,7 @@ export const login = asyncHandler(async (req, res) => {
   if (result.refreshToken) {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Login successful.', clientData, HTTP_STATUS.OK);
+  return sendSuccess(res, 'Login successful.', result, HTTP_STATUS.OK);
 });
 
 export const forgotPassword = asyncHandler(async (req, res) => {
@@ -95,8 +93,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
 
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Token refreshed successfully.', clientData, HTTP_STATUS.OK);
+  return sendSuccess(res, 'Token refreshed successfully.', result, HTTP_STATUS.OK);
 });
 
 export const googleAuth = asyncHandler(async (req, res) => {
@@ -107,8 +104,7 @@ export const googleAuth = asyncHandler(async (req, res) => {
   if (result.refreshToken) {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Google authentication evaluated.', clientData, HTTP_STATUS.OK);
+  return sendSuccess(res, 'Google authentication evaluated.', result, HTTP_STATUS.OK);
 });
 
 export const completeGoogleProfile = asyncHandler(async (req, res) => {
@@ -119,8 +115,7 @@ export const completeGoogleProfile = asyncHandler(async (req, res) => {
   if (result.refreshToken) {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Account profile completed successfully.', clientData, HTTP_STATUS.CREATED);
+  return sendSuccess(res, 'Account profile completed successfully.', result, HTTP_STATUS.CREATED);
 });
 
 export const getProfile = asyncHandler(async (req, res) => {
@@ -183,6 +178,5 @@ export const completeOnboarding = asyncHandler(async (req, res) => {
   if (result.refreshToken) {
     res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   }
-  const { refreshToken: _, ...clientData } = result;
-  return sendSuccess(res, 'Business details saved and onboarding completed successfully.', clientData, HTTP_STATUS.OK);
+  return sendSuccess(res, 'Business details saved and onboarding completed successfully.', result, HTTP_STATUS.OK);
 });
