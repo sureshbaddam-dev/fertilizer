@@ -1,4 +1,4 @@
-import ureaBagImg from '../assets/urea_bag.png';
+import ureaBagImg from '../assets/urea_bag.webp';
 import { getApiBaseUrl } from '../services/apiClient';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -28,7 +28,7 @@ export function getImageUrl(imagePath) {
   }
 
   // 3. Default asset paths
-  if (trimmed.includes('urea_bag.png') || trimmed.startsWith('/assets/')) {
+  if (trimmed.includes('urea_bag') || trimmed.startsWith('/assets/')) {
     return ureaBagImg;
   }
 
