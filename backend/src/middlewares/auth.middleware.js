@@ -3,7 +3,7 @@ import { AppError } from '../utils/appError.js';
 import { HTTP_STATUS } from '../common/httpStatuses.js';
 import { verifyAccessToken } from '../utils/jwt.utils.js';
 import { User } from '../modules/auth/user.model.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../config/logger.config.js';
 
 export const protect = asyncHandler(async (req, _res, next) => {
   let token;
