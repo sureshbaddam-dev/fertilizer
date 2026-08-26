@@ -7,6 +7,7 @@ export const subscriptionService = {
   createRazorpayOrder: (planCode, couponCode) =>
     apiClient.post('/subscriptions/create-razorpay-order', { planCode, couponCode }),
   verifyPayment: (payload) => apiClient.post('/subscriptions/verify-payment', payload),
+  checkOrderStatus: (orderId) => apiClient.get(`/subscriptions/check-order-status/${orderId}`),
   adminActivate: (data) => apiClient.post('/subscriptions/admin/activate', data),
   createCoupon: (data) => apiClient.post('/subscriptions/admin/coupons', data),
   getCoupons: () => apiClient.get('/subscriptions/admin/coupons'),

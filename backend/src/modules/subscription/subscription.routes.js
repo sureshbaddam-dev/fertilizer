@@ -6,6 +6,7 @@ import {
   validateCoupon,
   createRazorpayOrder,
   verifyPayment,
+  checkPaymentOrderStatus,
   handleRazorpayWebhook,
   adminActivateSubscription,
   createCoupon,
@@ -29,6 +30,7 @@ router.get('/my-subscription', getUserSubscription);
 router.post('/validate-coupon', validateCoupon);
 router.post('/create-razorpay-order', createRazorpayOrder);
 router.post('/verify-payment', verifyPayment);
+router.get('/check-order-status/:orderId', checkPaymentOrderStatus);
 router.post('/demo-request', requestFreeDemo);
 
 // Admin Control Endpoints

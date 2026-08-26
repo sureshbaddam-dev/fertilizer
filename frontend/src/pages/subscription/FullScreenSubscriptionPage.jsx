@@ -28,6 +28,60 @@ export default function FullScreenSubscriptionPage() {
   // Guards for payment lifecycle
   const isInitializingPaymentRef = useRef(false);
   const rzpInstanceRef = useRef(null);
+  const [isVerifyingStatus, setIsVerifyingStatus] = useState(false);
+  const currentUser = authService.getCurrentUser() || {};
+
+  // Check pending order status (e.g. after return from PhonePe / mobile UPI app)
+  const checkPendingOrderStatus = async (orderId, isSilent = false) => {
+    if (!orderId) return;
+    if (!isSilent) setIsVerifyingStatus(true);
+    try {
+      const res = await subscriptionService.checkOrderStatus(orderId);
+      const payload = res?.data || res;
+      if (payload?.isPaid) {
+        sessionStorage.removeItem('pending_razorpay_order_id');
+        sessionStorage.removeItem('pending_razorpay_order_time');
+        queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
+        queryClient.invalidateQueries({ queryKey: ['subscription-plans'] });
+        setSuccessMessage('Payment verified & subscription activated successfully!');
+        setErrorMessage('');
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1200);
+      } else if (!isSilent) {
+        setErrorMessage('Payment status: ' + (payload?.status || 'PENDING') + '. If completed in your UPI app, please wait a moment for confirmation.');
+      }
+    } catch (_err) {
+      if (!isSilent) setErrorMessage('Could not verify payment status. Please try again.');
+    } finally {
+      if (!isSilent) setIsVerifyingStatus(false);
+    }
+  };
+
+  // Auto-check pending order on page mount or window focus (mobile app return)
+  React.useEffect(() => {
+    const handleFocusCheck = () => {
+      const pendingOrderId = sessionStorage.getItem('pending_razorpay_order_id');
+      const pendingTime = sessionStorage.getItem('pending_razorpay_order_time');
+      if (pendingOrderId) {
+        if (!pendingTime || Date.now() - Number(pendingTime) < 15 * 60 * 1000) {
+          checkPendingOrderStatus(pendingOrderId, true);
+        } else {
+          sessionStorage.removeItem('pending_razorpay_order_id');
+          sessionStorage.removeItem('pending_razorpay_order_time');
+        }
+      }
+    };
+
+    handleFocusCheck();
+
+    window.addEventListener('focus', handleFocusCheck);
+    document.addEventListener('visibilitychange', handleFocusCheck);
+    return () => {
+      window.removeEventListener('focus', handleFocusCheck);
+      document.removeEventListener('visibilitychange', handleFocusCheck);
+    };
+  }, []);
 
   // Fetch Subscription Plans API (Single Source of Truth from MongoDB)
   const { data: plansRes, isLoading: isPlansLoading } = useQuery({
@@ -98,6 +152,11 @@ export default function FullScreenSubscriptionPage() {
       const orderData = res?.data || res;
       const couponCodeToUse = appliedCheckoutCoupon?.coupon?.code || appliedHeaderCoupon?.coupon?.code || checkoutCouponCode;
 
+      if (orderData?.orderId) {
+        sessionStorage.setItem('pending_razorpay_order_id', orderData.orderId);
+        sessionStorage.setItem('pending_razorpay_order_time', String(Date.now()));
+      }
+
       if (typeof window !== 'undefined' && window.Razorpay) {
         try {
           if (rzpInstanceRef.current) {
@@ -114,7 +173,14 @@ export default function FullScreenSubscriptionPage() {
             name: 'VEDIXA ERP',
             description: `${orderData.planName || targetPlanCode} Plan Subscription`,
             order_id: orderData.orderId,
+            prefill: {
+              name: currentUser?.ownerName || '',
+              contact: currentUser?.mobile || '',
+              email: currentUser?.email || '',
+            },
             handler: async function (response) {
+              sessionStorage.removeItem('pending_razorpay_order_id');
+              sessionStorage.removeItem('pending_razorpay_order_time');
               isInitializingPaymentRef.current = false;
               verifyMutation.mutate({
                 razorpayOrderId: response.razorpay_order_id,
@@ -129,7 +195,12 @@ export default function FullScreenSubscriptionPage() {
             modal: {
               ondismiss: function () {
                 isInitializingPaymentRef.current = false;
-                setErrorMessage('Payment process was cancelled.');
+                setTimeout(() => {
+                  const pendingId = sessionStorage.getItem('pending_razorpay_order_id');
+                  if (pendingId) {
+                    checkPendingOrderStatus(pendingId, true);
+                  }
+                }, 1000);
               },
             },
           };
@@ -155,6 +226,8 @@ export default function FullScreenSubscriptionPage() {
   const verifyMutation = useMutation({
     mutationFn: (payload) => subscriptionService.verifyPayment(payload),
     onSuccess: () => {
+      sessionStorage.removeItem('pending_razorpay_order_id');
+      sessionStorage.removeItem('pending_razorpay_order_time');
       queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
       queryClient.invalidateQueries({ queryKey: ['subscription-plans'] });
       setSuccessMessage('Payment verified & subscription activated successfully!');

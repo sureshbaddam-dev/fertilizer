@@ -367,6 +367,48 @@ export const subscriptionService = {
   },
 
   /**
+   * Mobile Return / Polling Helper: Check Razorpay Order Status Server-Side
+   */
+  async checkPaymentOrderStatus(userId, razorpayOrderId) {
+    if (!razorpayOrderId) {
+      throw new AppError('Razorpay order ID is required.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const order = await PaymentOrder.findOne({ razorpayOrderId, userId });
+    if (!order) {
+      throw new AppError('Payment order not found for this user.', HTTP_STATUS.NOT_FOUND);
+    }
+
+    // 1. If already PAID in DB, return success
+    if (order.status === 'PAID') {
+      const activeSub = await UserSubscription.findOne({ userId });
+      return { isPaid: true, status: 'PAID', subscription: activeSub };
+    }
+
+    // 2. Query Razorpay API directly for order status
+    try {
+      const razorpayOrder = await razorpayService.getOrderDetails(razorpayOrderId);
+      if (razorpayOrder && razorpayOrder.status === 'paid') {
+        const paymentsRes = await razorpayService.getOrderPayments(razorpayOrderId);
+        const capturedPayment = paymentsRes?.items?.find((p) => p.status === 'captured') || paymentsRes?.items?.[0];
+        const razorpayPaymentId = capturedPayment?.id || null;
+
+        const activeSub = await this.fulfillSubscriptionPayment({
+          razorpayOrderId,
+          razorpayPaymentId,
+          source: 'ONLINE_PAYMENT',
+        });
+
+        return { isPaid: true, status: 'PAID', subscription: activeSub };
+      }
+    } catch (err) {
+      logger.warn(`[checkPaymentOrderStatus] Razorpay API query failed for ${razorpayOrderId}: ${err.message}`);
+    }
+
+    return { isPaid: false, status: order.status || 'PENDING' };
+  },
+
+  /**
    * Secure Razorpay Webhook Event Processing
    */
   async handleRazorpayWebhook(rawBody, signatureHeader) {

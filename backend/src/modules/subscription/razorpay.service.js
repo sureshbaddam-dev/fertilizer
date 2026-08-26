@@ -108,4 +108,80 @@ export const razorpayService = {
       return false;
     }
   },
+
+  /**
+   * Query Razorpay Order Details directly from REST API (Server Source of Truth)
+   */
+  async getOrderDetails(orderId) {
+    if (!orderId) {
+      throw new AppError('Order ID is required to fetch Razorpay order status.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const keyId = envConfig.razorpay.keyId || process.env.RAZORPAY_KEY_ID;
+    const keySecret = envConfig.razorpay.keySecret || process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      throw new AppError('Razorpay API credentials missing.', HTTP_STATUS.SERVICE_UNAVAILABLE);
+    }
+
+    try {
+      const authString = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      const response = await fetch(`https://api.razorpay.com/v1/orders/${orderId}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${authString}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`❌ Fetch Razorpay Order failed (HTTP ${response.status}): ${errorText}`);
+        throw new AppError(`Failed to fetch order status from Razorpay: HTTP ${response.status}`, HTTP_STATUS.BAD_REQUEST);
+      }
+
+      return await response.json();
+    } catch (err) {
+      logger.error(`❌ Razorpay getOrderDetails Exception: ${err.message}`);
+      if (err instanceof AppError) throw err;
+      throw new AppError(`Failed to retrieve order status from Razorpay: ${err.message}`, HTTP_STATUS.SERVICE_UNAVAILABLE);
+    }
+  },
+
+  /**
+   * Query Razorpay Payments for an Order directly from REST API
+   */
+  async getOrderPayments(orderId) {
+    if (!orderId) {
+      throw new AppError('Order ID is required to fetch Razorpay payments.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const keyId = envConfig.razorpay.keyId || process.env.RAZORPAY_KEY_ID;
+    const keySecret = envConfig.razorpay.keySecret || process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      throw new AppError('Razorpay API credentials missing.', HTTP_STATUS.SERVICE_UNAVAILABLE);
+    }
+
+    try {
+      const authString = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      const response = await fetch(`https://api.razorpay.com/v1/orders/${orderId}/payments`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${authString}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`❌ Fetch Razorpay Order Payments failed (HTTP ${response.status}): ${errorText}`);
+        throw new AppError(`Failed to fetch payments from Razorpay: HTTP ${response.status}`, HTTP_STATUS.BAD_REQUEST);
+      }
+
+      return await response.json();
+    } catch (err) {
+      logger.error(`❌ Razorpay getOrderPayments Exception: ${err.message}`);
+      if (err instanceof AppError) throw err;
+      throw new AppError(`Failed to retrieve payments from Razorpay: ${err.message}`, HTTP_STATUS.SERVICE_UNAVAILABLE);
+    }
+  },
 };

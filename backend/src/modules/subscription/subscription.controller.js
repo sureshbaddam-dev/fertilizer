@@ -44,6 +44,12 @@ export const handleRazorpayWebhook = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Razorpay webhook processed successfully.', result, HTTP_STATUS.OK);
 });
 
+export const checkPaymentOrderStatus = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+  const result = await subscriptionService.checkPaymentOrderStatus(req.user._id, orderId);
+  return sendSuccess(res, 'Payment status checked successfully.', result, HTTP_STATUS.OK);
+});
+
 export const adminActivateSubscription = asyncHandler(async (req, res) => {
   const subscription = await subscriptionService.adminActivateUserSubscription(req.user._id, req.body);
   return sendSuccess(res, 'Subscription manually activated by Admin.', { subscription }, HTTP_STATUS.OK);
