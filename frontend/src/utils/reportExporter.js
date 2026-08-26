@@ -1,12 +1,11 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
 
 /**
  * Export Executive Analytics Report to PDF
  */
-export const exportReportToPDF = (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard', shopSettings = {}) => {
+export const exportReportToPDF = async (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard', shopSettings = {}) => {
+  const { default: jsPDF } = await import('jspdf');
+  await import('jspdf-autotable');
   const doc = new jsPDF('p', 'mm', 'a4');
   const sales = biData?.sales || {};
   const purchases = biData?.purchases || {};
@@ -114,7 +113,8 @@ export const exportReportToPDF = (biData, dateRangeText = 'All Time', reportTitl
 /**
  * Export Executive Analytics Report to Excel (XLSX)
  */
-export const exportReportToExcel = (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard') => {
+export const exportReportToExcel = async (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard') => {
+  const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
 
   const sales = biData?.sales || {};

@@ -1,10 +1,9 @@
-import * as XLSX from 'xlsx';
-
 /**
  * Generates and downloads an Excel (.xlsx) report for Invoice History.
  * Exports structured backend data with shop metadata and column formatting.
  */
-export function exportInvoiceHistoryToExcel(invoices = [], shopSettings = {}) {
+export async function exportInvoiceHistoryToExcel(invoices = [], shopSettings = {}) {
+  const XLSX = await import('xlsx');
   const shopName = shopSettings.shopName || shopSettings.name || 'VEDIXA AGRI SOLUTIONS';
   const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const exportDateFormatted = new Date().toLocaleString('en-IN', {

@@ -1,8 +1,13 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { getItemUnitPrice } from './pricing';
 import { formatCustomerLedgerAddress } from './statementCalculator';
 import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
+
+async function getJsPdf() {
+  const { default: jsPDF } = await import('jspdf');
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = autoTableModule.default || autoTableModule;
+  return { jsPDF, autoTable };
+}
 
 /**
  * Standardized PDF Top Header Generator across all PDF documents:
@@ -92,7 +97,8 @@ export function drawPdfDocumentHeader(doc, shopSettings = {}) {
  * 2. In-Page Native Browser Print (via hidden iframe)
  * 3. WhatsApp Preview Modal & Attachment
  */
-export function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], totalsArg = {}, periodStrArg = 'Last 30 Days') {
+export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], totalsArg = {}, periodStrArg = 'Last 30 Days') {
+  const { jsPDF, autoTable } = await getJsPdf();
   const doc = new jsPDF();
 
   // Normalize argument positions defensively
@@ -350,7 +356,8 @@ export function printLedgerPdf(customer, shopSettings, filteredTransactions, tot
  * Single Unified Vector jsPDF Generator for Customer Monthly Account Statement.
  * Includes Opening Balance, New Purchases, Payments, and Closing Due (highlighted in RED).
  */
-export function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettingsArg = {}, monthlyDataArg = {}) {
+export async function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettingsArg = {}, monthlyDataArg = {}) {
+  const { jsPDF, autoTable } = await getJsPdf();
   const doc = new jsPDF();
 
   const customer = customerArg || {};
@@ -625,7 +632,8 @@ export function buildFullShopAddress(shopSettings = {}) {
  * Single Unified Vector jsPDF Generator for Sales Retail Invoice.
  * Programmatically constructs a clean A4 retail invoice document.
  */
-export function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
+export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
+  const { jsPDF, autoTable } = await getJsPdf();
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -892,7 +900,8 @@ export function printInvoicePdf(invoice, shopSettings) {
 /**
  * Generates and downloads a Payment Receipt PDF document.
  */
-export function generatePaymentReceiptPdf(payment, customer, shopSettings) {
+export async function generatePaymentReceiptPdf(payment, customer, shopSettings) {
+  const { jsPDF } = await getJsPdf();
   const doc = new jsPDF();
 
   const shopName = shopSettings.shopName || shopSettings.businessName || shopSettings.name || 'Agri Store';
@@ -934,7 +943,8 @@ export function generatePaymentReceiptPdf(payment, customer, shopSettings) {
  * Single Unified Vector jsPDF Generator for Invoice History Report Statement.
  * Programmatically constructs a clean A4 vector document directly from DB/API data.
  */
-export function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSettings = {}, appliedFilters = {}) {
+export async function buildInvoiceHistoryPdfDoc(invoices = [], summary = {}, shopSettings = {}, appliedFilters = {}) {
+  const { jsPDF, autoTable } = await getJsPdf();
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -1123,7 +1133,8 @@ export function generateInvoiceHistoryPdf(invoices, summary, shopSettings, appli
  * Single Unified Vector jsPDF Generator for General Customers Directory.
  * Programmatically constructs an A4 portrait report matching the Customer Ledger PDF statement reference.
  */
-export function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {}, filterInfo = {}) {
+export async function buildGeneralCustomersPdfDoc(customersList = [], shopSettings = {}, filterInfo = {}) {
+  const { jsPDF, autoTable } = await getJsPdf();
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

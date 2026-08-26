@@ -5,10 +5,12 @@ import SubscriptionGuard from '../components/common/SubscriptionGuard';
 import AuthLayout from '../layouts/AuthLayout';
 import MainLayout from '../layouts/MainLayout';
 
-// Eagerly loaded critical landing / auth pages
+// Eagerly loaded initial entry route
 import LoginPage from '../pages/auth/LoginPage';
-import SignUpPage from '../pages/auth/SignUpPage';
-import HomePage from '../pages/dashboard/HomePage';
+
+// Lazy-loaded routes for code-splitting
+const SignUpPage = lazy(() => import('../pages/auth/SignUpPage'));
+const HomePage = lazy(() => import('../pages/dashboard/HomePage'));
 
 // Lazy-loaded routes for code-splitting
 const OtpVerificationPage = lazy(() => import('../pages/auth/OtpVerificationPage'));
@@ -105,7 +107,7 @@ export const appRouter = createBrowserRouter([
         path: 'signup',
         element: (
           <PublicOnlyRoute>
-            <SignUpPage />
+            {withSuspense(SignUpPage)}
           </PublicOnlyRoute>
         ),
       },
@@ -128,8 +130,8 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       // UNRESTRICTED ROUTES (Always accessible to logged-in users)
-      { index: true, element: <HomePage /> },
-      { path: 'dashboard', element: <HomePage /> },
+      { index: true, element: withSuspense(HomePage) },
+      { path: 'dashboard', element: withSuspense(HomePage) },
       { path: 'support', element: withSuspense(SupportPage) },
       { path: 'subscription', element: withSuspense(FullScreenSubscriptionPage) },
 

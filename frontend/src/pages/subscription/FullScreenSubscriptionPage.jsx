@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Star, LogOut, Info, AlertTriangle, Clock, Ticket } from 'lucide-react';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';
+import { loadRazorpaySDK } from '../../utils/loadExternalScript';
 import BrandLogo from '../../components/common/BrandLogo';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -148,13 +149,21 @@ export default function FullScreenSubscriptionPage() {
   // Razorpay Order Creation & Verification Mutations
   const createOrderMutation = useMutation({
     mutationFn: ({ planCode, couponCode }) => subscriptionService.createRazorpayOrder(planCode, couponCode),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       const orderData = res?.data || res;
       const couponCodeToUse = appliedCheckoutCoupon?.coupon?.code || appliedHeaderCoupon?.coupon?.code || checkoutCouponCode;
 
       if (orderData?.orderId) {
         sessionStorage.setItem('pending_razorpay_order_id', orderData.orderId);
         sessionStorage.setItem('pending_razorpay_order_time', String(Date.now()));
+      }
+
+      try {
+        await loadRazorpaySDK();
+      } catch (_err) {
+        isInitializingPaymentRef.current = false;
+        setErrorMessage('Failed to load payment gateway SDK. Please check your network connection.');
+        return;
       }
 
       if (typeof window !== 'undefined' && window.Razorpay) {

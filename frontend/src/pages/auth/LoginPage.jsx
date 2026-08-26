@@ -220,7 +220,7 @@ export default function LoginPage() {
       {/* Separator */}
       <div className="relative flex items-center justify-center py-0.5">
         <div className="border-t border-slate-200 w-full"></div>
-        <span className="bg-white px-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">OR</span>
+        <span className="bg-white px-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-600">OR</span>
         <div className="border-t border-slate-200 w-full"></div>
       </div>
 
@@ -228,17 +228,18 @@ export default function LoginPage() {
       <form onSubmit={handleLoginSubmit} className="space-y-4">
         {/* Mobile Number / Email Input */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700 block">Mobile Number or Email</label>
+          <label htmlFor="login-mobile" className="text-xs font-bold text-slate-700 block">Mobile Number or Email</label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
               <Phone className="w-4 h-4 text-emerald-600" />
             </div>
             <input
+              id="login-mobile"
               type="text"
               value={mobile}
               onChange={(e) => setMobile(e.target.value)}
               placeholder="Enter mobile number or email"
-              className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+              className="w-full pl-10 pr-4 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
               required
             />
           </div>
@@ -246,23 +247,25 @@ export default function LoginPage() {
 
         {/* Password Input */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-slate-700 block">Password</label>
+          <label htmlFor="login-password" className="text-xs font-bold text-slate-700 block">Password</label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
               <Lock className="w-4 h-4 text-emerald-600" />
             </div>
             <input
+              id="login-password"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
-              className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+              className="w-full pl-10 pr-11 py-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-700 focus:outline-none cursor-pointer"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

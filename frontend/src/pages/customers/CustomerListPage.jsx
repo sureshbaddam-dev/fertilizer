@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { VEDIXA_LOGO_BASE64 } from '../../utils/vedixaLogoBase64';
 import {
   Search,
@@ -440,8 +438,10 @@ export default function CustomerListPage() {
   }, [customersList, currentPage, pageSize]);
 
   // Professional PDF Export using jsPDF & autoTable in Landscape mode (Zero Cropping!)
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     setIsExportOpen(false);
+    const { default: jsPDF } = await import('jspdf');
+    await import('jspdf-autotable');
 
     // Landscape orientation (297mm x 210mm) guarantees all 7 columns fit with 0 cropping
     const doc = new jsPDF({
