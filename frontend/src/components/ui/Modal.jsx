@@ -37,6 +37,9 @@ export default function Modal({
   return (
     <div className="app-modal-backdrop">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || "Dialog modal"}
         className={cn(`app-modal-surface ${widthClass} my-8 transition-all`, className)}
         onClick={(e) => e.stopPropagation()}
       >
@@ -51,6 +54,7 @@ export default function Modal({
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Close dialog"
                 className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />

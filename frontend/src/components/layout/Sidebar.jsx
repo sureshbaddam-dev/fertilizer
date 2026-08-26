@@ -148,6 +148,7 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
             <button
               type="button"
               onClick={onCloseMobile}
+              aria-label="Close menu"
               className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
             >
               <X className="w-4 h-4" />

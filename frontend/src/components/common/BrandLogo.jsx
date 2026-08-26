@@ -10,7 +10,9 @@ export default function BrandLogo({
     <div className={`flex items-center justify-center h-auto ${className}`}>
       <img
         src={vedixaLogoImg}
-        alt="VEDIXA"
+        alt="VEDIXA ERP Logo"
+        width="192"
+        height="96"
         className={`block h-[96px] w-auto object-contain select-none ${imgClassName}`}
         style={style}
         draggable={false}

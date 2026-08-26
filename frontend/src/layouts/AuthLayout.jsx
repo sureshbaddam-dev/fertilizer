@@ -52,6 +52,8 @@ export default function AuthLayout() {
             <img
               src={loginProductsImg}
               alt="Fertilizer Products"
+              width="240"
+              height="192"
               className="max-h-28 md:max-h-36 lg:max-h-48 xl:max-h-56 object-contain drop-shadow-md"
             />
           </div>
@@ -117,7 +119,7 @@ export default function AuthLayout() {
                 ))}
               </div>
             </div>
-            <img src={loginProductsImg} alt="Products" className="h-12 object-contain shrink-0 drop-shadow-xs" />
+            <img src={loginProductsImg} alt="Fertilizer Products" width="120" height="48" className="h-12 object-contain shrink-0 drop-shadow-xs" />
           </div>
 
           {/* Form Card Slot - IMMEDIATELY VISIBLE ON MOBILE */}

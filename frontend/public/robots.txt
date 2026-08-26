@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /signup
+Allow: /legal/*
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /dashboard
+Disallow: /inventory
+Disallow: /sales
+Disallow: /purchases
+Disallow: /customers
+Disallow: /suppliers
+Disallow: /reports
+Disallow: /settings
+Disallow: /api/
+
+Sitemap: https://vedixaerp.com/sitemap.xml
