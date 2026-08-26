@@ -36,7 +36,7 @@ export default function MostSellingProducts({ onQuickAdd, hasActiveSub = false }
     return Array.isArray(rawList) ? rawList : [];
   }, [brandData]);
 
-  // Fetch active products dynamically from API (Complete available inventory, server-filtered)
+  // Fetch complete active available inventory dynamically from backend API (untruncated)
   const { data: productData, isLoading } = useQuery({
     queryKey: ['dashboard-products', selectedCategory, selectedBrand, searchQuery],
     queryFn: () =>
