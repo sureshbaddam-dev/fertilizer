@@ -90,9 +90,9 @@ export default function AuthLayout() {
         {/* ========================================================= */}
         <div className="hidden md:flex md:col-span-6 lg:col-span-5 flex-col justify-center p-4 sm:p-6 lg:p-8 bg-white relative overflow-y-auto">
           {/* Form Card Slot */}
-          <div className="max-w-sm mx-auto w-full py-1">
+          <main className="max-w-sm mx-auto w-full py-1">
             <Outlet />
-          </div>
+          </main>
         </div>
 
         {/* ========================================================= */}
@@ -123,9 +123,9 @@ export default function AuthLayout() {
           </div>
 
           {/* Form Card Slot - IMMEDIATELY VISIBLE ON MOBILE */}
-          <div className="w-full py-1">
+          <main className="w-full py-1">
             <Outlet />
-          </div>
+          </main>
 
           {/* Mobile Footer Trust Bar */}
           <div className="pt-2 border-t border-gray-100 space-y-1.5">

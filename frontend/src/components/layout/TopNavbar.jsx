@@ -278,6 +278,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
             <button
               type="button"
               onClick={onToggleSidebar}
+              aria-label="Toggle navigation menu"
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition-all hover:bg-slate-100 lg:hidden cursor-pointer"
               title="Toggle navigation"
             >
