@@ -4,6 +4,7 @@
   "private": true,
   "description": "VEDIXA Fertilizer ERP SaaS & Admin Control Center",
   "scripts": {
+    "build": "npm --prefix frontend run build",
     "dev:user": "npm --prefix frontend run dev",
     "dev:admin": "npm --prefix admin-panel run dev",
     "dev:backend": "npm --prefix backend run dev",
