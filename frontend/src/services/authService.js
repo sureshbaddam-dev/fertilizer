@@ -87,6 +87,7 @@ export const authService = {
   },
 
   async googleAuth(idToken) {
+    clearTokens();
     const response = await apiClient.post('/auth/google', { idToken });
     if (response.success && response.data?.accessToken) {
       saveTokens(response.data);

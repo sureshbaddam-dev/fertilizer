@@ -102,10 +102,14 @@ export const authService = {
   async googleAuth({ idToken }) {
     const verifiedGoogle = await this.verifyGoogleToken(idToken);
     const { sub, email, name, picture } = verifiedGoogle;
+    const cleanEmail = email ? email.toLowerCase().trim() : '';
+
+    logger.info(`[GoogleAuth] Processing Google authentication for email: ${cleanEmail}, sub: ${sub}`);
 
     // 1. Check if user exists by googleId
     let user = await User.findOne({ googleId: sub });
     if (user) {
+      logger.info(`[GoogleAuth] Found existing user by googleId. MongoDB _id: ${user._id}`);
       await User.findByIdAndUpdate(user._id, {
         $set: {
           emailVerified: true,
@@ -117,13 +121,13 @@ export const authService = {
     }
 
     // 2. Check if user exists by email (case-insensitive) -> Account linking
-    user = await User.findOne({ email: email.toLowerCase() });
+    user = await User.findOne({ email: cleanEmail });
     if (user) {
+      logger.info(`[GoogleAuth] Found existing user by email. MongoDB _id: ${user._id}`);
       await User.findByIdAndUpdate(user._id, {
         $set: {
           googleId: sub,
           emailVerified: true,
-          isProfileComplete: true,
           ...(picture && !user.profilePicUrl ? { profilePicUrl: picture } : {}),
         },
       });
@@ -131,20 +135,26 @@ export const authService = {
       return this._generateAuthResponse(user, true);
     }
 
-    // 3. Unregistered new user -> Store temporary session for Profile Completion
-    const googleSessionToken = `g_sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const sessionPayload = { sub, email, name, picture };
-    await redisService.set(`google_sess:${googleSessionToken}`, sessionPayload, 900); // 15 minutes TTL
-
-    return {
+    // 3. Unregistered new user -> Create User in MongoDB and issue tokens
+    const pendingMobile = 'pending_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    user = await User.create({
+      ownerName: name || 'Google User',
+      email: cleanEmail,
+      mobile: pendingMobile,
+      googleId: sub,
+      profilePicUrl: picture || '',
+      emailVerified: true,
+      isMobileVerified: false,
       isProfileComplete: false,
-      googleSessionToken,
-      googleData: {
-        email,
-        name,
-        picture,
-      },
-    };
+      role: 'owner',
+      isActive: true,
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+    });
+
+    logger.info(`[GoogleAuth] Created NEW user in MongoDB. _id: ${user._id}, email: ${user.email}`);
+
+    return this._generateAuthResponse(user, false);
   },
 
   async completeGoogleSignup({ googleSessionToken, idToken, mobile, shopName, ownerName }) {
@@ -543,6 +553,7 @@ export const authService = {
   },
 
   async _generateAuthResponse(user, isExisting = false) {
+    logger.info(`[_generateAuthResponse] Signing accessToken for user._id: ${user._id}, email: ${user.email}, isActive: ${user.isActive}`);
     const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
