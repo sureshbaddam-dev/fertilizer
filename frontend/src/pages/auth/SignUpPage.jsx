@@ -270,7 +270,9 @@ export default function SignUpPage() {
       : cleanMob.startsWith('91') && cleanMob.length === 12
       ? cleanMob.slice(2)
       : cleanMob;
-    return /^[6-9]\d{9}$/.test(tenDigit);
+    if (!/^[6-9]\d{9}$/.test(tenDigit)) return false;
+    if (!termsAccepted) return false;
+    return true;
   };
 
   const handlePersonalDetailsSubmit = (e) => {
@@ -289,6 +291,10 @@ export default function SignUpPage() {
       : cleanMob;
     if (!/^[6-9]\d{9}$/.test(tenDigit)) {
       setServerError('Please enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    if (!termsAccepted) {
+      setServerError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
       return;
     }
 
@@ -730,6 +736,47 @@ export default function SignUpPage() {
                 required
               />
             </div>
+          </div>
+
+          {/* Terms & Conditions Consent Checkbox */}
+          <div className="flex items-start gap-2.5 pt-1">
+            <input
+              type="checkbox"
+              id="signUpTermsConsent"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+            />
+            <label htmlFor="signUpTermsConsent" className="text-xs text-slate-600 leading-snug cursor-pointer select-none">
+              I agree to the{' '}
+              <a
+                href="/terms-and-conditions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-emerald-700 hover:underline"
+              >
+                Terms & Conditions
+              </a>
+              ,{' '}
+              <a
+                href="/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-emerald-700 hover:underline"
+              >
+                Privacy Policy
+              </a>{' '}
+              and{' '}
+              <a
+                href="/refund-cancellation-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-emerald-700 hover:underline"
+              >
+                Refund Policy
+              </a>
+              .
+            </label>
           </div>
 
           <button

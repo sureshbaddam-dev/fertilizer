@@ -156,7 +156,12 @@ export default function LoginPage() {
 
       const response = await authService.login(payload);
       if (response.success) {
-        const isComplete = response.data?.isProfileComplete ?? (response.data?.user?.isProfileComplete && Boolean(response.data?.user?.shopName));
+        const user = response.data?.user || response.data || {};
+        const isComplete = Boolean(
+          response.data?.isProfileComplete ||
+            user?.isProfileComplete ||
+            (user?.ownerName && user?.ownerName !== 'Pending Setup' && user?.mobile && !user?.mobile.startsWith('pending_'))
+        );
         if (!isComplete) {
           navigate('/shop-setup', { replace: true });
         } else {

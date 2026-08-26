@@ -86,17 +86,18 @@ export default function MainLayout() {
     );
   }
 
-  // B. Once settings and auth resolved: check if valid shopName exists across SettingsContext and User Profile
+  // B. Once settings and auth resolved: check if user profile onboarding is complete
   const currentUser = authService.getCurrentUser();
-  const currentShopName =
-    settings?.shopName ||
-    settings?.shopSettings?.shopName ||
-    currentUser?.shopName ||
-    currentUser?.user?.shopName ||
-    '';
+  const isProfileComplete = Boolean(
+    currentUser?.isProfileComplete ||
+      (currentUser?.ownerName &&
+        currentUser?.ownerName !== 'Pending Setup' &&
+        currentUser?.mobile &&
+        !currentUser?.mobile.startsWith('pending_'))
+  );
 
-  // Only redirect to /shop-setup if initialization is complete and NO valid shop name exists anywhere
-  if (!isSettingsLoading && !authService.isInitializing && (!currentShopName || !currentShopName.trim())) {
+  // Only redirect to /shop-setup if initialization is complete and profile is NOT complete
+  if (!isSettingsLoading && !authService.isInitializing && !isProfileComplete) {
     return <Navigate to="/shop-setup" replace />;
   }
 
