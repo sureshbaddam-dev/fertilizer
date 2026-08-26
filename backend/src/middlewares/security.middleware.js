@@ -25,6 +25,7 @@ export const configureSecurityMiddlewares = (app) => {
           envConfig.cors.allowedOrigins.includes(origin) ||
           /^https?:\/\/(www\.)?vedixaerp\.com$/.test(origin) ||
           /^https?:\/\/.*\.onrender\.com$/.test(origin) ||
+          /^https?:\/\/.*\.vercel\.app$/.test(origin) ||
           /^http:\/\/(localhost|127\.0\.0\.1|172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
         ) {
           callback(null, true);

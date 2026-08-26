@@ -26,6 +26,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Trust reverse proxy headers (Render, Vercel, Cloudflare) for rate limiting & IP tracking
+app.set('trust proxy', 1);
+
 // Serve uploaded assets statically with cross-origin access enabled
 app.use(
   '/uploads',
@@ -65,8 +68,21 @@ app.use(cookieParser());
 // Security Middlewares (CORS, Helmet, Rate Limiter, Compression, Mongo Sanitize)
 configureSecurityMiddlewares(app);
 
-// System Health & Ping Endpoints (Render Free-Tier Friendly)
-app.get('/health', (_req, res) => res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() }));
+// Root & Health Check Endpoints for Render / Vercel Status Monitoring
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'VEDIXA API is running',
+  });
+});
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'API healthy',
+  });
+});
+
 app.get('/ping', (_req, res) => res.status(200).send('pong'));
 
 app.get(`${envConfig.apiPrefix}/health`, (_req, res) => {
