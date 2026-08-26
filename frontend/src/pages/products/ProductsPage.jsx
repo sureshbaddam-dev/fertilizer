@@ -52,9 +52,9 @@ export default function ProductsPage() {
   const categories = React.useMemo(() => mastersData?.data?.categories || [], [mastersData]);
   const units = React.useMemo(() => mastersData?.data?.units || [], [mastersData]);
 
-  // Fetch Products List API
+  // Fetch Products List API (Fetch all products for client-side filtering & dashboard statistics)
   const { data: productsApiData } = useQuery({
-    queryKey: ['products', currentUserId, activeTab, searchQuery, currentPage, pageSize],
+    queryKey: ['products', currentUserId],
     queryFn: () => productService.getProducts({ search: searchQuery, category: activeTab !== 'All Products' ? activeTab : undefined }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -155,20 +155,52 @@ export default function ProductsPage() {
       };
     });
 
-  const filteredProducts = displayProductsList.filter((p) => {
-    const pCategory = p.categoryId?.name || p.category || '';
-    const pName = p.name || '';
-    const pBrand = p.brandId?.name || p.brand || '';
+  const filteredProducts = React.useMemo(() => {
+    return displayProductsList.filter((p) => {
+      const pCategory = p.categoryId?.name || p.category || '';
+      const pName = p.name || '';
+      const pBrand = p.brandId?.name || p.brand || '';
 
-    const matchesTab = activeTab === 'All Products' || pCategory.toLowerCase().includes(activeTab.toLowerCase());
-    const matchesSearch =
-      !searchQuery.trim() ||
-      pName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pBrand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pCategory.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesTab = activeTab === 'All Products' || pCategory.toLowerCase().includes(activeTab.toLowerCase());
+      const matchesSearch =
+        !searchQuery.trim() ||
+        pName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pBrand.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pCategory.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesTab && matchesSearch;
-  });
+      return matchesTab && matchesSearch;
+    });
+  }, [displayProductsList, activeTab, searchQuery]);
+
+  // Reset pagination if current page exceeds total pages after filtering
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  // Slice filtered products for current page display
+  const paginatedProducts = React.useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(startIndex, startIndex + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
+
+  // Handlers resetting page to 1 on filter, search, and page size changes
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   // Live Draft Merger for Real-Time Preview
   const displayProduct = React.useMemo(() => {
@@ -265,23 +297,23 @@ export default function ProductsPage() {
       >
         <ProductsHeaderBar
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleTabChange}
           categories={categories}
           filterCounts={dynamicCategoryCounts}
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
           onOpenFilterModal={() => {}}
         />
 
         <div className="flex flex-col items-start gap-3.5 lg:flex-row">
           <div className="w-full min-w-0 flex-1">
             <ProductsTable
-              products={filteredProducts}
-              totalCount={displayProductsList.length}
+              products={paginatedProducts}
+              totalCount={filteredProducts.length}
               currentPage={currentPage}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
-              onPageSizeChange={setPageSize}
+              onPageSizeChange={handlePageSizeChange}
               onViewProduct={handleSelectProductRow}
               onEditProduct={handleOpenEditProduct}
             />
