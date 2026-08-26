@@ -1,5 +1,6 @@
 import { SubscriptionPlan } from './subscriptionPlan.model.js';
 import { UserSubscription } from './userSubscription.model.js';
+import { PaymentOrder } from './paymentOrder.model.js';
 import { Coupon } from './coupon.model.js';
 import { User } from '../auth/user.model.js';
 import { AppError } from '../../utils/appError.js';
@@ -8,6 +9,8 @@ import { razorpayService } from './razorpay.service.js';
 import { SubscriptionSettings } from '../admin/models/subscriptionSettings.model.js';
 import { SystemSetting } from '../admin/models/systemSetting.model.js';
 import { getOrCreateSubscriptionSettings } from '../admin/services/admin.service.js';
+import { SubscriptionHistory } from '../admin/models/subscriptionHistory.model.js';
+import { logger } from '../../config/logger.config.js';
 
 export const subscriptionService = {
   async seedInitialPlans() {
@@ -123,7 +126,7 @@ export const subscriptionService = {
   },
 
   /**
-   * Create Razorpay Order in Test Mode for subscription
+   * Create Razorpay Order & Save PaymentOrder in Database (Server Source of Truth)
    */
   async createRazorpayOrder(userId, { planCode, couponCode }) {
     const config = await this.getSubscriptionConfig();
@@ -156,6 +159,19 @@ export const subscriptionService = {
       },
     });
 
+    // Persist PaymentOrder in Database as Server Source of Truth
+    await PaymentOrder.create({
+      userId,
+      razorpayOrderId: orderData.orderId,
+      planCode: plan.code,
+      planName: plan.name,
+      months: plan.months || 1,
+      amount: finalAmount,
+      currency: orderData.currency || 'INR',
+      couponCode: coupon ? coupon.code : null,
+      status: 'CREATED',
+    });
+
     return {
       orderId: orderData.orderId,
       amount: orderData.amount,
@@ -173,23 +189,162 @@ export const subscriptionService = {
   },
 
   /**
+   * Internal Core Idempotent Payment Fulfillment Helper
+   */
+  async fulfillSubscriptionPayment({ razorpayOrderId, razorpayPaymentId = null, razorpaySignature = null, source = 'ONLINE_PAYMENT' }) {
+    if (!razorpayOrderId) {
+      throw new AppError('Razorpay order ID is required for payment fulfillment.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const order = await PaymentOrder.findOne({ razorpayOrderId });
+    if (!order) {
+      logger.error(`❌ Payment Fulfillment Error: No PaymentOrder found for Order ID: ${razorpayOrderId}`);
+      throw new AppError('Payment order record not found.', HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Idempotency Check 1: If Order is ALREADY PAID, return existing active user subscription
+    if (order.status === 'PAID') {
+      logger.info(`ℹ️ Payment Fulfillment: Order ${razorpayOrderId} is already marked PAID. Returning subscription.`);
+      const existingSub = await UserSubscription.findOne({ userId: order.userId });
+      return existingSub;
+    }
+
+    // Idempotency Check 2: If paymentId provided and already used on another user subscription
+    if (razorpayPaymentId) {
+      const existingPaymentSub = await UserSubscription.findOne({
+        razorpayPaymentId,
+        paymentStatus: 'SUCCESS',
+      });
+      if (existingPaymentSub) {
+        logger.info(`ℹ️ Payment Fulfillment: Payment ID ${razorpayPaymentId} already processed. Returning existing subscription.`);
+        return existingPaymentSub;
+      }
+    }
+
+    // Atomic State Transition CREATED -> PAID
+    const updatedOrder = await PaymentOrder.findOneAndUpdate(
+      { _id: order._id, status: { $ne: 'PAID' } },
+      {
+        $set: {
+          status: 'PAID',
+          razorpayPaymentId: razorpayPaymentId || order.razorpayPaymentId,
+          razorpaySignature: razorpaySignature || order.razorpaySignature,
+          paidAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      // Concurrently updated by another request (e.g. webhook vs verify-payment race condition)
+      const existingSub = await UserSubscription.findOne({ userId: order.userId });
+      return existingSub;
+    }
+
+    // Renewal Expiry Date Calculation (Preserve remaining active days)
+    const now = new Date();
+    let sub = await UserSubscription.findOne({ userId: updatedOrder.userId });
+    const isCurrentActive = sub && sub.status === 'ACTIVE' && sub.expiryDate && new Date(sub.expiryDate) > now;
+    const baseDate = isCurrentActive ? new Date(sub.expiryDate) : now;
+
+    // Safe Month Addition (Handles Jan 31 + 1 month -> Feb 28/29)
+    const monthsToAdd = updatedOrder.months || 1;
+    const expectedMonth = (baseDate.getMonth() + monthsToAdd) % 12;
+    const targetExpiryDate = new Date(baseDate.getTime());
+    targetExpiryDate.setMonth(targetExpiryDate.getMonth() + monthsToAdd);
+    if (targetExpiryDate.getMonth() !== expectedMonth) {
+      targetExpiryDate.setDate(0); // Adjust for month overflow
+    }
+
+    const startDate = isCurrentActive ? sub.startDate : now;
+
+    if (sub) {
+      sub.planCode = updatedOrder.planCode;
+      sub.planName = updatedOrder.planName;
+      sub.status = 'ACTIVE';
+      sub.startDate = startDate;
+      sub.expiryDate = targetExpiryDate;
+      sub.discountTokensTotal = (updatedOrder.months || 1) * 5;
+      sub.discountTokensRemaining = (updatedOrder.months || 1) * 5;
+      sub.couponCode = updatedOrder.couponCode;
+      sub.amountPaid = updatedOrder.amount;
+      sub.paymentStatus = 'SUCCESS';
+      sub.razorpayOrderId = updatedOrder.razorpayOrderId;
+      sub.razorpayPaymentId = razorpayPaymentId || sub.razorpayPaymentId;
+      sub.razorpaySignature = razorpaySignature || sub.razorpaySignature;
+      sub.activatedByAdmin = false;
+      sub.activationType = source;
+      await sub.save();
+    } else {
+      sub = await UserSubscription.create({
+        userId: updatedOrder.userId,
+        planCode: updatedOrder.planCode,
+        planName: updatedOrder.planName,
+        status: 'ACTIVE',
+        startDate,
+        expiryDate: targetExpiryDate,
+        discountTokensTotal: (updatedOrder.months || 1) * 5,
+        discountTokensRemaining: (updatedOrder.months || 1) * 5,
+        couponCode: updatedOrder.couponCode,
+        amountPaid: updatedOrder.amount,
+        paymentStatus: 'SUCCESS',
+        razorpayOrderId: updatedOrder.razorpayOrderId,
+        razorpayPaymentId: razorpayPaymentId || null,
+        razorpaySignature: razorpaySignature || null,
+        activatedByAdmin: false,
+        activationType: source,
+      });
+    }
+
+    // Record Online Payment History Record
+    try {
+      const existingHistory = await SubscriptionHistory.findOne({
+        $or: [{ razorpayPaymentId }, { razorpayOrderId: updatedOrder.razorpayOrderId }],
+      });
+
+      if (!existingHistory) {
+        const user = await User.findById(updatedOrder.userId).lean();
+        await SubscriptionHistory.create({
+          userId: updatedOrder.userId,
+          userName: user?.ownerName || 'User',
+          userMobile: user?.mobile || '',
+          planCode: updatedOrder.planCode,
+          planName: updatedOrder.planName,
+          durationLabel: `${updatedOrder.months} Month${updatedOrder.months > 1 ? 's' : ''}`,
+          durationMonths: updatedOrder.months,
+          durationDays: updatedOrder.months * 30,
+          startDate,
+          expiryDate: targetExpiryDate,
+          amountPaid: updatedOrder.amount,
+          source,
+          paymentStatus: 'SUCCESS',
+          reason: `Online Subscription Purchase (${updatedOrder.planCode})`,
+        });
+      }
+    } catch (histErr) {
+      logger.error(`Failed to record SubscriptionHistory entry: ${histErr.message}`);
+    }
+
+    // Increment Coupon usedCount if applicable
+    if (updatedOrder.couponCode) {
+      try {
+        await Coupon.updateOne({ code: updatedOrder.couponCode }, { $inc: { usedCount: 1 } });
+      } catch (_cErr) {}
+    }
+
+    logger.info(`✅ Successfully fulfilled subscription payment for User ${updatedOrder.userId} (Order: ${updatedOrder.razorpayOrderId}, Plan: ${updatedOrder.planCode})`);
+    return sub;
+  },
+
+  /**
    * Verify Razorpay Payment Signature & Activate Subscription
    */
   async verifyAndActivateSubscription(
     userId,
-    { razorpayOrderId, razorpayPaymentId, razorpaySignature, planCode, couponCode }
+    { razorpayOrderId, razorpayPaymentId, razorpaySignature }
   ) {
     if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-      throw new AppError('Missing Razorpay payment parameters', HTTP_STATUS.BAD_REQUEST);
-    }
-
-    const existingPaymentSub = await UserSubscription.findOne({
-      $or: [{ razorpayPaymentId }, { razorpayOrderId }],
-      paymentStatus: 'SUCCESS',
-    });
-
-    if (existingPaymentSub) {
-      return existingPaymentSub;
+      throw new AppError('Missing required Razorpay payment parameters (orderId, paymentId, signature)', HTTP_STATUS.BAD_REQUEST);
     }
 
     const isValidSignature = razorpayService.verifySignature({
@@ -199,128 +354,65 @@ export const subscriptionService = {
     });
 
     if (!isValidSignature) {
-      throw new AppError('Razorpay payment signature verification failed', HTTP_STATUS.BAD_REQUEST);
+      logger.error(`❌ Security Violation: Invalid Razorpay HMAC Signature submitted by User ${userId}`);
+      throw new AppError('Razorpay payment signature verification failed. Invalid security token.', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const config = await this.getSubscriptionConfig();
-    let plan = config.plans.find((p) => p.code.toUpperCase() === String(planCode || '').toUpperCase());
-    if (!plan && config.plans.length > 0) {
-      plan = config.plans[0];
-    }
-
-    if (!plan) {
-      throw new AppError('Subscription plan not found or disabled.', HTTP_STATUS.BAD_REQUEST);
-    }
-
-    const monthsToGrant = plan.months || (plan.code === '3_MONTHS' ? 3 : plan.code === '6_MONTHS' ? 6 : 1);
-    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan.price);
-
-    const startDate = new Date();
-    const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + monthsToGrant);
-
-    let sub = await UserSubscription.findOne({ userId });
-    if (sub) {
-      sub.planCode = plan.code;
-      sub.planName = plan.name;
-      sub.status = 'ACTIVE';
-      sub.startDate = startDate;
-      sub.expiryDate = expiryDate;
-      sub.discountTokensTotal = plan.discountTokens;
-      sub.discountTokensRemaining = plan.discountTokens;
-      sub.couponCode = coupon ? coupon.code : null;
-      sub.amountPaid = finalAmount;
-      sub.paymentStatus = 'SUCCESS';
-      sub.razorpayOrderId = razorpayOrderId;
-      sub.razorpayPaymentId = razorpayPaymentId;
-      sub.razorpaySignature = razorpaySignature;
-      sub.activatedByAdmin = false;
-      sub.activationType = 'ONLINE_PAYMENT';
-      await sub.save();
-    } else {
-      sub = await UserSubscription.create({
-        userId,
-        planCode: plan.code,
-        planName: plan.name,
-        status: 'ACTIVE',
-        startDate,
-        expiryDate,
-        discountTokensTotal: plan.discountTokens,
-        discountTokensRemaining: plan.discountTokens,
-        couponCode: coupon ? coupon.code : null,
-        amountPaid: finalAmount,
-        paymentStatus: 'SUCCESS',
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        activatedByAdmin: false,
-        activationType: 'ONLINE_PAYMENT',
-      });
-    }
-
-    if (coupon) {
-      coupon.usedCount += 1;
-      await coupon.save();
-    }
-
-    return sub;
+    return await this.fulfillSubscriptionPayment({
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      source: 'ONLINE_PAYMENT',
+    });
   },
 
-  async subscribeUser(userId, { planCode, couponCode }) {
-    await this.seedInitialPlans();
-    const plan = await SubscriptionPlan.findOne({ code: planCode.toUpperCase(), isActive: true });
-    if (!plan) {
-      throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND);
+  /**
+   * Secure Razorpay Webhook Event Processing
+   */
+  async handleRazorpayWebhook(rawBody, signatureHeader) {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+    if (!webhookSecret) {
+      logger.error('❌ Webhook Processing Error: RAZORPAY_WEBHOOK_SECRET / RAZORPAY_KEY_SECRET missing in environment.');
+      throw new AppError('Webhook secret unconfigured', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
 
-    const { finalAmount, coupon } = await this.validateCoupon(couponCode, plan.price);
+    const isValidSignature = razorpayService.verifyWebhookSignature({
+      rawBody,
+      signature: signatureHeader,
+      webhookSecret,
+    });
 
-    const durationDays = plan.billingPeriod === 'YEARLY' ? 365 : 30;
-    const startDate = new Date();
-    const expiryDate = new Date();
-    expiryDate.setDate(startDate.getDate() + durationDays);
-
-    let sub = await UserSubscription.findOne({ userId });
-    if (sub) {
-      sub.planId = plan._id;
-      sub.planCode = plan.code;
-      sub.planName = plan.name;
-      sub.status = 'ACTIVE';
-      sub.startDate = startDate;
-      sub.expiryDate = expiryDate;
-      sub.discountTokensTotal = plan.discountTokens;
-      sub.discountTokensRemaining = plan.discountTokens;
-      sub.couponCode = coupon ? coupon.code : null;
-      sub.amountPaid = finalAmount;
-      sub.paymentStatus = 'SUCCESS';
-      sub.activatedByAdmin = false;
-      sub.activationType = 'ONLINE_PAYMENT';
-      await sub.save();
-    } else {
-      sub = await UserSubscription.create({
-        userId,
-        planId: plan._id,
-        planCode: plan.code,
-        planName: plan.name,
-        status: 'ACTIVE',
-        startDate,
-        expiryDate,
-        discountTokensTotal: plan.discountTokens,
-        discountTokensRemaining: plan.discountTokens,
-        couponCode: coupon ? coupon.code : null,
-        amountPaid: finalAmount,
-        paymentStatus: 'SUCCESS',
-        activatedByAdmin: false,
-        activationType: 'ONLINE_PAYMENT',
-      });
+    if (!isValidSignature) {
+      logger.error('❌ Security Alert: Invalid Webhook HMAC Signature received.');
+      throw new AppError('Invalid webhook signature', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (coupon) {
-      coupon.usedCount += 1;
-      await coupon.save();
+    let payload;
+    try {
+      payload = JSON.parse(rawBody.toString('utf-8'));
+    } catch (_e) {
+      throw new AppError('Invalid webhook JSON body', HTTP_STATUS.BAD_REQUEST);
     }
 
-    return sub;
+    const event = payload.event;
+    logger.info(`📩 Received Valid Razorpay Webhook Event: ${event}`);
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const paymentEntity = payload.payload?.payment?.entity;
+      const razorpayOrderId = paymentEntity?.order_id;
+      const razorpayPaymentId = paymentEntity?.id;
+
+      if (razorpayOrderId) {
+        logger.info(`⚡ Processing Webhook Payment Fulfillment -> Order: ${razorpayOrderId}, Payment: ${razorpayPaymentId}`);
+        await this.fulfillSubscriptionPayment({
+          razorpayOrderId,
+          razorpayPaymentId,
+          source: 'ONLINE_PAYMENT',
+        });
+      }
+    }
+
+    return { processed: true };
   },
 
   // Admin APIs: Free Manual Activation
@@ -413,7 +505,6 @@ export const subscriptionService = {
     const validPlans = ['1_MONTH', '3_MONTHS', '6_MONTHS'];
     const normPlan = validPlans.includes(requestedPlan) ? requestedPlan : '1_MONTH';
 
-    // Prevent duplicate PENDING request for same user
     let existingPending = await DemoRequest.findOne({ userId, status: 'PENDING' });
     if (existingPending) {
       return existingPending;
@@ -427,9 +518,6 @@ export const subscriptionService = {
       status: 'PENDING',
     });
 
-
-
-    // Trigger Admin Unread Bell Notification
     try {
       await SupportNotification.create({
         ticketId: `DEMO-${demoReq._id.toString().slice(-6)}`,
@@ -439,9 +527,7 @@ export const subscriptionService = {
         subject: `New Free Demo Request (${normPlan.replace('_', ' ')})`,
         isReadByAdmin: false,
       });
-    } catch (_notifErr) {
-      // Ignore non-fatal notification errors
-    }
+    } catch (_notifErr) {}
 
     return demoReq;
   },
@@ -465,7 +551,6 @@ export const subscriptionService = {
       throw new AppError(`Demo request is already ${demoReq.status}`, HTTP_STATUS.BAD_REQUEST);
     }
 
-    // Determine trial duration (e.g. 7 days)
     const demoDays = 7;
     await adminService.grantCustomDemoSubscription({
       userId: demoReq.userId,

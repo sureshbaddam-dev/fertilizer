@@ -36,17 +36,26 @@ export default function MostSellingProducts({ onQuickAdd, hasActiveSub = false }
     return Array.isArray(rawList) ? rawList : [];
   }, [brandData]);
 
-  // Fetch active products dynamically from API
+  // Fetch active products dynamically from API (Paginated limit 12, server-filtered)
   const { data: productData, isLoading } = useQuery({
-    queryKey: ['dashboard-products'],
-    queryFn: () => productService.getProducts({ isActive: 'true', inStock: 'true' }),
+    queryKey: ['dashboard-products', selectedCategory, selectedBrand, searchQuery],
+    queryFn: () =>
+      productService.getProducts({
+        isActive: 'true',
+        inStock: 'true',
+        limit: 12,
+        page: 1,
+        category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
+        brand: selectedBrand !== 'ALL' ? selectedBrand : undefined,
+        search: searchQuery.trim() || undefined,
+      }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
   const allProducts = useMemo(
-    () => productData?.data?.products || [],
-    [productData?.data?.products]
+    () => productData?.data?.products || productData?.products || [],
+    [productData]
   );
 
   // Multi-Filter (Category + Brand + Search Query)

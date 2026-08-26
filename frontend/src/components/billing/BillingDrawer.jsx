@@ -583,6 +583,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       queryClient.invalidateQueries(['products']);
       queryClient.invalidateQueries(['products-inventory']);
       queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries(['dashboard-overview']);
       queryClient.invalidateQueries(['dashboard-products']);
       queryClient.invalidateQueries(['dashboard-notifications']);
 

@@ -23,19 +23,20 @@ export default function HomePage() {
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
 
-  // Fetch Live Dashboard Data from API
+  // Fetch Live Dashboard Overview Data from API
   const { data: dashboardApi } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
-    staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
+    staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  // Fetch Current Subscription Status
+  // Fetch Current Subscription Status (Shared cache with TopNavbar)
   const { data: subRes } = useQuery({
     queryKey: ['my-subscription'],
     queryFn: subscriptionService.getMySubscription,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;

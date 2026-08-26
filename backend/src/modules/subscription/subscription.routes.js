@@ -6,7 +6,7 @@ import {
   validateCoupon,
   createRazorpayOrder,
   verifyPayment,
-  subscribeUser,
+  handleRazorpayWebhook,
   adminActivateSubscription,
   createCoupon,
   getAllCoupons,
@@ -18,6 +18,10 @@ import {
 
 const router = Router();
 
+// Public Webhook Handler (Verified via HMAC SHA-256 Signature Header)
+router.post('/webhook', handleRazorpayWebhook);
+
+// Protected Endpoints for Authenticated Users
 router.use(protect);
 
 router.get('/plans', getPlans);
@@ -25,10 +29,9 @@ router.get('/my-subscription', getUserSubscription);
 router.post('/validate-coupon', validateCoupon);
 router.post('/create-razorpay-order', createRazorpayOrder);
 router.post('/verify-payment', verifyPayment);
-router.post('/subscribe', subscribeUser);
 router.post('/demo-request', requestFreeDemo);
 
-// Admin endpoints
+// Admin Control Endpoints
 router.post('/admin/activate', adminActivateSubscription);
 router.post('/admin/coupons', createCoupon);
 router.get('/admin/coupons', getAllCoupons);

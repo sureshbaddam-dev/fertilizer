@@ -8,8 +8,8 @@ export default function LowStockProducts({ productsData }) {
   const navigate = useNavigate();
 
   const { data: apiResponse, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
     enabled: !productsData,
     staleTime: 5 * 60 * 1000,
   });

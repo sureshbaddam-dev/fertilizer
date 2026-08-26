@@ -107,14 +107,14 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
     }
   };
 
-  const { data: dashboardApi } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
-    staleTime: 5 * 60 * 1000,
+  const { data: overviewRes } = useQuery({
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
+    staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  const dashboardData = dashboardApi?.data?.data || dashboardApi?.data || dashboardApi;
+  const dashboardData = overviewRes?.data || overviewRes;
   const shopDiscount = dashboardData?.shopDiscount;
 
   const discountLabel = shopDiscount?.isEnabled

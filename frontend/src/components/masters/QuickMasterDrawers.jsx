@@ -40,6 +40,7 @@ export function QuickAddCompanyDrawer({ isOpen, initialName = '', onClose, onSuc
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['companies'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       reset();
       onClose();
       if (onSuccess && res.data?.company) {
@@ -114,6 +115,7 @@ export function QuickAddCategoryDrawer({ isOpen, initialName = '', onClose, onSu
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       reset();
       onClose();
       if (onSuccess && res.data?.category) {

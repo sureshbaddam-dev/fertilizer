@@ -37,9 +37,11 @@ export const verifyPayment = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Payment verified & subscription activated successfully.', { subscription }, HTTP_STATUS.OK);
 });
 
-export const subscribeUser = asyncHandler(async (req, res) => {
-  const subscription = await subscriptionService.subscribeUser(req.user._id, req.body);
-  return sendSuccess(res, 'Subscription activated successfully.', { subscription }, HTTP_STATUS.OK);
+export const handleRazorpayWebhook = asyncHandler(async (req, res) => {
+  const signatureHeader = req.headers['x-razorpay-signature'];
+  const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body));
+  const result = await subscriptionService.handleRazorpayWebhook(rawBody, signatureHeader);
+  return sendSuccess(res, 'Razorpay webhook processed successfully.', result, HTTP_STATUS.OK);
 });
 
 export const adminActivateSubscription = asyncHandler(async (req, res) => {

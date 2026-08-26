@@ -120,8 +120,6 @@ export default function FullScreenSubscriptionPage() {
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
                 razorpaySignature: response.razorpay_signature,
-                planCode: targetPlanCode,
-                couponCode: couponCodeToUse,
               });
               setCheckoutPlan(null);
             },

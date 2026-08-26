@@ -21,10 +21,12 @@ export default function UserProfilePage() {
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [saveErrorMsg, setSaveErrorMsg] = useState('');
 
-  // Fetch User Account Profile
+  // Fetch User Account Profile (Shared cache with TopNavbar)
   const { data: userRes, isLoading: isUserLoading } = useQuery({
-    queryKey: ['user-profile-me'],
+    queryKey: ['user-profile'],
     queryFn: authService.getProfile,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch Current Subscription Status
@@ -49,7 +51,7 @@ export default function UserProfilePage() {
   const profileMutation = useMutation({
     mutationFn: (data) => authService.updateProfile(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user-profile-me'] });
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       setSaveSuccessMsg('User account profile updated successfully.');
       setSaveErrorMsg('');
       setTimeout(() => setSaveSuccessMsg(''), 4000);

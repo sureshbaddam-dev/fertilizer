@@ -184,6 +184,8 @@ export default function NewPurchasePage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
 
       const savedNo = res.data?.purchase?.purchaseNumber || purchaseNumber;
       setSaveSuccessMsg(`🎉 Purchase Entry ${savedNo} saved successfully! Supplier Ledger & Inventory updated.`);

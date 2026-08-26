@@ -212,10 +212,18 @@ export const productService = {
     }
 
     const brandId = query.brandId || query.companyId;
-    if (brandId) filter.brandId = brandId;
+    if (brandId) {
+      filter.brandId = brandId;
+    } else if (query.brand && query.brand !== 'ALL' && query.brand !== 'All Brands') {
+      const brandRegex = new RegExp(`^${query.brand.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      const matchingBrands = await companyRepository.findAll({ userId, name: brandRegex });
+      const bIds = matchingBrands.map((b) => b._id);
+      if (bIds.length > 0) filter.brandId = { $in: bIds };
+    }
+
     if (query.categoryId) {
       filter.categoryId = query.categoryId;
-    } else if (query.category && query.category !== 'All Products') {
+    } else if (query.category && query.category !== 'ALL' && query.category !== 'All Categories' && query.category !== 'All Products') {
       const catRegex = new RegExp(`^${query.category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       const matchingCats = await Category.find({ userId, name: catRegex }).lean().exec();
       const catIds = matchingCats.map((c) => c._id);
@@ -237,7 +245,12 @@ export const productService = {
     }
 
     const sort = { name: 1 };
-    const productsDocs = await productRepository.findAllPopulated(filter, { sort });
+    const page = parseInt(query.page, 10) || 1;
+    const limit = parseInt(query.limit, 10) || 0;
+    const skip = limit > 0 ? (page - 1) * limit : 0;
+    const repoOptions = limit > 0 ? { sort, skip, limit } : { sort };
+
+    const productsDocs = await productRepository.findAllPopulated(filter, repoOptions);
     const total = await productRepository.count(filter);
 
     // FETCH ASSOCIATED PRODUCT BATCHES FOR ALL PRODUCTS IN A SINGLE BULK QUERY (EXCLUDING SOFT-DELETED BATCHES)

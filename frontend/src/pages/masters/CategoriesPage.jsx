@@ -59,6 +59,7 @@ export default function CategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setIsDrawerOpen(false);
       reset();
     },
@@ -69,6 +70,7 @@ export default function CategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setIsDrawerOpen(false);
       setEditingCategory(null);
       reset();
@@ -80,6 +82,7 @@ export default function CategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setConfirmDialog({ isOpen: false, category: null, type: 'archive' });
     },
   });
@@ -89,6 +92,7 @@ export default function CategoriesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setConfirmDialog({ isOpen: false, category: null, type: 'restore' });
     },
   });

@@ -44,6 +44,7 @@ export default function ShopDiscountModal({ isOpen, onClose }) {
     onSuccess: () => {
       queryClient.invalidateQueries(['shop-discount']);
       queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries(['dashboard-overview']);
       onClose();
     },
     onError: (err) => {

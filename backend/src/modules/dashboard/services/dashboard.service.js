@@ -287,4 +287,18 @@ export const dashboardService = {
       notifications,
     };
   },
+
+  async getDashboardOverview(userId) {
+    if (!userId) throw new Error('userId is required');
+
+    const [summary, notifData] = await Promise.all([
+      this.getDashboardSummary(userId),
+      this.getNotifications(userId),
+    ]);
+
+    return {
+      ...summary,
+      unreadNotificationCount: notifData.unreadCount || 0,
+    };
+  },
 };

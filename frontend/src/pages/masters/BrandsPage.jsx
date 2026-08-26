@@ -76,6 +76,7 @@ export default function BrandsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setIsDrawerOpen(false);
       setApiError(null);
       reset();
@@ -88,6 +89,7 @@ export default function BrandsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setIsDrawerOpen(false);
       setEditingBrand(null);
       setApiError(null);
@@ -101,6 +103,7 @@ export default function BrandsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setConfirmDialog({ isOpen: false, brand: null, type: 'archive' });
     },
   });
@@ -110,6 +113,7 @@ export default function BrandsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
+      queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setConfirmDialog({ isOpen: false, brand: null, type: 'restore' });
     },
   });

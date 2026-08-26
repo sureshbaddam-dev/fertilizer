@@ -8,8 +8,8 @@ export default function TodaySummary({ summaryData }) {
   const navigate = useNavigate();
 
   const { data: apiResponse, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
     enabled: !summaryData,
     staleTime: 5 * 60 * 1000,
   });

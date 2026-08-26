@@ -7,8 +7,8 @@ export default function RecentBills({ billsData }) {
   const navigate = useNavigate();
 
   const { data: apiResponse, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
     enabled: !billsData,
     staleTime: 5 * 60 * 1000,
   });

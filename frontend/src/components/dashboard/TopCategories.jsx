@@ -13,10 +13,10 @@ const ICON_MAP = {
 
 export default function TopCategories({ categoriesData }) {
   const { data: apiResponse, isLoading } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => dashboardService.getDashboardSummary(),
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
     enabled: !categoriesData,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
   });
 
   const categories = categoriesData || apiResponse?.data?.topCategories || apiResponse?.topCategories || [];

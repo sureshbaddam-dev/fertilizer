@@ -59,13 +59,20 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     refetchOnWindowFocus: false,
   });
 
-  // Fetch Subscription Status from Backend API
+  // Fetch Subscription Status from Backend API (Shared 5-min cache)
   const { data: subRes } = useQuery({
     queryKey: ['my-subscription'],
     queryFn: () => subscriptionService.getMySubscription(),
-    staleTime: 10 * 1000,
-    refetchInterval: 30 * 1000,
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Fetch Dashboard Overview for lightweight unread count badge
+  const { data: overviewRes } = useQuery({
+    queryKey: ['dashboard-overview'],
+    queryFn: () => dashboardService.getDashboardOverview(),
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const currentUser = authService.getCurrentUser() || {};
@@ -97,6 +104,9 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const currentSub = subData?.subscription || null;
   const planName = currentSub?.planId?.name || currentSub?.planName || (currentSub?.planCode ? currentSub.planCode.replace(/_/g, ' ') : '3 Months');
   const expiryFormatted = currentSub?.expiryDate ? new Date(currentSub.expiryDate).toLocaleDateString('en-IN') : null;
+
+  const overviewData = overviewRes?.data || overviewRes;
+  const overviewUnreadCount = overviewData?.unreadNotificationCount ?? 0;
 
   const handleSignOut = async () => {
     try {
@@ -177,13 +187,13 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const searchResults = searchData?.data?.products || searchData?.products || [];
 
-  // Live System & Support Notifications Query from Backend (Polled every 15 seconds)
+  // Full System Notifications Query (Lazy-loaded ONLY when notification panel is open)
   const { data: notifData } = useQuery({
     queryKey: ['dashboard-notifications'],
     queryFn: () => dashboardService.getNotifications(),
-    staleTime: 10 * 1000,
-    refetchInterval: 15 * 1000,
-    refetchOnWindowFocus: true,
+    enabled: isNotifOpen,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Extract notifications array accurately from API response data
@@ -194,7 +204,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     read: n.read || readNotifIds.includes(n.id),
   }));
 
-  const unreadNotifCount = notificationsList.filter((n) => !n.read).length;
+  const unreadNotifCount = isNotifOpen ? notificationsList.filter((n) => !n.read).length : overviewUnreadCount;
 
   // Play sound when unread count increases
   useEffect(() => {

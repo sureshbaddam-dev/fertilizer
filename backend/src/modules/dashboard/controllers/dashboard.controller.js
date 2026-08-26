@@ -12,6 +12,15 @@ export const dashboardController = {
       next(err);
     }
   },
+  async getDashboardOverview(req, res, next) {
+    try {
+      const userId = req.user._id;
+      const overview = await dashboardService.getDashboardOverview(userId);
+      return sendSuccess(res, 'Dashboard overview retrieved successfully', overview, HTTP_STATUS.OK);
+    } catch (err) {
+      next(err);
+    }
+  },
   async getNotifications(req, res, next) {
     try {
       const userId = req.user._id;
