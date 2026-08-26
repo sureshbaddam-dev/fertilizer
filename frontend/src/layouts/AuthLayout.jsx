@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { CheckCircle2, Shield, ShieldCheck, Smile, Heart, Sun, ChevronDown } from 'lucide-react';
 import BrandLogo from '../components/common/BrandLogo';
-import loginProductsImg from '../assets/login_products.png';
+import loginProductsImg from '../assets/login_products.webp';
 import PageTracker from '../components/PageTracker';
 
 export default function AuthLayout() {
@@ -18,7 +18,7 @@ export default function AuthLayout() {
         <div className="hidden md:flex md:col-span-6 lg:col-span-7 flex-col justify-between p-4 sm:p-5 lg:p-7 relative bg-gradient-to-b from-emerald-50/70 via-emerald-50/30 to-emerald-100/50 border-r border-emerald-100/60 overflow-y-auto">
           <div className="space-y-3 lg:space-y-4">
             {/* Brand Logo */}
-            <BrandLogo textScale="lg" />
+            <BrandLogo textScale="lg" isLcp={true} />
 
             {/* Headline */}
             <div className="space-y-0.5">

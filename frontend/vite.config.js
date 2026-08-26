@@ -15,7 +15,7 @@ export default defineConfig({
     host: true,
   },
   build: {
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -28,12 +28,6 @@ export default defineConfig({
             }
             if (id.includes('lucide-react')) {
               return 'vendor-icons';
-            }
-            if (id.includes('recharts') || id.includes('d3-')) {
-              return 'vendor-charts';
-            }
-            if (id.includes('xlsx') || id.includes('jspdf') || id.includes('html2canvas') || id.includes('dompurify') || id.includes('pdfjs')) {
-              return 'vendor-export';
             }
           }
         },

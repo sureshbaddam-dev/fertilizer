@@ -317,16 +317,16 @@ export default function LoginPage() {
       </div>
 
       {/* Subtle Legal Links */}
-      <div className="pt-1 text-center text-[10px] text-slate-400 font-medium space-x-1.5 leading-tight">
-        <Link to="/terms-and-conditions" className="hover:text-slate-600 hover:underline">
+      <div className="pt-1 text-center text-[11px] text-slate-600 font-semibold space-x-1.5 leading-tight">
+        <Link to="/terms-and-conditions" className="hover:text-emerald-700 hover:underline">
           Terms &amp; Conditions
         </Link>
         <span>·</span>
-        <Link to="/privacy-policy" className="hover:text-slate-600 hover:underline">
+        <Link to="/privacy-policy" className="hover:text-emerald-700 hover:underline">
           Privacy Policy
         </Link>
         <span>·</span>
-        <Link to="/refund-cancellation-policy" className="hover:text-slate-600 hover:underline">
+        <Link to="/refund-cancellation-policy" className="hover:text-emerald-700 hover:underline">
           Refund &amp; Cancellation Policy
         </Link>
       </div>
