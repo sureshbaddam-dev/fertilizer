@@ -36,15 +36,13 @@ export default function MostSellingProducts({ onQuickAdd, hasActiveSub = false }
     return Array.isArray(rawList) ? rawList : [];
   }, [brandData]);
 
-  // Fetch active products dynamically from API (Paginated limit 12, server-filtered)
+  // Fetch active products dynamically from API (Complete available inventory, server-filtered)
   const { data: productData, isLoading } = useQuery({
     queryKey: ['dashboard-products', selectedCategory, selectedBrand, searchQuery],
     queryFn: () =>
       productService.getProducts({
         isActive: 'true',
         inStock: 'true',
-        limit: 12,
-        page: 1,
         category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
         brand: selectedBrand !== 'ALL' ? selectedBrand : undefined,
         search: searchQuery.trim() || undefined,
@@ -209,10 +207,12 @@ export default function MostSellingProducts({ onQuickAdd, hasActiveSub = false }
           ))}
         </div>
       ) : filteredProducts.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(140px,150px))] gap-2.5 sm:gap-3 justify-items-stretch sm:justify-items-start">
-          {filteredProducts.map((product) => (
-            <ProductCard key={product._id} product={product} onQuickAdd={onQuickAdd} />
-          ))}
+        <div className="max-h-[560px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+          <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(140px,150px))] gap-2.5 sm:gap-3 justify-items-stretch sm:justify-items-start">
+            {filteredProducts.map((product) => (
+              <ProductCard key={product._id} product={product} onQuickAdd={onQuickAdd} />
+            ))}
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs min-h-[240px] sm:min-h-[280px] w-full relative flex flex-col items-center justify-center p-8 overflow-hidden">
