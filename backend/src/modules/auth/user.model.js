@@ -72,6 +72,32 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    termsAccepted: {
+      type: Boolean,
+      default: false,
+    },
+    termsAcceptedAt: {
+      type: Date,
+      default: null,
+    },
+    termsVersion: {
+      type: String,
+      default: null,
+    },
+    legalAcceptance: {
+      accepted: {
+        type: Boolean,
+        default: false,
+      },
+      acceptedAt: {
+        type: Date,
+        default: null,
+      },
+      termsVersion: {
+        type: String,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,

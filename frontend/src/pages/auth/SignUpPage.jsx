@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { authService } from '../../services/authService';
 import BrandLogo from '../../components/common/BrandLogo';
+import PasswordRequirementsHelper, { isPasswordStrong } from '../../components/auth/PasswordRequirementsHelper';
 
 export default function SignUpPage() {
   const navigate = useNavigate();
@@ -37,6 +38,7 @@ export default function SignUpPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [otp, setOtp] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -47,6 +49,12 @@ export default function SignUpPage() {
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Password & Confirm Password Validation states (onBlur / Submit)
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
 
   // OTP Timer & Loading states
   const [resendTimer, setResendTimer] = useState(0);
@@ -169,12 +177,27 @@ export default function SignUpPage() {
       return;
     }
 
-    if (!password || password.length < 6) {
-      setServerError('Password must be at least 6 characters long.');
+    // Validate Password
+    setPasswordTouched(true);
+    if (!isPasswordStrong(password)) {
+      const errMsg = 'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.';
+      setPasswordError(errMsg);
+      setServerError(errMsg);
       return;
     }
+
+    // Validate Confirm Password
+    setConfirmPasswordTouched(true);
     if (password !== confirmPassword) {
-      setServerError('Password and Confirm Password do not match.');
+      const errMsg = 'Password and Confirm Password do not match.';
+      setConfirmPasswordError(errMsg);
+      setServerError(errMsg);
+      return;
+    }
+
+    // Validate Terms Acceptance
+    if (!termsAccepted) {
+      setServerError('Please accept the Terms & Conditions, Privacy Policy and Refund & Cancellation Policy to continue.');
       return;
     }
 
@@ -184,6 +207,7 @@ export default function SignUpPage() {
         email: cleanEmail,
         password,
         confirmPassword,
+        termsAccepted: termsAccepted,
       });
 
       if (response.success) {
@@ -445,10 +469,32 @@ export default function SignUpPage() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError('');
+                }}
+                onBlur={() => {
+                  setPasswordTouched(true);
+                  if (password && !isPasswordStrong(password)) {
+                    setPasswordError(
+                      'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.'
+                    );
+                  } else {
+                    setPasswordError('');
+                  }
+                  if (confirmPasswordTouched && confirmPassword) {
+                    if (password !== confirmPassword) {
+                      setConfirmPasswordError('Password and Confirm Password do not match.');
+                    } else {
+                      setConfirmPasswordError('');
+                    }
+                  }
+                }}
                 disabled={isSubmitting}
-                placeholder="At least 6 characters"
-                className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+                placeholder="e.g. Vedixa@123"
+                className={`w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border ${
+                  passwordError ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-emerald-600'
+                } rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all shadow-2xs`}
                 required
               />
               <button
@@ -459,6 +505,15 @@ export default function SignUpPage() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {passwordError && (
+              <>
+                <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                  <span>{passwordError}</span>
+                </p>
+                <PasswordRequirementsHelper password={password} isVisible={true} />
+              </>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -472,10 +527,23 @@ export default function SignUpPage() {
               <input
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setConfirmPasswordError('');
+                }}
+                onBlur={() => {
+                  setConfirmPasswordTouched(true);
+                  if (confirmPassword && password !== confirmPassword) {
+                    setConfirmPasswordError('Password and Confirm Password do not match.');
+                  } else {
+                    setConfirmPasswordError('');
+                  }
+                }}
                 disabled={isSubmitting}
                 placeholder="Re-enter password"
-                className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white transition-all shadow-2xs"
+                className={`w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border ${
+                  confirmPasswordError ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-emerald-600'
+                } rounded-xl text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all shadow-2xs`}
                 required
               />
               <button
@@ -486,6 +554,52 @@ export default function SignUpPage() {
                 {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {confirmPasswordError && (
+              <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                <span>{confirmPasswordError}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Mandatory Legal Consent Checkbox */}
+          <div className="pt-1.5 pb-0.5">
+            <label className="flex items-start gap-2 text-[11px] sm:text-xs font-semibold text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                disabled={isSubmitting}
+                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 focus:ring-emerald-500/20 cursor-pointer shrink-0"
+              />
+              <span className="leading-snug">
+                I have read and agree to the{' '}
+                <Link
+                  to="/terms-and-conditions"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline"
+                >
+                  Terms &amp; Conditions
+                </Link>
+                ,{' '}
+                <Link
+                  to="/privacy-policy"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline"
+                >
+                  Privacy Policy
+                </Link>{' '}
+                and{' '}
+                <Link
+                  to="/refund-cancellation-policy"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline"
+                >
+                  Refund &amp; Cancellation Policy
+                </Link>
+                .
+              </span>
+            </label>
           </div>
 
           <button

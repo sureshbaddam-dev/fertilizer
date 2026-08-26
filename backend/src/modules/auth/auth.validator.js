@@ -16,10 +16,15 @@ export const validateRequest = (req, _res, next) => {
 
 export const initiateSignupRules = [
   body('email').trim().toLowerCase().isEmail().withMessage('Please enter a valid email address'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+  body('password')
+    .custom((val) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(val))
+    .withMessage('Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.'),
   body('confirmPassword')
     .custom((value, { req }) => value === req.body.password)
     .withMessage('Passwords do not match'),
+  body('termsAccepted')
+    .custom((val) => val === true || val === 'true')
+    .withMessage('Please accept the Terms & Conditions, Privacy Policy and Refund & Cancellation Policy to continue.'),
   validateRequest,
 ];
 
@@ -58,7 +63,9 @@ export const completeOnboardingRules = [
 ];
 
 export const signupRules = [
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+  body('password')
+    .custom((val) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(val))
+    .withMessage('Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.'),
   body('confirmPassword')
     .custom((value, { req }) => value === req.body.password)
     .withMessage('Passwords do not match'),
@@ -93,7 +100,9 @@ export const resetPasswordRules = [
     .matches(/^[6-9]\d{9}$/)
     .withMessage('Valid 10-digit mobile number is required'),
   body('otp').isLength({ min: 6, max: 6 }).withMessage('6-digit OTP is required'),
-  body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters long'),
+  body('newPassword')
+    .custom((val) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(val))
+    .withMessage('Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.'),
   body('confirmPassword')
     .custom((value, { req }) => value === req.body.newPassword)
     .withMessage('Passwords do not match'),

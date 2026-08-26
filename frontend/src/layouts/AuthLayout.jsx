@@ -78,7 +78,7 @@ export default function AuthLayout() {
             </div>
 
             <p className="text-center text-[10px] text-gray-500 font-medium">
-              © 2026 Vedixa Agri Solutions. All rights reserved.
+              © 2026 Vedixa ERP. All rights reserved.
             </p>
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function AuthLayout() {
                 <span>Always</span>
               </div>
             </div>
-            <p className="text-center text-[9px] text-gray-400">© 2026 Vedixa Agri Solutions</p>
+            <p className="text-center text-[9px] text-gray-400">© 2026 Vedixa ERP</p>
           </div>
         </div>
 

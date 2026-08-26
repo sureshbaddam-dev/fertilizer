@@ -113,6 +113,11 @@ export const emailService = {
     logger.info(`[Signup OTP] Recipient: ${cleanToEmail}`);
 
     if (!brevoApiKey) {
+      const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+      if (isDev) {
+        logger.info(`[Signup OTP Dev Console] Recipient: ${cleanToEmail} | OTP Code: ${otp}`);
+        return { sent: true, provider: 'dev_console' };
+      }
       throw new Error('BREVO_API_KEY is missing in backend environment configuration.');
     }
 

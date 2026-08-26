@@ -143,10 +143,10 @@ export const checkEmailAvailability = asyncHandler(async (req, res) => {
 });
 
 export const initiateSignupOtp = asyncHandler(async (req, res) => {
-  const { email, password, confirmPassword } = req.body;
+  const { email, password, confirmPassword, termsAccepted } = req.body;
   const cleanEmail = email ? String(email).trim().toLowerCase() : '';
   logger.info(`[Signup OTP] Recipient: ${cleanEmail}`);
-  const result = await authService.initiateSignupOtp({ email: cleanEmail, password, confirmPassword });
+  const result = await authService.initiateSignupOtp({ email: cleanEmail, password, confirmPassword, termsAccepted });
   return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
 });
 

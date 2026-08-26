@@ -26,6 +26,11 @@ const TaxesGstPage = lazy(() => import('../pages/settings/TaxesGstPage'));
 const NotificationsPage = lazy(() => import('../pages/settings/NotificationsPage'));
 const SecurityPage = lazy(() => import('../pages/settings/SecurityPage'));
 const PreferencesPage = lazy(() => import('../pages/settings/PreferencesPage'));
+const LegalPoliciesPage = lazy(() => import('../pages/settings/LegalPoliciesPage'));
+
+const TermsAndConditionsPage = lazy(() => import('../pages/legal/TermsAndConditionsPage'));
+const PrivacyPolicyPage = lazy(() => import('../pages/legal/PrivacyPolicyPage'));
+const RefundCancellationPolicyPage = lazy(() => import('../pages/legal/RefundCancellationPolicyPage'));
 
 const SuppliersPage = lazy(() => import('../pages/masters/SuppliersPage'));
 const NewPurchasePage = lazy(() => import('../pages/purchases/NewPurchasePage'));
@@ -56,6 +61,18 @@ const withSuspense = (Component) => (
 );
 
 export const appRouter = createBrowserRouter([
+  {
+    path: '/terms-and-conditions',
+    element: withSuspense(TermsAndConditionsPage),
+  },
+  {
+    path: '/privacy-policy',
+    element: withSuspense(PrivacyPolicyPage),
+  },
+  {
+    path: '/refund-cancellation-policy',
+    element: withSuspense(RefundCancellationPolicyPage),
+  },
   {
     path: '/subscription/plans',
     element: (
@@ -228,6 +245,7 @@ export const appRouter = createBrowserRouter([
           { path: 'backup', element: <Navigate to="/settings" replace /> },
           { path: 'security', element: withSuspense(SecurityPage) },
           { path: 'preferences', element: withSuspense(PreferencesPage) },
+          { path: 'legal', element: withSuspense(LegalPoliciesPage) },
         ],
       },
     ],

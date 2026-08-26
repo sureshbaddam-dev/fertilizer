@@ -5,11 +5,19 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Lock, Eye, EyeOff, CheckCircle2, ArrowRight, AlertCircle } from 'lucide-react';
 import { authService } from '../../services/authService';
+import PasswordRequirementsHelper from '../../components/auth/PasswordRequirementsHelper';
+
+const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 const resetSchema = z
   .object({
-    password: z.string().min(6, 'New password must be at least 6 characters'),
-    confirmPassword: z.string().min(6, 'Confirm password is required'),
+    password: z
+      .string()
+      .regex(
+        STRONG_PASSWORD_REGEX,
+        'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.'
+      ),
+    confirmPassword: z.string().min(1, 'Confirm password is required'),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",
@@ -30,14 +38,18 @@ export default function ResetPasswordPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(resetSchema),
+    mode: 'onBlur',
     defaultValues: {
       password: '',
       confirmPassword: '',
     },
   });
+
+  const watchPassword = watch('password');
 
   const onSubmit = async (data) => {
     setServerError('');
@@ -101,7 +113,7 @@ export default function ResetPasswordPage() {
             <input
               type={showPassword ? 'text' : 'password'}
               {...register('password')}
-              placeholder="Enter new password"
+              placeholder="e.g. Vedixa@123"
               className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-gray-50/50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
             />
             <button
@@ -112,6 +124,7 @@ export default function ResetPasswordPage() {
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+          <PasswordRequirementsHelper password={watchPassword} isVisible={Boolean(watchPassword)} />
           {errors.password && <p className="text-[11px] text-red-500 font-medium">{errors.password.message}</p>}
         </div>
 

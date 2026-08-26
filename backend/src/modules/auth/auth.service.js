@@ -9,6 +9,7 @@ import { logger } from '../../config/logger.config.js';
 import { AppError } from '../../utils/appError.js';
 import { HTTP_STATUS } from '../../common/httpStatuses.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt.utils.js';
+import { CURRENT_TERMS_VERSION } from '../../constants/legal.constants.js';
 
 const OTP_EXPIRY_SECONDS = 300; // 5 minutes
 
@@ -213,6 +214,14 @@ export const authService = {
       isProfileComplete: true,
       role: 'owner',
       isActive: true,
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+      termsVersion: CURRENT_TERMS_VERSION,
+      legalAcceptance: {
+        accepted: true,
+        acceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
+      },
     });
 
     // Create Default ShopSettings Document
@@ -257,7 +266,7 @@ export const authService = {
     return { rawToken, verifyUrl };
   },
 
-  async initiateSignupOtp({ email, password, confirmPassword }) {
+  async initiateSignupOtp({ email, password, confirmPassword, termsAccepted }) {
     if (!email || typeof email !== 'string' || !email.trim()) {
       logger.warn('[Auth Service] Signup OTP failed: Missing email address');
       throw new AppError('Email address is required', HTTP_STATUS.BAD_REQUEST);
@@ -270,14 +279,26 @@ export const authService = {
       throw new AppError('Please enter a valid email address', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      logger.warn(`[Auth Service] Signup OTP failed: Password length validation failed for ${maskedEmail}`);
-      throw new AppError('Password must be at least 6 characters long', HTTP_STATUS.BAD_REQUEST);
+    const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+    if (!password || typeof password !== 'string' || !STRONG_PASSWORD_REGEX.test(password)) {
+      logger.warn(`[Auth Service] Signup OTP failed: Strong password validation failed for ${maskedEmail}`);
+      throw new AppError(
+        'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.',
+        HTTP_STATUS.BAD_REQUEST
+      );
     }
 
     if (password !== confirmPassword) {
       logger.warn(`[Auth Service] Signup OTP failed: Password mismatch for ${maskedEmail}`);
       throw new AppError('Password and Confirm Password do not match', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    if (termsAccepted !== true && termsAccepted !== 'true') {
+      logger.warn(`[Auth Service] Signup OTP failed: Terms not accepted for ${maskedEmail}`);
+      throw new AppError(
+        'Please accept the Terms & Conditions, Privacy Policy and Refund & Cancellation Policy to continue.',
+        HTTP_STATUS.BAD_REQUEST
+      );
     }
 
     logger.info(`[Auth Service] Input validation passed for ${maskedEmail}`);
@@ -299,6 +320,9 @@ export const authService = {
       email: cleanEmail,
       passwordHash,
       otpHash,
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+      termsVersion: CURRENT_TERMS_VERSION,
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
       attempts: 0,
       resendCooldown: Date.now() + 60 * 1000, // 60 seconds
@@ -323,10 +347,15 @@ export const authService = {
       logger.info(`[Signup OTP] OTP email dispatched successfully to recipient: ${cleanEmail}`);
     } catch (sendErr) {
       logger.error(`[Auth Service] Failed to send Brevo OTP email to ${maskedEmail}: ${sendErr.message}`);
-      throw new AppError(
-        `Unable to send verification OTP email: ${sendErr.message}. Please check your email address and try again.`,
-        HTTP_STATUS.INTERNAL_SERVER_ERROR
-      );
+      const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+      if (isDev) {
+        logger.info(`[Dev OTP Fallback] Verification OTP Code for ${cleanEmail}: ${otpCode}`);
+      } else {
+        throw new AppError(
+          `Unable to send verification OTP email: ${sendErr.message}. Please check your email address and try again.`,
+          HTTP_STATUS.INTERNAL_SERVER_ERROR
+        );
+      }
     }
 
     return {
@@ -383,6 +412,14 @@ export const authService = {
         isProfileComplete: false,
         role: 'owner',
         isActive: true,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
+        legalAcceptance: {
+          accepted: true,
+          acceptedAt: new Date(),
+          termsVersion: CURRENT_TERMS_VERSION,
+        },
       });
     } catch (createErr) {
       if (createErr.code === 11000) {
@@ -773,6 +810,13 @@ export const authService = {
   },
 
   async resetPassword({ mobile, otp, newPassword }) {
+    const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+    if (!newPassword || typeof newPassword !== 'string' || !STRONG_PASSWORD_REGEX.test(newPassword)) {
+      throw new AppError(
+        'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character.',
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
     const redisKey = `otp:forgot:${mobile}`;
     const storedOtpData = await redisService.get(redisKey);
 

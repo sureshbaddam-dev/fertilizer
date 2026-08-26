@@ -27,6 +27,7 @@ const SETTINGS_TABS = [
   { name: 'Preferences', path: '/settings/preferences', icon: Sliders },
   { name: 'Master Data', path: '/settings/master-data', icon: Database },
   { name: 'Notifications', path: '/settings/notifications', icon: Bell },
+  { name: 'Legal & Policies', path: '/settings/legal', icon: ShieldCheck },
 ];
 
 export default function SettingsHubLayout() {
