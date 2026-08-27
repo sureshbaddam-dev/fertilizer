@@ -237,13 +237,14 @@ export const dashboardService = {
 
     adminNotifs.forEach((an) => {
       const isTicketMsg = an.title?.includes('Ticket') || an.message?.includes('TCK-');
+      const isoCreated = an.createdAt ? new Date(an.createdAt).toISOString() : new Date().toISOString();
       notifications.push({
         id: `admin-${an._id}`,
         type: an.type || 'admin_announcement',
         title: an.title || 'System Announcement',
         message: an.message,
-        timestamp: new Date(an.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-        createdAt: an.createdAt,
+        timestamp: isoCreated,
+        createdAt: isoCreated,
         read: false,
         category: isTicketMsg ? 'Support Tickets' : 'Admin Announcements',
         path: isTicketMsg ? '/support' : '/dashboard',
@@ -264,13 +265,14 @@ export const dashboardService = {
           : st === 'CLOSED'
           ? 'Closed'
           : 'Pending';
+      const isoDate = t.updatedAt || t.createdAt ? new Date(t.updatedAt || t.createdAt).toISOString() : new Date().toISOString();
       notifications.push({
         id: `ticket-${t._id}`,
         type: 'support_ticket',
         title: `Help Request ${statusLabel}`,
         message: `Request ${t.ticketId} (${t.subject}): Status is ${statusLabel}.`,
-        timestamp: new Date(t.updatedAt || t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-        createdAt: t.updatedAt || t.createdAt,
+        timestamp: isoDate,
+        createdAt: isoDate,
         read: false,
         category: 'Help Requests',
         path: '/support',

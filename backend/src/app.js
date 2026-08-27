@@ -126,6 +126,7 @@ app.use(`${envConfig.apiPrefix}/reports`, reportsRoutes);
 import supportRoutes from './modules/support/support.routes.js';
 import subscriptionRoutes from './modules/subscription/subscription.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
+import notificationRoutes from './modules/notifications/notification.routes.js';
 import { trackWebsiteVisitor, recordVisitorHit } from './modules/admin/middlewares/visitorTracking.middleware.js';
 
 // Public Visitor Ping Endpoint for live tracking
@@ -152,6 +153,9 @@ app.use(`${envConfig.apiPrefix}/subscriptions`, subscriptionRoutes);
 
 // Admin Control Panel Routes
 app.use(`${envConfig.apiPrefix}/admin`, adminRoutes);
+
+// Web Push & Notifications Routes
+app.use(`${envConfig.apiPrefix}/notifications`, notificationRoutes);
 
 // 404 Not Found Handler
 app.use(notFoundHandler);

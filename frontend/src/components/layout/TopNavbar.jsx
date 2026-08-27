@@ -10,6 +10,8 @@ import { authService } from '../../services/authService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
 import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
+import { playNotificationChime } from '../../utils/soundUtils';
+import { formatRelativeTimeIST } from '../../utils/dateUtils';
 
 const NOTIF_CATEGORIES = ['All', 'Support Tickets', 'Admin Announcements'];
 
@@ -187,13 +189,13 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const searchResults = searchData?.data?.products || searchData?.products || [];
 
-  // Full System Notifications Query (Lazy-loaded ONLY when notification panel is open)
+  // Full System Notifications Query (Polls live every 15 seconds)
   const { data: notifData } = useQuery({
     queryKey: ['dashboard-notifications'],
     queryFn: () => dashboardService.getNotifications(),
-    enabled: isNotifOpen,
-    staleTime: 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // Extract notifications array accurately from API response data
@@ -204,15 +206,34 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     read: n.read || readNotifIds.includes(n.id),
   }));
 
-  const unreadNotifCount = isNotifOpen ? notificationsList.filter((n) => !n.read).length : overviewUnreadCount;
+  const unreadNotifCount = notificationsList.filter((n) => !n.read).length || overviewUnreadCount;
 
-  // Play sound when unread count increases
+  // Track seen notification IDs to play sound ONLY for genuinely NEW notifications
+  const seenNotifIdsRef = useRef(new Set());
+  const isNotifInitializedRef = useRef(false);
+
   useEffect(() => {
-    if (unreadNotifCount > prevUnreadCountRef.current && prevUnreadCountRef.current !== 0) {
-      playNotifSound();
+    if (!rawNotifications || rawNotifications.length === 0) return;
+
+    const currentIds = rawNotifications.map((n) => n.id);
+
+    if (!isNotifInitializedRef.current) {
+      // First fetch / page refresh: populate seen IDs without playing sound
+      currentIds.forEach((id) => seenNotifIdsRef.current.add(id));
+      isNotifInitializedRef.current = true;
+      return;
     }
-    prevUnreadCountRef.current = unreadNotifCount;
-  }, [unreadNotifCount]);
+
+    // Check for genuinely new notification IDs
+    const newIds = currentIds.filter((id) => !seenNotifIdsRef.current.has(id));
+    if (newIds.length > 0) {
+      const soundPref = localStorage.getItem(soundStorageKey) || 'ON';
+      if (soundPref !== 'OFF') {
+        playNotificationChime();
+      }
+      newIds.forEach((id) => seenNotifIdsRef.current.add(id));
+    }
+  }, [rawNotifications, soundStorageKey]);
 
   const filteredNotifications = selectedNotifCat === 'All'
     ? notificationsList
@@ -469,7 +490,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                                   {notif.title}
                                 </span>
                                 <span className="text-[9px] font-mono text-slate-400 shrink-0">
-                                  {notif.timestamp}
+                                  {formatRelativeTimeIST(notif.createdAt || notif.timestamp)}
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-600 leading-tight mt-0.5 font-medium">

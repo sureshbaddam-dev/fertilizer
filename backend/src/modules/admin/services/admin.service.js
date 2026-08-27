@@ -23,6 +23,7 @@ import { Purchase } from '../../purchases/models/purchase.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { SupportTicket } from '../../support/supportTicket.model.js';
+import { pushNotificationService } from '../../notifications/services/pushNotification.service.js';
 
 export const logAdminAuditAction = async ({
   adminId,
@@ -932,6 +933,13 @@ export const adminService = {
       req,
     });
 
+    // Asynchronously dispatch Web Push Notification
+    pushNotificationService.sendPushToUser(user._id, {
+      title: notif.title,
+      body: notif.message,
+      url: '/dashboard',
+    }).catch(() => {});
+
     return notif;
   },
 
@@ -974,6 +982,17 @@ export const adminService = {
       details: `Broadcasted notification "${notif.title}" to ${targetUsers.length} users.`,
       req,
     });
+
+    // Asynchronously dispatch Web Push Notification to Audience
+    pushNotificationService.sendPushToAudience(
+      notifData.targetAudience,
+      targetUsers.map((u) => u._id),
+      {
+        title: notif.title,
+        body: notif.message,
+        url: '/dashboard',
+      }
+    ).catch(() => {});
 
     return notif;
   },

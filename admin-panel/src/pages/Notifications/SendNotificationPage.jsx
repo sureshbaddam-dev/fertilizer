@@ -3,6 +3,7 @@ import { Bell, Send, CheckCircle2, History } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDateTime } from '../../utils/adminDateUtils';
 
 export default function SendNotificationPage() {
   const [formData, setFormData] = useState({
@@ -51,7 +52,7 @@ export default function SendNotificationPage() {
     { header: 'Target Audience', key: 'targetAudience', render: (row) => <StatusBadge status={row.targetAudience} /> },
     { header: 'Type', key: 'notificationType', render: (row) => <span className="text-[10px] font-bold text-slate-500">{row.notificationType}</span> },
     { header: 'Delivered', key: 'deliveredCount', render: (row) => <span className="font-bold text-emerald-700">{row.deliveredCount} Users</span> },
-    { header: 'Sent Date', key: 'createdAt', render: (row) => new Date(row.createdAt).toLocaleString('en-IN') },
+    { header: 'Sent Date', key: 'createdAt', render: (row) => <span className="font-mono text-xs">{formatISTDateTime(row.createdAt)}</span> },
     { header: 'Sent By Admin', key: 'sentByAdminName' },
   ];
 

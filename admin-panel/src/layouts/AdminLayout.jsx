@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { adminApiService } from '../services/adminApiService';
 import vedixaLogo from '../assets/vedixa_logo.png';
+import { formatISTTime } from '../utils/adminDateUtils';
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -352,7 +353,7 @@ export default function AdminLayout() {
                             <p className="text-[11px] text-slate-500 truncate">From: {notif.userName} ({notif.userMobile})</p>
                             <span className="text-[10px] text-slate-400 flex items-center space-x-1 mt-1">
                               <Clock className="w-3 h-3" />
-                              <span>{new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              <span>{formatISTTime(notif.createdAt)}</span>
                             </span>
                           </div>
                         </div>

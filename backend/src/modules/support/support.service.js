@@ -5,6 +5,7 @@ import { ShopSettings } from '../settings/models/shopSettings.model.js';
 import { User } from '../auth/user.model.js';
 import { AppError } from '../../utils/appError.js';
 import { HTTP_STATUS } from '../../common/httpStatuses.js';
+import { pushNotificationService } from '../notifications/services/pushNotification.service.js';
 
 function generateRequestId(count) {
   const date = new Date();
@@ -371,6 +372,11 @@ export const supportService = {
             deliveredCount: 1,
           });
           console.log(`🔔 Sent request status notification to user ${ticket.userId}: "${notifMsg}"`);
+          pushNotificationService.sendPushToUser(ticket.userId, {
+            title: `Help Request ${statusLabel}`,
+            body: notifMsg,
+            url: '/support',
+          }).catch(() => {});
         } catch (nErr) {
           console.error('Failed to create ticket notification:', nErr.message);
         }

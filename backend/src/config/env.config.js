@@ -53,4 +53,9 @@ export const envConfig = {
     senderName: process.env.EMAIL_FROM_NAME || process.env.BREVO_SENDER_NAME || 'VEDIXA ERP',
     templateId: parseInt(process.env.BREVO_TEMPLATE_ID || '2', 10),
   },
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.VAPID_PRIVATE_KEY || '',
+    subject: process.env.VAPID_SUBJECT || 'mailto:info@vedixaerp.com',
+  },
 };
