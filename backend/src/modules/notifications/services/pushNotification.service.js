@@ -3,44 +3,33 @@ import { envConfig } from '../../../config/env.config.js';
 import { logger } from '../../../config/logger.config.js';
 import { PushSubscription } from '../models/pushSubscription.model.js';
 
-let activeVapidKeys = {
-  publicKey: envConfig.vapid.publicKey || process.env.VAPID_PUBLIC_KEY || '',
-  privateKey: envConfig.vapid.privateKey || process.env.VAPID_PRIVATE_KEY || '',
-};
-
 let isVapidInitialized = false;
 
 function initializeVapid() {
   if (isVapidInitialized) return;
 
+  const publicKey = envConfig.vapid.publicKey || process.env.VAPID_PUBLIC_KEY || '';
+  const privateKey = envConfig.vapid.privateKey || process.env.VAPID_PRIVATE_KEY || '';
   const subject = envConfig.vapid.subject || 'mailto:info@vedixaerp.com';
 
-  if (!activeVapidKeys.publicKey || !activeVapidKeys.privateKey) {
-    logger.warn('⚠️ VAPID keys not configured in environment. Generating automated keypair for runtime Web Push.');
-    try {
-      const generatedKeys = webpush.generateVAPIDKeys();
-      activeVapidKeys.publicKey = generatedKeys.publicKey;
-      activeVapidKeys.privateKey = generatedKeys.privateKey;
-      logger.info(`🔑 Auto-Generated VAPID Public Key: ${activeVapidKeys.publicKey}`);
-    } catch (err) {
-      logger.error(`❌ Failed to auto-generate VAPID keys: ${err.message}`);
-      return;
-    }
+  if (!publicKey || !privateKey) {
+    logger.error('❌ Web Push Error: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY missing in environment configuration.');
+    return;
   }
 
   try {
-    webpush.setVapidDetails(subject, activeVapidKeys.publicKey, activeVapidKeys.privateKey);
+    webpush.setVapidDetails(subject, publicKey, privateKey);
     isVapidInitialized = true;
-    logger.info('✅ Web Push VAPID Service initialized successfully.');
+    logger.info('✅ Web Push VAPID Service initialized successfully with persistent keys.');
   } catch (err) {
-    logger.error(`❌ Failed to set VAPID details: ${err.message}`);
+    logger.error(`❌ Failed to initialize Web Push VAPID: ${err.message}`);
   }
 }
 
 export const pushNotificationService = {
   getVapidPublicKey() {
     initializeVapid();
-    return activeVapidKeys.publicKey;
+    return envConfig.vapid.publicKey || process.env.VAPID_PUBLIC_KEY || '';
   },
 
   async saveSubscription(userId, subscriptionData, userAgent = '') {

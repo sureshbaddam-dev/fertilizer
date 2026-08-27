@@ -12,7 +12,7 @@ export default function NotificationsPage() {
   const userId = s?.userId || s?._id || 'user_default';
   const soundStorageKey = `vedixa_notif_sound_${userId}`;
 
-  const { permission, isSubscribed, isLoading: webPushLoading, subscribeToPush, unsubscribeFromPush } = useWebPush();
+  const { permission, isSubscribed, isLoading: webPushLoading, isIosPwa, subscribeToPush, unsubscribeFromPush } = useWebPush();
 
   // Notification Sound State (Default: ON)
   const [notifSound, setNotifSound] = useState(() => {
@@ -180,6 +180,11 @@ export default function NotificationsPage() {
             <p className="text-[11px] text-slate-500 font-medium">
               Receive instant desktop/mobile system notifications even when the VEDIXA tab is closed or running in the background.
             </p>
+            {isIosPwa && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-medium">
+                📱 <strong>iPhone/iPad Users:</strong> iOS Safari requires adding VEDIXA to your Home Screen first ("Share" button → "Add to Home Screen"). Open VEDIXA from your Home Screen to enable Web Push.
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">

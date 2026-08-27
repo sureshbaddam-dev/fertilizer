@@ -19,16 +19,26 @@ export function useWebPush() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [swRegistration, setSwRegistration] = useState(null);
+  const [isIosPwa, setIsIosPwa] = useState(false);
 
   // Register Service Worker & check subscription on mount
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (typeof window === 'undefined') return;
+
+    const isIosDevice = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+    if (isIosDevice && !isStandalone) {
+      setIsIosPwa(true);
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       setPermission('unsupported');
       return;
     }
 
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
       .then((reg) => {
         setSwRegistration(reg);
         return reg.pushManager.getSubscription();
@@ -37,22 +47,38 @@ export function useWebPush() {
         setIsSubscribed(!!sub);
       })
       .catch((_err) => {
-        // Service worker registration error silently caught
+        // Service worker registration error silently handled
       });
   }, []);
 
   const subscribeToPush = useCallback(async () => {
-    if (!('Notification' in window) || !swRegistration) {
-      throw new Error('Web Push is not supported on this device/browser.');
+    if (typeof window === 'undefined') return;
+
+    const isIosDevice = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+    const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+    if (isIosDevice && !isStandalone) {
+      throw new Error('On iOS (iPhone/iPad), Web Push requires adding VEDIXA to your Home Screen as an App.');
+    }
+
+    if (!('Notification' in window) || !('PushManager' in window)) {
+      throw new Error('Web Push is not supported on this device or browser version.');
     }
 
     setIsLoading(true);
     try {
+      let reg = swRegistration;
+      if (!reg) {
+        reg = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
+        await navigator.serviceWorker.ready;
+        setSwRegistration(reg);
+      }
+
       const perm = await Notification.requestPermission();
       setPermission(perm);
 
       if (perm !== 'granted') {
-        throw new Error('Notification permission was denied.');
+        throw new Error('Notification permission was denied. Please allow notifications in browser settings.');
       }
 
       // Fetch VAPID public key from backend
@@ -63,8 +89,16 @@ export function useWebPush() {
         throw new Error('VAPID public key unavailable from server.');
       }
 
+      // Unsubscribe any stale existing subscription first
+      const existingSub = await reg.pushManager.getSubscription();
+      if (existingSub) {
+        try {
+          await existingSub.unsubscribe();
+        } catch (_e) {}
+      }
+
       const convertedKey = urlBase64ToUint8Array(publicKey);
-      const subscription = await swRegistration.pushManager.subscribe({
+      const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: convertedKey,
       });
@@ -103,6 +137,7 @@ export function useWebPush() {
     permission,
     isSubscribed,
     isLoading,
+    isIosPwa,
     subscribeToPush,
     unsubscribeFromPush,
   };

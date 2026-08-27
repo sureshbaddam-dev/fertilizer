@@ -20,11 +20,16 @@ self.addEventListener('push', (event) => {
   }
 
   const title = data.title || 'VEDIXA ERP Notification';
+  const origin = self.location.origin;
+
   const options = {
     body: data.body || 'You have a new update in VEDIXA ERP.',
-    icon: data.icon || '/favicon.png',
-    badge: data.badge || '/favicon.png',
-    tag: data.tag || `notif-${Date.now()}`,
+    icon: data.icon && data.icon.startsWith('http') ? data.icon : `${origin}/apple-touch-icon.png`,
+    badge: data.badge && data.badge.startsWith('http') ? data.badge : `${origin}/favicon-32x32.png`,
+    tag: data.tag || 'vedixa-push-alert',
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
     data: {
       url: data.url || '/dashboard',
     },
