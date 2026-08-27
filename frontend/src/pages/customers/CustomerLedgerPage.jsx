@@ -654,25 +654,33 @@ export default function CustomerLedgerPage() {
     window.print();
   };
 
-  const handleDownloadLedgerPdf = () => {
-    if (statementType === 'MONTHLY') {
-      generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
-    } else {
-      generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+  const handleDownloadLedgerPdf = async () => {
+    try {
+      if (statementType === 'MONTHLY') {
+        await generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
+      } else {
+        await generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+      }
+    } catch (err) {
+      console.error('Failed to download ledger PDF:', err);
     }
   };
 
-  const handleWhatsAppStatement = () => {
+  const handleWhatsAppStatement = async () => {
     const custMobile = (customer?.mobile || '').trim();
     if (!custMobile) {
       alert("Customer mobile number is missing. Please add the customer's mobile/WhatsApp number first.");
       return;
     }
 
-    if (statementType === 'MONTHLY') {
-      generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
-    } else {
-      generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+    try {
+      if (statementType === 'MONTHLY') {
+        await generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
+      } else {
+        await generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
+      }
+    } catch (err) {
+      console.warn('PDF generation warning before WhatsApp redirect:', err);
     }
 
     const cleanPhone = custMobile.replace(/\D/g, '');
@@ -726,8 +734,12 @@ export default function CustomerLedgerPage() {
     deletePaymentMutation.mutate(paymentId);
   };
 
-  const handleDownloadPaymentPdf = (p) => {
-    generatePaymentReceiptPdf(p, customer, shopSettings);
+  const handleDownloadPaymentPdf = async (p) => {
+    try {
+      await generatePaymentReceiptPdf(p, customer, shopSettings);
+    } catch (err) {
+      console.error('Failed to download payment receipt PDF:', err);
+    }
   };
 
   return (

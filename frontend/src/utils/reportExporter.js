@@ -5,8 +5,11 @@ import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
  */
 export const exportReportToPDF = async (biData, dateRangeText = 'All Time', reportTitle = 'Executive Analytics Dashboard', shopSettings = {}) => {
   const { default: jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = autoTableModule.default || autoTableModule;
   const doc = new jsPDF('p', 'mm', 'a4');
+  const callAutoTable = (opts) => (typeof doc.autoTable === 'function' ? doc.autoTable(opts) : autoTable(doc, opts));
+
   const sales = biData?.sales || {};
   const purchases = biData?.purchases || {};
   const stock = biData?.stock || {};
@@ -51,7 +54,7 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
     ['Net Customer Outstanding', `Rs. ${(salesData.outstandingCollection || 0).toLocaleString('en-IN')}`, `Receivables`],
   ];
 
-  doc.autoTable({
+  callAutoTable({
     startY: 37,
     head: [['Executive Metric', 'Total Amount', 'Performance & Status']],
     body: kpiData,
@@ -69,12 +72,13 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
     `Rs. ${(p.salesValue || 0).toLocaleString('en-IN')}`,
   ]);
 
-  const currentY = doc.lastAutoTable.finalY + 10;
+  const lastY1 = doc.lastAutoTable?.finalY || 100;
+  const currentY = lastY1 + 10;
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('2. Top Selling Products', 14, currentY);
 
-  doc.autoTable({
+  callAutoTable({
     startY: currentY + 4,
     head: [['#', 'Product Name', 'Brand / Category', 'Quantity Sold', 'Revenue (Rs.)']],
     body: topProducts.length > 0 ? topProducts : [['-', 'No products record found', '-', '-', '-']],
@@ -84,7 +88,8 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
   });
 
   // 3. Inventory Overview
-  const invY = doc.lastAutoTable.finalY + 10;
+  const lastY2 = doc.lastAutoTable?.finalY || 160;
+  const invY = lastY2 + 10;
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('3. Inventory Stock Valuation', 14, invY);
@@ -96,7 +101,7 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
     ['Out of Stock Count', `${stock.outOfStockProducts || 0} Products`],
   ];
 
-  doc.autoTable({
+  callAutoTable({
     startY: invY + 4,
     head: [['Inventory Parameter', 'Status Value']],
     body: inventorySummary,

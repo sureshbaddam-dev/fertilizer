@@ -131,8 +131,12 @@ export default function BillsHistoryPage() {
   // Consume Shop Profile Settings from Shared Context
   const { settings: shopSettings } = useSettings();
 
-  const handleExportStatement = () => {
-    exportInvoiceHistoryToExcel(invoices, shopSettings);
+  const handleExportStatement = async () => {
+    try {
+      await exportInvoiceHistoryToExcel(invoices, shopSettings);
+    } catch (err) {
+      console.error('Failed to export invoice history to Excel:', err);
+    }
   };
 
   return (

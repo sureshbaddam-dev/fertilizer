@@ -311,8 +311,8 @@ export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = 
 /**
  * Downloads the Customer Ledger PDF immediately without tab redirect or page navigation.
  */
-export function generateLedgerPdf(customer, shopSettings, filteredTransactions, totals, periodStr) {
-  const doc = buildLedgerPdfDoc(customer, shopSettings, filteredTransactions, totals, periodStr);
+export async function generateLedgerPdf(customer, shopSettings, filteredTransactions, totals, periodStr) {
+  const doc = await buildLedgerPdfDoc(customer, shopSettings, filteredTransactions, totals, periodStr);
   const custName = customer?.name || 'Customer';
   const custNameClean = custName.replace(/[^a-zA-Z0-9]/g, '_');
   const todayStr = new Date().toISOString().split('T')[0];
@@ -324,8 +324,8 @@ export function generateLedgerPdf(customer, shopSettings, filteredTransactions, 
 /**
  * Triggers native browser print dialog for the vector PDF in-page via a hidden iframe (No page redirect or new tab).
  */
-export function printLedgerPdf(customer, shopSettings, filteredTransactions, totals, periodStr) {
-  const doc = buildLedgerPdfDoc(customer, shopSettings, filteredTransactions, totals, periodStr);
+export async function printLedgerPdf(customer, shopSettings, filteredTransactions, totals, periodStr) {
+  const doc = await buildLedgerPdfDoc(customer, shopSettings, filteredTransactions, totals, periodStr);
   const blobUrl = doc.output('bloburl');
 
   let iframe = document.getElementById('vedixa-pdf-print-iframe');
@@ -569,8 +569,8 @@ export async function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettings
 /**
  * Downloads Monthly Customer Account Statement PDF.
  */
-export function generateMonthlyStatementPdf(customer, shopSettings, monthlyData) {
-  const doc = buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
+export async function generateMonthlyStatementPdf(customer, shopSettings, monthlyData) {
+  const doc = await buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
   const custName = (customer?.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
   const monthStr = (monthlyData?.monthLabel || 'Statement').replace(/[^a-zA-Z0-9]/g, '_');
   const filename = `Statement_${custName}_${monthStr}.pdf`;
@@ -581,8 +581,8 @@ export function generateMonthlyStatementPdf(customer, shopSettings, monthlyData)
 /**
  * Prints Monthly Customer Account Statement PDF via hidden iframe.
  */
-export function printMonthlyStatementPdf(customer, shopSettings, monthlyData) {
-  const doc = buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
+export async function printMonthlyStatementPdf(customer, shopSettings, monthlyData) {
+  const doc = await buildMonthlyStatementPdfDoc(customer, shopSettings, monthlyData);
   const blobUrl = doc.output('bloburl');
 
   let iframe = document.getElementById('vedixa-pdf-print-iframe');
@@ -857,8 +857,8 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
 /**
  * Generates and downloads a Sales Invoice PDF document directly from data.
  */
-export function generateInvoicePdf(invoice, shopSettings) {
-  const doc = buildInvoicePdfDoc(invoice, shopSettings);
+export async function generateInvoicePdf(invoice, shopSettings) {
+  const doc = await buildInvoicePdfDoc(invoice, shopSettings);
   const invNo = invoice?.invoiceNumber || invoice?.refNo || 'INV-1001';
   const cleanInvNo = String(invNo).replace(/[^a-zA-Z0-9]/g, '_');
   const filename = `Invoice_${cleanInvNo}.pdf`;
@@ -869,8 +869,8 @@ export function generateInvoicePdf(invoice, shopSettings) {
 /**
  * Triggers native browser print dialog for the vector Invoice PDF in-page via a hidden iframe.
  */
-export function printInvoicePdf(invoice, shopSettings) {
-  const doc = buildInvoicePdfDoc(invoice, shopSettings);
+export async function printInvoicePdf(invoice, shopSettings) {
+  const doc = await buildInvoicePdfDoc(invoice, shopSettings);
   const blobUrl = doc.output('bloburl');
 
   let iframe = document.getElementById('vedixa-pdf-print-iframe');
@@ -1121,8 +1121,8 @@ export function previewInvoiceHistoryPdf(invoices, summary, shopSettings, applie
 /**
  * Downloads the Invoice History PDF Statement directly.
  */
-export function generateInvoiceHistoryPdf(invoices, summary, shopSettings, appliedFilters) {
-  const doc = buildInvoiceHistoryPdfDoc(invoices, summary, shopSettings, appliedFilters);
+export async function generateInvoiceHistoryPdf(invoices, summary, shopSettings, appliedFilters) {
+  const doc = await buildInvoiceHistoryPdfDoc(invoices, summary, shopSettings, appliedFilters);
   const todayStr = new Date().toISOString().split('T')[0];
   const filename = `Invoice_History_Report_${todayStr}.pdf`;
   doc.save(filename);
@@ -1357,8 +1357,8 @@ export async function buildGeneralCustomersPdfDoc(customersList = [], shopSettin
 /**
  * Downloads the General Customers Directory PDF.
  */
-export function generateGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
-  const doc = buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
+export async function generateGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
+  const doc = await buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
   const todayStr = new Date().toISOString().split('T')[0];
   const filename = `VEDIXA-General-Customers-${todayStr}.pdf`;
   doc.save(filename);
@@ -1368,8 +1368,8 @@ export function generateGeneralCustomersPdf(customersList, shopSettings, filterI
 /**
  * Triggers native browser print dialog for the General Customers Directory PDF via hidden iframe.
  */
-export function printGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
-  const doc = buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
+export async function printGeneralCustomersPdf(customersList, shopSettings, filterInfo) {
+  const doc = await buildGeneralCustomersPdfDoc(customersList, shopSettings, filterInfo);
   const blobUrl = doc.output('bloburl');
 
   let iframe = document.getElementById('vedixa-pdf-print-iframe');

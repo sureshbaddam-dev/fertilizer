@@ -806,8 +806,12 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         selectedMonth: defaultMonthStr,
       });
 
-      // 4. Generate Monthly Statement PDF
-      generateMonthlyStatementPdf(freshCustomer, shopSettings, monthlyData);
+      // 4. Generate Monthly Statement PDF (isolated so PDF download failure never blocks WhatsApp)
+      try {
+        await generateMonthlyStatementPdf(freshCustomer, shopSettings, monthlyData);
+      } catch (pdfErr) {
+        console.warn('Monthly Statement PDF generation warning:', pdfErr);
+      }
 
       // 5. Open WhatsApp Redirect
       const cleanPhone = custMobile.replace(/\D/g, '');

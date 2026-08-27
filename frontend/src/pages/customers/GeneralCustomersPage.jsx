@@ -128,13 +128,17 @@ export default function GeneralCustomersPage() {
     });
   };
 
-  const handleSaveDirectoryPdf = () => {
+  const handleSaveDirectoryPdf = async () => {
     if (filteredCustomers.length === 0) return;
     const activeFilterLabel = filterLabels[activeFilter] || 'All Customers';
-    generateGeneralCustomersPdf(filteredCustomers, shopSettings, {
-      activeFilter: activeFilterLabel,
-      searchQuery,
-    });
+    try {
+      await generateGeneralCustomersPdf(filteredCustomers, shopSettings, {
+        activeFilter: activeFilterLabel,
+        searchQuery,
+      });
+    } catch (err) {
+      console.error('Failed to download General Customers PDF:', err);
+    }
   };
 
   const handlePrintInvoice = () => {

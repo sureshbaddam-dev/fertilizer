@@ -126,16 +126,24 @@ export default function InvoiceDetailsPage() {
   const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(upiPayLink)}`;
   const qrCodeUrl = upiQrCodeUrl;
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!invoice) return;
-    printInvoicePdf(invoice, shopSettings);
+    try {
+      await printInvoicePdf(invoice, shopSettings);
+    } catch (err) {
+      console.error('Print PDF failed:', err);
+    }
   };
 
   const [downloadNoticeMsg, setDownloadNoticeMsg] = useState('');
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!invoice) return;
-    generateInvoicePdf(invoice, shopSettings);
+    try {
+      await generateInvoicePdf(invoice, shopSettings);
+    } catch (err) {
+      console.error('Download PDF failed:', err);
+    }
   };
 
   const [isWhatsappPreviewOpen, setIsWhatsappPreviewOpen] = useState(false);
@@ -168,14 +176,20 @@ export default function InvoiceDetailsPage() {
 
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
 
-  const handleSendFinalWhatsApp = () => {
+  const handleSendFinalWhatsApp = async () => {
     if (!invoice) return;
-    // 1. Download Invoice PDF locally
-    handleDownloadPdf();
+    // 1. Download Invoice PDF locally (isolated so errors never block WhatsApp)
+    try {
+      await handleDownloadPdf();
+    } catch (err) {
+      console.warn('PDF download warning:', err);
+    }
 
     // 2. Open WhatsApp Web with text and Pay Link
     const custMobile = invoice.customerMobile || invoice.customer?.mobile || '';
-    window.open(`https://api.whatsapp.com/send?phone=${custMobile}&text=${encodeURIComponent(editableMessage)}`, '_blank');
+    const cleanPhone = custMobile.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    window.open(`https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(editableMessage)}`, '_blank');
 
     // 3. Close document preview modal & open "Invoice Ready to Share" success dialog
     setIsWhatsappPreviewOpen(false);
