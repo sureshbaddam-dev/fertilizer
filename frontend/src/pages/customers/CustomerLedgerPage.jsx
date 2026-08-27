@@ -2047,7 +2047,7 @@ export default function CustomerLedgerPage() {
 
             <div className="space-y-1.5">
               <h3 className="text-base font-extrabold text-gray-900">Delete Payment?</h3>
-              <p className="text-xs text-gray-600 font-medium">This payment will be permanently removed from MongoDB.</p>
+              <p className="text-xs text-gray-600 font-medium">This payment will be permanently removed from records.</p>
               <p className="text-xs text-gray-600 font-medium">Outstanding balances &amp; due amounts will be recalculated.</p>
             </div>
 

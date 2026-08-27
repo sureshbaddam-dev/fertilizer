@@ -74,7 +74,7 @@ export default function CustomerSearch({ selectedCustomer, onSelectCustomer }) {
 
         {/* Dropdown Suggestions */}
         {isOpen && !selectedCustomer && searchTerm.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-30 max-h-60 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
             {filteredCustomers.length > 0 ? (
               filteredCustomers.map((cust) => (
                 <div

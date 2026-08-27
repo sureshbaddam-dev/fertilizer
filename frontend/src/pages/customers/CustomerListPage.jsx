@@ -440,15 +440,17 @@ export default function CustomerListPage() {
   // Professional PDF Export using jsPDF & autoTable in Landscape mode (Zero Cropping!)
   const handleExportPDF = async () => {
     setIsExportOpen(false);
-    const { default: jsPDF } = await import('jspdf');
-    await import('jspdf-autotable');
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = autoTableModule.default || autoTableModule;
 
-    // Landscape orientation (297mm x 210mm) guarantees all 7 columns fit with 0 cropping
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4',
-    });
+      // Landscape orientation (297mm x 210mm) guarantees all 7 columns fit with 0 cropping
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
 
     const now = new Date();
     const dateFormatted = now.toLocaleDateString('en-IN', {
@@ -656,32 +658,67 @@ export default function CustomerListPage() {
 
     const filenameDate = dateFormatted.replace(/\//g, '-');
     doc.save(`Customer_List_${filenameDate}.pdf`);
+    } catch (err) {
+      console.error('PDF Export failed:', err);
+    }
   };
 
-  // CSV / Excel File Export Handler
+  // Excel (.xlsx) File Export Handler
+  const handleExportExcel = async () => {
+    setIsExportOpen(false);
+    try {
+      const XLSX = await import('xlsx');
+      const rows = customersList.map((c, i) => ({
+        '#': i + 1,
+        'Customer Name': c.name || 'Customer',
+        'Mobile Number': c.mobile || '',
+        'Village / Area': c.village || c.address || '',
+        'Total Purchases (INR)': c.totalPurchases || 0,
+        'Total Paid (INR)': c.totalPaid || 0,
+        'Outstanding Due (INR)': c.outstandingBalance || 0,
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+      const now = new Date();
+      const dateFormatted = now.toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Customer_List_${dateFormatted}.xlsx`);
+    } catch (err) {
+      console.error('Excel Export failed:', err);
+    }
+  };
+
+  // CSV File Export Handler using Blob for reliable download across desktop and mobile
   const handleExportCSV = () => {
     setIsExportOpen(false);
-    const headers = ['#', 'Customer Name', 'Mobile Number', 'Village / Area', 'Total Purchases', 'Total Paid', 'Due Outstanding'];
-    const rows = customersList.map((c, i) => [
-      i + 1,
-      `"${c.name}"`,
-      `"${c.mobile}"`,
-      `"${c.village || c.address || ''}"`,
-      c.totalPurchases || 0,
-      c.totalPaid || 0,
-      c.outstandingBalance || 0,
-    ]);
+    try {
+      const headers = ['#', 'Customer Name', 'Mobile Number', 'Village / Area', 'Total Purchases', 'Total Paid', 'Due Outstanding'];
+      const rows = customersList.map((c, i) => [
+        i + 1,
+        `"${(c.name || '').replace(/"/g, '""')}"`,
+        `"${(c.mobile || '').replace(/"/g, '""')}"`,
+        `"${(c.village || c.address || '').replace(/"/g, '""')}"`,
+        c.totalPurchases || 0,
+        c.totalPaid || 0,
+        c.outstandingBalance || 0,
+      ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    const now = new Date();
-    const dateFormatted = now.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Customer_List_${dateFormatted}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const now = new Date();
+      const dateFormatted = now.toISOString().slice(0, 10);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Customer_List_${dateFormatted}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV Export failed:', err);
+    }
   };
 
   // Refresh customer query cache
@@ -715,18 +752,18 @@ export default function CustomerListPage() {
       )}
     >
 
-      {/* 2. MAIN 2-COLUMN LAYOUT: TABLE ON LEFT, SIDEBAR ON RIGHT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      {/* 2. MAIN RESPONSIVE 2-COLUMN / FLEX LAYOUT */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         
         {/* LEFT COLUMN: CUSTOMER TABLE SECTION */}
-        <div className="lg:col-span-9 space-y-3">
+        <div className="xl:col-span-9 space-y-3">
           
           {/* Table Toolbar */}
           <div className="bg-white border border-gray-200/80 rounded-2xl p-3 shadow-2xs space-y-3">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               
               {/* Tab Header Indicator */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="px-3.5 py-1.5 bg-[#047857] text-white font-bold rounded-xl text-xs shadow-2xs">
                   All Customers ({summary.totalCustomers})
                 </span>
@@ -735,7 +772,7 @@ export default function CustomerListPage() {
               {/* Toolbar Tools: Export, Search */}
               <div className="flex items-center gap-2 w-full sm:w-auto relative">
                 {/* Export Dropdown Options */}
-                <div className="relative">
+                <div className="relative shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsExportOpen(!isExportOpen)}
@@ -761,7 +798,7 @@ export default function CustomerListPage() {
 
                       <button
                         type="button"
-                        onClick={handleExportCSV}
+                        onClick={handleExportExcel}
                         className="w-full text-left px-3 py-2 hover:bg-emerald-50/60 flex items-center gap-2 text-xs text-gray-800 cursor-pointer border-b border-gray-100"
                       >
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -786,8 +823,8 @@ export default function CustomerListPage() {
                   )}
                 </div>
 
-                <div className="relative flex-1 sm:w-56">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <div className="relative flex-1 sm:w-56 min-w-[140px]">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   <input
                     type="text"
                     value={searchQuery}
@@ -799,8 +836,8 @@ export default function CustomerListPage() {
               </div>
             </div>
 
-            {/* CUSTOMER LIST TABLE (DESKTOP) */}
-            <div className="hidden md:block border border-gray-200/80 rounded-xl overflow-hidden shadow-2xs">
+            {/* CUSTOMER LIST TABLE (DESKTOP / LAPTOP) */}
+            <div className="hidden md:block border border-gray-200/80 rounded-xl overflow-x-auto shadow-2xs [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-gray-50/90 border-b border-gray-200 text-[11px] font-bold text-gray-700 uppercase">
                   <tr>
@@ -820,7 +857,7 @@ export default function CustomerListPage() {
                       <td colSpan={8} className="py-12 text-center text-gray-400">
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-4 h-4 border-2 border-[#00783C] border-t-transparent rounded-full animate-spin" />
-                          <span>Loading MongoDB customers...</span>
+                          <span>Loading customers...</span>
                         </div>
                       </td>
                     </tr>
@@ -942,7 +979,7 @@ export default function CustomerListPage() {
               {isLoading ? (
                 <div className="p-6 text-center text-gray-500 bg-white rounded-2xl border border-gray-200 shadow-2xs">
                   <div className="w-4 h-4 border-2 border-[#00783C] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <span className="text-xs font-semibold">Loading MongoDB customers...</span>
+                  <span className="text-xs font-semibold">Loading customers...</span>
                 </div>
               ) : paginatedCustomers.length > 0 ? (
                 paginatedCustomers.map((c, idx) => {
@@ -1115,7 +1152,7 @@ export default function CustomerListPage() {
         </div>
 
         {/* RIGHT COLUMN: SUMMARY CARDS & QUICK ACTIONS SIDEBAR */}
-        <div className="lg:col-span-3 space-y-3.5">
+        <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3.5">
           
           {/* Card 1: Customer Summary */}
           <div className="bg-white border border-gray-200/80 rounded-2xl p-3.5 shadow-2xs space-y-2.5">

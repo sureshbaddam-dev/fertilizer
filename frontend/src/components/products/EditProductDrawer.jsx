@@ -403,7 +403,7 @@ export default function EditProductDrawer({
 
             {/* Custom VEDIXA Themed Options Menu (NO browser native blue selection!) */}
             {isBatchDropdownOpen && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[#047857] rounded-lg shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto divide-y divide-gray-100 animate-in fade-in-50 duration-150">
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[#047857] rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100 animate-in fade-in-50 duration-150 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
                 {stockAvailableBatches.length === 0 ? (
                   <div className="px-3 py-2 text-xs text-gray-400 font-medium text-center">
                     No Stock Available Batches

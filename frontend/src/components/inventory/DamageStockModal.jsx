@@ -128,7 +128,7 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
 
             {/* Autocomplete Suggestions Dropdown */}
             {isDropdownOpen && searchResults.length > 0 && (
-              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
                 {searchResults.map((p) => (
                   <div
                     key={p._id || p.id}

@@ -101,8 +101,8 @@ export default function ImageUpload({
               <img src={fullSrc} alt="Preview" className="max-h-full max-w-full object-cover rounded" />
             </div>
             <div>
-              <span className="text-[11px] font-medium text-emerald-800 block">Image Selected</span>
-              <span className="text-[10px] text-gray-400 font-mono truncate max-w-[150px] block">{value}</span>
+              <span className="text-[11px] font-bold text-emerald-800 block">Image Selected</span>
+              <span className="text-[10px] text-emerald-600 font-medium block">Ready for catalog</span>
             </div>
           </div>
 

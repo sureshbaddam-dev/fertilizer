@@ -399,7 +399,7 @@ export default function EditInvoicePage() {
               className="w-full px-3 py-1.5 border border-gray-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
             />
             {isDropdownOpen && prodSearch.trim() && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-2xl z-30 max-h-72 overflow-y-auto divide-y divide-gray-100 border-t-2 border-t-[#047857]">
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-2xl z-30 max-h-60 overflow-y-auto divide-y divide-gray-100 border-t-2 border-t-[#047857] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
                 {searchResults.length > 0 ? (
                   searchResults.map((p, idx) => {
                     const price = getItemUnitPrice(p);

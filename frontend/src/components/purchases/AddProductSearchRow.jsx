@@ -138,7 +138,7 @@ export default function AddProductSearchRow({
 
           {/* Typeahead Suggestions Dropdown */}
           {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-1 space-y-0.5 max-h-64 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-1 space-y-0.5 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
               {filteredSuggestions.length > 0 ? (
                 filteredSuggestions.map((opt) => (
                   <div

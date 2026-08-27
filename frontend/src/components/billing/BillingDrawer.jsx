@@ -969,7 +969,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                 />
 
                 {isCustomerDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto p-1 divide-y divide-gray-100">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto p-1 divide-y divide-gray-100 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
                     <div
                       onClick={() => {
                         setIsCustomerDropdownOpen(false);
@@ -978,7 +978,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                       className="p-2.5 hover:bg-emerald-50 text-[#047857] font-bold flex items-center gap-2 cursor-pointer transition-colors border-b border-emerald-100"
                     >
                       <UserPlus className="w-4 h-4 text-[#047857]" />
-                      <span>➕ Add New Customer (Master DB)</span>
+                      <span>➕ Add New Customer</span>
                     </div>
 
                     {drawerCustomerOptions.map((c) => (
@@ -1075,7 +1075,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
           {/* Autocomplete Dropdown List */}
           {isDrawerProdDropdownOpen && (
-            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-[180px] overflow-y-auto p-1 divide-y divide-gray-100/80 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
+            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto p-1 divide-y divide-gray-100/80 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">
               {drawerProductOptions.length > 0 ? (
                 drawerProductOptions.map((p, idx) => {
                   const brandName = p.brandId?.name || p.companyId?.name || p.brand || 'Vedixa';
