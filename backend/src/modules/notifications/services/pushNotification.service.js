@@ -88,7 +88,11 @@ export const pushNotificationService = {
     });
 
     try {
-      await webpush.sendNotification(pushSubscription, payloadString);
+      const pushOptions = {
+        TTL: 86400, // 24 hours
+        urgency: 'high', // Bypasses Android battery doze for immediate status bar delivery
+      };
+      await webpush.sendNotification(pushSubscription, payloadString, pushOptions);
       return true;
     } catch (err) {
       const statusCode = err.statusCode || err.status;

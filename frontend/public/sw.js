@@ -26,10 +26,14 @@ self.addEventListener('push', (event) => {
     body: data.body || 'You have a new update in VEDIXA ERP.',
     icon: data.icon && data.icon.startsWith('http') ? data.icon : `${origin}/apple-touch-icon.png`,
     badge: data.badge && data.badge.startsWith('http') ? data.badge : `${origin}/favicon-32x32.png`,
-    tag: data.tag || 'vedixa-push-alert',
+    tag: data.tag || `vedixa-push-${Date.now()}`,
     renotify: true,
     requireInteraction: true,
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200],
+    timestamp: Date.now(),
+    actions: [
+      { action: 'open', title: 'Open VEDIXA' }
+    ],
     data: {
       url: data.url || '/dashboard',
     },
