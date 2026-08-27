@@ -195,7 +195,7 @@ export default function ShopProfilePage() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 font-sans text-xs">
-      
+
       {/* Hidden File Inputs */}
       <input
         type="file"
@@ -341,7 +341,7 @@ export default function ShopProfilePage() {
 
       {/* Form Fields Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Left Column: Logo & Branding Upload */}
         <div className="lg:col-span-4 space-y-4">
           <div className="p-4 bg-gray-50/70 border border-gray-200/80 rounded-2xl space-y-3 text-center">
@@ -398,7 +398,7 @@ export default function ShopProfilePage() {
 
         {/* Right Column: Business Profile Fields */}
         <div className="lg:col-span-8 space-y-4">
-          
+
           {/* Shop Name & Owner Name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -538,7 +538,7 @@ export default function ShopProfilePage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="font-bold text-gray-700 block">UPI VPA ID (e.g. shop@ybl, 9848081875@ibl)</label>
+                <label className="font-bold text-gray-700 block">UPI VPA ID </label>
                 <input
                   type="text"
                   name="upiId"
