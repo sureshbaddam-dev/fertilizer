@@ -417,7 +417,7 @@ export default function CustomerListPage() {
       totalCustomers: totalCust,
       totalOutstanding: totalOut,
       customersWithDue: dueCount,
-      advanceAmount: apiData?.data?.summary?.advanceAmount || 3850,
+
     };
   }, [customersList, apiData?.data?.summary?.advanceAmount]);
 
@@ -452,212 +452,212 @@ export default function CustomerListPage() {
         format: 'a4',
       });
 
-    const now = new Date();
-    const dateFormatted = now.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    const timeFormatted = now.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+      const now = new Date();
+      const dateFormatted = now.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+      const timeFormatted = now.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
 
-    // Helper to draw Header & Summary on top of pages
-    const drawHeaderAndSummary = () => {
-      const pageWidth = doc.internal.pageSize.width;
+      // Helper to draw Header & Summary on top of pages
+      const drawHeaderAndSummary = () => {
+        const pageWidth = doc.internal.pageSize.width;
 
-      const shopName = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
-      const address = (shopSettings?.address || '').trim();
-      const phone = (shopSettings?.mobile || shopSettings?.phone || shopSettings?.whatsappNumber || '').trim();
-      const gstin = (shopSettings?.gstNumber || shopSettings?.gstin || '').trim();
-      const email = (shopSettings?.email || '').trim();
+        const shopName = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
+        const address = (shopSettings?.address || '').trim();
+        const phone = (shopSettings?.mobile || shopSettings?.phone || shopSettings?.whatsappNumber || '').trim();
+        const gstin = (shopSettings?.gstNumber || shopSettings?.gstin || '').trim();
+        const email = (shopSettings?.email || '').trim();
 
-      const contactParts = [];
-      if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
-      if (phone) contactParts.push(`Phone: ${phone}`);
-      if (email) contactParts.push(`Email: ${email}`);
-      const contactLine = contactParts.join(' | ');
+        const contactParts = [];
+        if (gstin && gstin !== '-') contactParts.push(`GSTIN: ${gstin}`);
+        if (phone) contactParts.push(`Phone: ${phone}`);
+        if (email) contactParts.push(`Email: ${email}`);
+        const contactLine = contactParts.join(' | ');
 
-      const logoUrl = shopSettings?.logoUrl || shopSettings?.shopLogo || '';
-      let textLeftX = 12;
+        const logoUrl = shopSettings?.logoUrl || shopSettings?.shopLogo || '';
+        let textLeftX = 12;
 
-      if (logoUrl) {
-        try {
-          doc.addImage(logoUrl, 12, 4, 28, 17);
-          textLeftX = 44;
-        } catch (e) {
-          textLeftX = 12;
+        if (logoUrl) {
+          try {
+            doc.addImage(logoUrl, 12, 4, 28, 17);
+            textLeftX = 44;
+          } catch (e) {
+            textLeftX = 12;
+          }
         }
-      }
 
-      // 1. Header Banner
-      doc.setFillColor(4, 120, 87); // Emerald Green (#047857)
-      doc.rect(0, 0, pageWidth, 26, 'F');
+        // 1. Header Banner
+        doc.setFillColor(4, 120, 87); // Emerald Green (#047857)
+        doc.rect(0, 0, pageWidth, 26, 'F');
 
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(15);
-      doc.text((shopName || 'CUSTOMER DIRECTORY').toUpperCase(), textLeftX, 10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(15);
+        doc.text((shopName || 'CUSTOMER DIRECTORY').toUpperCase(), textLeftX, 10);
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-
-      if (address && contactLine) {
-        doc.text(address, textLeftX, 15.5);
-        doc.text(contactLine, textLeftX, 20.5);
-      } else if (address) {
-        doc.text(address, textLeftX, 18);
-      } else if (contactLine) {
-        doc.text(contactLine, textLeftX, 18);
-      }
-
-      // Top-Right VEDIXA Branding System ([VEDIXA LOGO] + VEDIXA text underneath)
-      try {
-        doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', pageWidth - 22, 3, 13, 13);
-      } catch (err) {}
-      doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(255, 255, 255);
-      doc.text('VEDIXA', pageWidth - 15.5, 20, { align: 'center' });
-
-      // 2. Report Title
-      doc.setTextColor(17, 24, 39);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.text('CUSTOMER MASTER LIST REPORT', 12, 33);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(107, 114, 128);
-      doc.text(`Generated Date & Time: ${dateFormatted} at ${timeFormatted}`, 12, 38);
-
-      // 3. Dynamic Summary Bar
-      doc.setFillColor(243, 244, 246);
-      doc.roundedRect(12, 42, pageWidth - 24, 14, 2, 2, 'F');
-
-      doc.setFontSize(8.5);
-      doc.setTextColor(31, 41, 55);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Total Customers: ${summary.totalCustomers}`, 18, 51);
-      doc.text(`Customers with Due: ${summary.customersWithDue}`, 90, 51);
-      doc.setTextColor(220, 38, 38);
-      doc.text(`Total Outstanding Due: Rs. ${Math.round(summary.totalOutstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 175, 51);
-    };
-
-    // Table Data Matrix
-    const tableHeaders = [
-      [
-        '#',
-        'Customer Name',
-        'Mobile Number',
-        'Village / Area',
-        'Total Purchases (Rs.)',
-        'Total Paid (Rs.)',
-        'Outstanding Due (Rs.)',
-      ],
-    ];
-
-    let grandPurchases = 0;
-    let grandPaid = 0;
-    let grandDue = 0;
-
-    const tableData = customersList.map((c, i) => {
-      const p = Number(c.totalPurchases || 0);
-      const pd = Number(c.totalPaid || 0);
-      const d = Number(c.outstandingBalance || 0);
-
-      grandPurchases += p;
-      grandPaid += pd;
-      grandDue += d;
-
-      return [
-        i + 1,
-        c.name || 'Customer',
-        c.mobile || '-',
-        c.village || c.address || 'Narketpally',
-        Math.round(p).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-        Math.round(pd).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-        Math.round(d).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-      ];
-    });
-
-    // Grand Totals Row
-    tableData.push([
-      '',
-      'GRAND TOTAL',
-      '',
-      '',
-      Math.round(grandPurchases).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-      Math.round(grandPaid).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-      Math.round(grandDue).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-    ]);
-
-    autoTable(doc, {
-      startY: 60,
-      margin: { top: 60, bottom: 16, left: 12, right: 12 },
-      head: tableHeaders,
-      body: tableData,
-      theme: 'grid',
-      showHeader: 'everyPage',
-      headStyles: {
-        fillColor: [4, 120, 87],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 8.5,
-        halign: 'left',
-        valign: 'middle',
-      },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 14 },
-        1: { fontStyle: 'bold', cellWidth: 60 },
-        2: { fontStyle: 'normal', cellWidth: 40 },
-        3: { cellWidth: 55 },
-        4: { halign: 'right', cellWidth: 35 },
-        5: { halign: 'right', cellWidth: 35 },
-        6: { halign: 'right', cellWidth: 34, fontStyle: 'bold' },
-      },
-      styles: {
-        fontSize: 8,
-        cellPadding: 2.5,
-        textColor: [31, 41, 55],
-        overflow: 'linebreak', // Wraps long text automatically without cropping!
-      },
-      alternateRowStyles: {
-        fillColor: [249, 250, 251],
-      },
-      didDrawPage: (data) => {
-        const pageHeight = doc.internal.pageSize.height;
-
-        // Draw header and summary on every page
-        drawHeaderAndSummary();
-
-        // Footer Page Numbers
-        const pageCount = doc.internal.getNumberOfPages();
-        doc.setFontSize(8);
-        doc.setTextColor(156, 163, 175);
         doc.setFont('helvetica', 'normal');
-        const shopTitle = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
-        const footerTitle = shopTitle ? `${shopTitle} - ` : '';
-        doc.text(
-          `Page ${data.pageNumber} of ${pageCount} | ${footerTitle}Master Customer Report (Confidential)`,
-          12,
-          pageHeight - 8
-        );
-      },
-      didParseCell: (data) => {
-        // Highlight Grand Total row in green
-        if (data.row.index === tableData.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [220, 252, 231];
-          data.cell.styles.textColor = [4, 120, 87];
-        }
-      },
-    });
+        doc.setFontSize(8.5);
 
-    const filenameDate = dateFormatted.replace(/\//g, '-');
-    doc.save(`Customer_List_${filenameDate}.pdf`);
+        if (address && contactLine) {
+          doc.text(address, textLeftX, 15.5);
+          doc.text(contactLine, textLeftX, 20.5);
+        } else if (address) {
+          doc.text(address, textLeftX, 18);
+        } else if (contactLine) {
+          doc.text(contactLine, textLeftX, 18);
+        }
+
+        // Top-Right VEDIXA Branding System ([VEDIXA LOGO] + VEDIXA text underneath)
+        try {
+          doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', pageWidth - 22, 3, 13, 13);
+        } catch (err) { }
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('VEDIXA', pageWidth - 15.5, 20, { align: 'center' });
+
+        // 2. Report Title
+        doc.setTextColor(17, 24, 39);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('CUSTOMER MASTER LIST REPORT', 12, 33);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text(`Generated Date & Time: ${dateFormatted} at ${timeFormatted}`, 12, 38);
+
+        // 3. Dynamic Summary Bar
+        doc.setFillColor(243, 244, 246);
+        doc.roundedRect(12, 42, pageWidth - 24, 14, 2, 2, 'F');
+
+        doc.setFontSize(8.5);
+        doc.setTextColor(31, 41, 55);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Total Customers: ${summary.totalCustomers}`, 18, 51);
+        doc.text(`Customers with Due: ${summary.customersWithDue}`, 90, 51);
+        doc.setTextColor(220, 38, 38);
+        doc.text(`Total Outstanding Due: Rs. ${Math.round(summary.totalOutstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, 175, 51);
+      };
+
+      // Table Data Matrix
+      const tableHeaders = [
+        [
+          '#',
+          'Customer Name',
+          'Mobile Number',
+          'Village / Area',
+          'Total Purchases (Rs.)',
+          'Total Paid (Rs.)',
+          'Outstanding Due (Rs.)',
+        ],
+      ];
+
+      let grandPurchases = 0;
+      let grandPaid = 0;
+      let grandDue = 0;
+
+      const tableData = customersList.map((c, i) => {
+        const p = Number(c.totalPurchases || 0);
+        const pd = Number(c.totalPaid || 0);
+        const d = Number(c.outstandingBalance || 0);
+
+        grandPurchases += p;
+        grandPaid += pd;
+        grandDue += d;
+
+        return [
+          i + 1,
+          c.name || 'Customer',
+          c.mobile || '-',
+          c.village || c.address || 'Narketpally',
+          Math.round(p).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+          Math.round(pd).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+          Math.round(d).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        ];
+      });
+
+      // Grand Totals Row
+      tableData.push([
+        '',
+        'GRAND TOTAL',
+        '',
+        '',
+        Math.round(grandPurchases).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        Math.round(grandPaid).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        Math.round(grandDue).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      ]);
+
+      autoTable(doc, {
+        startY: 60,
+        margin: { top: 60, bottom: 16, left: 12, right: 12 },
+        head: tableHeaders,
+        body: tableData,
+        theme: 'grid',
+        showHeader: 'everyPage',
+        headStyles: {
+          fillColor: [4, 120, 87],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8.5,
+          halign: 'left',
+          valign: 'middle',
+        },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 14 },
+          1: { fontStyle: 'bold', cellWidth: 60 },
+          2: { fontStyle: 'normal', cellWidth: 40 },
+          3: { cellWidth: 55 },
+          4: { halign: 'right', cellWidth: 35 },
+          5: { halign: 'right', cellWidth: 35 },
+          6: { halign: 'right', cellWidth: 34, fontStyle: 'bold' },
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 2.5,
+          textColor: [31, 41, 55],
+          overflow: 'linebreak', // Wraps long text automatically without cropping!
+        },
+        alternateRowStyles: {
+          fillColor: [249, 250, 251],
+        },
+        didDrawPage: (data) => {
+          const pageHeight = doc.internal.pageSize.height;
+
+          // Draw header and summary on every page
+          drawHeaderAndSummary();
+
+          // Footer Page Numbers
+          const pageCount = doc.internal.getNumberOfPages();
+          doc.setFontSize(8);
+          doc.setTextColor(156, 163, 175);
+          doc.setFont('helvetica', 'normal');
+          const shopTitle = (shopSettings?.shopName || shopSettings?.businessName || shopSettings?.name || '').trim();
+          const footerTitle = shopTitle ? `${shopTitle} - ` : '';
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount} | ${footerTitle}Master Customer Report (Confidential)`,
+            12,
+            pageHeight - 8
+          );
+        },
+        didParseCell: (data) => {
+          // Highlight Grand Total row in green
+          if (data.row.index === tableData.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [220, 252, 231];
+            data.cell.styles.textColor = [4, 120, 87];
+          }
+        },
+      });
+
+      const filenameDate = dateFormatted.replace(/\//g, '-');
+      doc.save(`Customer_List_${filenameDate}.pdf`);
     } catch (err) {
       console.error('PDF Export failed:', err);
     }
@@ -743,7 +743,7 @@ export default function CustomerListPage() {
         <div className="flex items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
           <Button variant="primary" icon={Plus} onClick={() => setIsAddCustomerOpen(true)} className="text-xs px-3 sm:px-4 py-2 flex-1 sm:flex-initial justify-center shadow-2xs">
             <span>Add Customer</span>
-            <span className="hidden sm:inline"> (F2)</span>
+
           </Button>
           <Button variant="secondary" icon={MessageSquare} onClick={() => setIsWhatsAppModalOpen(true)} className="text-xs px-3 py-2 shrink-0 shadow-2xs">
             <span>WhatsApp</span>
@@ -754,14 +754,14 @@ export default function CustomerListPage() {
 
       {/* 2. MAIN RESPONSIVE 2-COLUMN / FLEX LAYOUT */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-        
+
         {/* LEFT COLUMN: CUSTOMER TABLE SECTION */}
         <div className="xl:col-span-9 space-y-3">
-          
+
           {/* Table Toolbar */}
           <div className="bg-white border border-gray-200/80 rounded-2xl p-3 shadow-2xs space-y-3">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              
+
               {/* Tab Header Indicator */}
               <div className="flex items-center gap-2 shrink-0">
                 <span className="px-3.5 py-1.5 bg-[#047857] text-white font-bold rounded-xl text-xs shadow-2xs">
@@ -1000,11 +1000,10 @@ export default function CustomerListPage() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-extrabold text-gray-900 text-sm leading-tight">{c.name}</span>
                               {c.type && (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                  c.type === 'Wholesale'
-                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${c.type === 'Wholesale'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  }`}>
                                   {c.type}
                                 </span>
                               )}
@@ -1113,11 +1112,10 @@ export default function CustomerListPage() {
                       key={i + 1}
                       type="button"
                       onClick={() => setCurrentPage(i + 1)}
-                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        currentPage === i + 1
-                          ? 'bg-[#047857] text-white shadow-2xs'
-                          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
-                      }`}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${currentPage === i + 1
+                        ? 'bg-[#047857] text-white shadow-2xs'
+                        : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}
                     >
                       {i + 1}
                     </button>
@@ -1153,7 +1151,7 @@ export default function CustomerListPage() {
 
         {/* RIGHT COLUMN: SUMMARY CARDS & QUICK ACTIONS SIDEBAR */}
         <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3.5">
-          
+
           {/* Card 1: Customer Summary */}
           <div className="bg-white border border-gray-200/80 rounded-2xl p-3.5 shadow-2xs space-y-2.5">
             <div className="flex items-center gap-2 font-bold text-gray-900 border-b border-gray-100 pb-2">
@@ -1235,7 +1233,7 @@ export default function CustomerListPage() {
           {/* Card 4: Quick Actions */}
           <div className="bg-white border border-gray-200/80 rounded-2xl p-3.5 shadow-2xs space-y-2">
             <span className="font-bold text-gray-900 block border-b border-gray-100 pb-2">Quick Actions</span>
-            
+
             <div className="space-y-1.5">
               <button
                 type="button"
@@ -1243,7 +1241,7 @@ export default function CustomerListPage() {
                 className="w-full py-2 px-3 bg-emerald-50/60 hover:bg-emerald-100/70 border border-emerald-200 rounded-xl text-xs font-bold text-[#047857] flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Add Customer (F2)</span>
+                <span>Add Customer</span>
               </button>
 
               <button
