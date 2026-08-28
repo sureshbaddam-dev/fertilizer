@@ -21,14 +21,117 @@ export const dashboardService = {
     const startOfTodayIST = new Date(Date.UTC(year, monthIdx, day, 0, 0, 0, 0) - (5.5 * 60 * 60 * 1000));
     const endOfTodayIST = new Date(Date.UTC(year, monthIdx, day, 23, 59, 59, 999) - (5.5 * 60 * 60 * 1000));
 
-    // Query invoices created TODAY ONLY (between startOfTodayIST and endOfTodayIST)
-    const todayInvoices = await SalesInvoice.find({
-      userId,
-      $or: [
-        { createdAt: { $gte: startOfTodayIST, $lte: endOfTodayIST } },
-        { date: { $gte: startOfTodayIST, $lte: endOfTodayIST } },
-      ],
-    }).lean().exec();
+    // Calculate Yesterday's IST Date Boundaries for growth comparison
+    const startOfYesterdayIST = new Date(startOfTodayIST.getTime() - 24 * 60 * 60 * 1000);
+    const endOfYesterdayIST = new Date(startOfTodayIST.getTime() - 1);
+
+    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const { ProductBatch } = await import('../../products/models/productBatch.model.js');
+
+    // Parallelize all independent MongoDB queries in a single Promise.all batch
+    const [
+      rangeInvoices,
+      recentInvoices,
+      lowStockDocs,
+      totalLowStock,
+      totalOutOfStock,
+      expiryAlerts,
+      expiredProducts,
+      dbCategories,
+      categoryCountsAgg,
+      shopDiscount,
+    ] = await Promise.all([
+      // 1. Single combined query for Today & Yesterday Invoices
+      SalesInvoice.find({
+        userId,
+        $or: [
+          { createdAt: { $gte: startOfYesterdayIST, $lte: endOfTodayIST } },
+          { date: { $gte: startOfYesterdayIST, $lte: endOfTodayIST } },
+        ],
+      }).lean().exec(),
+
+      // 2. Recent Invoices
+      SalesInvoice.find({ userId })
+        .sort({ createdAt: -1, date: -1 })
+        .limit(5)
+        .lean()
+        .exec(),
+
+      // 3. Low Stock Documents
+      Product.find({
+        userId,
+        isActive: true,
+        $expr: {
+          $and: [
+            { $gt: ['$totalStock', 0] },
+            {
+              $lte: [
+                '$totalStock',
+                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+              ],
+            },
+          ],
+        },
+      })
+        .populate('brandId', 'name')
+        .sort({ totalStock: 1 })
+        .limit(5)
+        .lean()
+        .exec(),
+
+      // 4. Low Stock Count
+      Product.countDocuments({
+        userId,
+        isActive: true,
+        $expr: {
+          $and: [
+            { $gt: ['$totalStock', 0] },
+            {
+              $lte: [
+                '$totalStock',
+                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+              ],
+            },
+          ],
+        },
+      }),
+
+      // 5. Out of Stock Count
+      Product.countDocuments({ userId, totalStock: { $lte: 0 }, isActive: true }),
+
+      // 6. Expiry Alerts Count
+      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } }),
+
+      // 7. Expired Products Count
+      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } }),
+
+      // 8. Categories List
+      Category.find({ userId }).lean().exec(),
+
+      // 9. Product Count by Category Aggregation
+      Product.aggregate([
+        { $match: { userId, isActive: true } },
+        { $group: { _id: '$categoryId', prodCount: { $sum: 1 } } },
+      ]),
+
+      // 10. Shop Discount Settings
+      shopDiscountService.getShopDiscount(userId),
+    ]);
+
+    // Separate today and yesterday invoices in memory
+    const todayInvoices = rangeInvoices.filter((inv) => {
+      const created = inv.createdAt ? new Date(inv.createdAt) : null;
+      const d = inv.date ? new Date(inv.date) : null;
+      return (created && created >= startOfTodayIST && created <= endOfTodayIST) ||
+             (d && d >= startOfTodayIST && d <= endOfTodayIST);
+    });
+
+    const yesterdayInvoices = rangeInvoices.filter((inv) => {
+      const created = inv.createdAt ? new Date(inv.createdAt) : null;
+      const d = inv.date ? new Date(inv.date) : null;
+      return (created && created >= startOfYesterdayIST && created <= endOfYesterdayIST) ||
+             (d && d >= startOfYesterdayIST && d <= endOfYesterdayIST);
+    });
 
     // Today's Total Sales (Sum of valid sales created today)
     const rawTodaySales = todayInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
@@ -58,12 +161,6 @@ export const dashboardService = {
       year: 'numeric',
     });
 
-    const recentInvoices = await SalesInvoice.find({ userId })
-      .sort({ createdAt: -1, date: -1 })
-      .limit(5)
-      .lean()
-      .exec();
-
     const recentBills = recentInvoices.map((bill) => {
       let statusColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
       if (bill.status === 'Partial') statusColor = 'text-amber-700 bg-amber-50 border-amber-200';
@@ -86,27 +183,6 @@ export const dashboardService = {
       };
     });
 
-    const lowStockDocs = await Product.find({
-      userId,
-      isActive: true,
-      $expr: {
-        $and: [
-          { $gt: ['$totalStock', 0] },
-          {
-            $lte: [
-              '$totalStock',
-              { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
-            ],
-          },
-        ],
-      },
-    })
-      .populate('brandId', 'name')
-      .sort({ totalStock: 1 })
-      .limit(5)
-      .lean()
-      .exec();
-
     const lowStockProducts = lowStockDocs.map((p) => {
       const minAlert = p.minimumStockAlert ?? p.lowStockAlert ?? 10;
       const isCritical = (p.totalStock || 0) <= minAlert / 2;
@@ -123,35 +199,6 @@ export const dashboardService = {
         image: p.image,
       };
     });
-
-    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const { ProductBatch } = await import('../../products/models/productBatch.model.js');
-
-    const [totalLowStock, totalOutOfStock, expiryAlerts, expiredProducts, dbCategories, categoryCountsAgg] = await Promise.all([
-      Product.countDocuments({
-        userId,
-        isActive: true,
-        $expr: {
-          $and: [
-            { $gt: ['$totalStock', 0] },
-            {
-              $lte: [
-                '$totalStock',
-                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
-              ],
-            },
-          ],
-        },
-      }),
-      Product.countDocuments({ userId, totalStock: { $lte: 0 }, isActive: true }),
-      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } }),
-      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } }),
-      Category.find({ userId }).lean().exec(),
-      Product.aggregate([
-        { $match: { userId, isActive: true } },
-        { $group: { _id: '$categoryId', prodCount: { $sum: 1 } } },
-      ]),
-    ]);
 
     const stockAlerts = {
       totalAlerts: totalLowStock + totalOutOfStock + expiryAlerts + expiredProducts,
@@ -174,24 +221,10 @@ export const dashboardService = {
 
     categoriesWithCount.sort((a, b) => b.prodCount - a.prodCount);
 
-    // Calculate Yesterday's IST Date Boundaries for growth comparison
-    const startOfYesterdayIST = new Date(startOfTodayIST.getTime() - 24 * 60 * 60 * 1000);
-    const endOfYesterdayIST = new Date(startOfTodayIST.getTime() - 1);
-
-    const yesterdayInvoices = await SalesInvoice.find({
-      userId,
-      $or: [
-        { createdAt: { $gte: startOfYesterdayIST, $lte: endOfYesterdayIST } },
-        { date: { $gte: startOfYesterdayIST, $lte: endOfYesterdayIST } },
-      ],
-    }).lean().exec();
-
     const rawYesterdaySales = yesterdayInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
     const salesGrowth = rawYesterdaySales > 0
       ? Math.round(((rawTodaySales - rawYesterdaySales) / rawYesterdaySales) * 100)
       : rawTodaySales > 0 ? 100 : 0;
-
-    const shopDiscount = await shopDiscountService.getShopDiscount(userId);
 
     return {
       todaySummary: {
@@ -223,17 +256,20 @@ export const dashboardService = {
     const { AdminNotification } = await import('../../admin/models/adminNotification.model.js');
     const { SupportTicket } = await import('../../support/supportTicket.model.js');
 
-    // 1. Fetch Admin Announcements & Messages targeted to this user
-    const adminNotifs = await AdminNotification.find({
-      $or: [
-        { targetAudience: 'ALL_USERS' },
-        { targetUserIds: userId },
-        { recipient: userId },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .lean();
+    // Parallelize Admin Notifications and Support Tickets queries
+    const [adminNotifs, userTickets] = await Promise.all([
+      AdminNotification.find({
+        $or: [
+          { targetAudience: 'ALL_USERS' },
+          { targetUserIds: userId },
+          { recipient: userId },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      SupportTicket.find({ userId }).sort({ updatedAt: -1 }).limit(5).lean(),
+    ]);
 
     adminNotifs.forEach((an) => {
       const isTicketMsg = an.title?.includes('Ticket') || an.message?.includes('TCK-');
@@ -250,9 +286,6 @@ export const dashboardService = {
         path: isTicketMsg ? '/support' : '/dashboard',
       });
     });
-
-    // 2. Fetch Support Tickets for status change notifications
-    const userTickets = await SupportTicket.find({ userId }).sort({ updatedAt: -1 }).limit(5).lean();
     userTickets.forEach((t) => {
       const st = (t.status || 'PENDING').toUpperCase();
       const statusLabel =

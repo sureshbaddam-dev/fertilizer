@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { VEDIXA_LOGO_BASE64 } from '../../utils/vedixaLogoBase64';
@@ -30,17 +30,31 @@ import PageLayout from '../../components/ui/PageLayout';
 // Edit Customer Modal Component
 function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
   const [formData, setFormData] = useState({
-    name: customer?.name || '',
-    mobile: customer?.mobile || '',
-    village: customer?.village || customer?.address || '',
-    mandal: customer?.mandal || '',
-    district: customer?.district || '',
-    type: customer?.type || 'Regular',
-    creditLimit: customer?.creditLimit || 50000,
+    name: '',
+    mobile: '',
+    village: '',
+    mandal: '',
+    district: '',
+    type: 'Regular',
   });
 
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Populate existing customer details whenever customer or isOpen changes
+  useEffect(() => {
+    if (customer && isOpen) {
+      setFormData({
+        name: customer.name || '',
+        mobile: customer.mobile || '',
+        village: customer.village || customer.address || '',
+        mandal: customer.mandal || '',
+        district: customer.district || '',
+        type: customer.type || customer.customerType || 'Regular',
+      });
+      setErrorMsg('');
+    }
+  }, [customer, isOpen]);
 
   if (!isOpen || !customer) return null;
 
@@ -145,25 +159,13 @@ function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2">
               <label className="text-[11px] font-semibold text-gray-700 block">District</label>
               <input
                 type="text"
                 value={formData.district}
                 onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                 className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-700 block">Credit Limit (₹)</label>
-              <input
-                type="number"
-                onFocus={(e) => e.target.select()}
-                value={formData.creditLimit === 0 || formData.creditLimit === '0' || !formData.creditLimit ? '' : formData.creditLimit}
-                onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
-                placeholder="50000"
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono font-bold text-gray-900 focus:outline-none focus:border-[#00783C]"
               />
             </div>
           </div>
@@ -723,7 +725,10 @@ export default function CustomerListPage() {
 
   // Refresh customer query cache
   const handleRefetch = () => {
-    queryClient.invalidateQueries(['customers-list-page']);
+    queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+    queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+    queryClient.invalidateQueries({ queryKey: ['customers'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
   };
 
   // Individual WhatsApp Chat
@@ -906,7 +911,7 @@ export default function CustomerListPage() {
 
                           {/* Actions Column */}
                           <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1.5 relative">
+                            <div className="flex items-center justify-center gap-1.5">
                               {/* Edit Icon */}
                               <button
                                 type="button"
@@ -914,8 +919,8 @@ export default function CustomerListPage() {
                                   e.stopPropagation();
                                   setEditingCustomer(c);
                                 }}
-                                className="p-1 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
-                                title="Edit Customer"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 cursor-pointer transition-colors"
+                                title="Edit Customer Details"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
@@ -924,40 +929,24 @@ export default function CustomerListPage() {
                               <button
                                 type="button"
                                 onClick={(e) => handleSingleWhatsApp(e, c)}
-                                className="p-1 rounded-lg text-gray-500 hover:text-[#047857] hover:bg-emerald-50 cursor-pointer"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-[#047857] hover:bg-emerald-50 cursor-pointer transition-colors"
                                 title="Send WhatsApp Statement"
                               >
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </button>
 
-                              {/* More Options Dropdown */}
+                              {/* Delete Icon */}
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveDropdownId(activeDropdownId === c._id ? null : c._id);
+                                  setDeletingCustomer(c);
                                 }}
-                                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-pointer"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                                title="Delete Customer"
                               >
-                                <MoreVertical className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
-
-                              {activeDropdownId === c._id && (
-                                <div className="absolute right-0 top-7 w-36 bg-white border border-gray-200 rounded-xl shadow-xl z-30 py-1 font-medium text-left">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveDropdownId(null);
-                                      setDeletingCustomer(c);
-                                    }}
-                                    className="w-full px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2 text-xs cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                    <span>Delete Customer</span>
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </td>
                         </tr>

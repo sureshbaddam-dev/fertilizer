@@ -120,6 +120,11 @@ export default function QuickAddProductDrawer({
     mutationFn: productService.createProduct,
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['topbar-top-selling-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       reset();
       onClose();
       if (onSuccess && res.data?.product) {
@@ -133,6 +138,11 @@ export default function QuickAddProductDrawer({
     mutationFn: (data) => productService.updateProduct({ id: editingProduct._id, ...data }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['topbar-top-selling-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       reset();
       onClose();
       if (onSuccess && res.data?.product) {

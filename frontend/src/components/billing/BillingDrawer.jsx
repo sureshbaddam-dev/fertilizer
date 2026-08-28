@@ -576,16 +576,19 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     mutationFn: (data) => invoiceService.createInvoice(data),
     onSuccess: () => {
       isSubmittingRef.current = false;
-      queryClient.invalidateQueries(['invoices']);
-      queryClient.invalidateQueries(['salesInvoices']);
-      queryClient.invalidateQueries(['customer-ledger-profile']);
-      queryClient.invalidateQueries(['customers-list-page']);
-      queryClient.invalidateQueries(['products']);
-      queryClient.invalidateQueries(['products-inventory']);
-      queryClient.invalidateQueries(['dashboard-summary']);
-      queryClient.invalidateQueries(['dashboard-overview']);
-      queryClient.invalidateQueries(['dashboard-products']);
-      queryClient.invalidateQueries(['dashboard-notifications']);
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['topbar-top-selling-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-notifications'] });
 
       alert('Bill submitted & saved successfully!');
       setItems([]);

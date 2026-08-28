@@ -64,10 +64,12 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
 
       const newCustomer = response?.data?.customer || response?.data?.data?.customer;
 
-      queryClient.invalidateQueries(['customers-list-page']);
-      queryClient.invalidateQueries(['drawer-customers']);
-      queryClient.invalidateQueries(['customer-suggestions']);
-      queryClient.invalidateQueries(['customers']);
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['drawer-customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-suggestions'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
 
       if (onCustomerCreated && newCustomer) {
         onCustomerCreated(newCustomer);

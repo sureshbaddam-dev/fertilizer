@@ -53,11 +53,15 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
   const paymentMutation = useMutation({
     mutationFn: (data) => customerService.recordPayment(customer?._id || customer?.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['customer-ledger-profile']);
-      queryClient.invalidateQueries(['customer-ledger-details']);
-      queryClient.invalidateQueries(['general-customers-list']);
-      queryClient.invalidateQueries(['sales-invoices']);
-      queryClient.invalidateQueries(['dashboard-stats']);
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setAmount('');
       setNotes('');
       setRefNo('');
@@ -207,11 +211,15 @@ function RecordAdvanceModal({ isOpen, onClose, customer }) {
   const advanceMutation = useMutation({
     mutationFn: (data) => customerService.recordPayment(customer?._id || customer?.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['customer-ledger-profile']);
-      queryClient.invalidateQueries(['customer-ledger-details']);
-      queryClient.invalidateQueries(['general-customers-list']);
-      queryClient.invalidateQueries(['sales-invoices']);
-      queryClient.invalidateQueries(['dashboard-stats']);
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setAmount('');
       setNotes('');
       setErrorMsg('');
@@ -603,9 +611,14 @@ export default function CustomerLedgerPage() {
   const updatePaymentMutation = useMutation({
     mutationFn: ({ paymentId, data }) => customerService.updatePayment(paymentId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['customer-ledger-profile', customerId]);
-      queryClient.invalidateQueries(['sales-invoices']);
-      queryClient.invalidateQueries(['general-customers-list']);
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setEditingPayment(null);
       setEditPaymentError('');
     },
@@ -615,9 +628,14 @@ export default function CustomerLedgerPage() {
   const deletePaymentMutation = useMutation({
     mutationFn: (paymentId) => customerService.deletePayment(paymentId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['customer-ledger-profile', customerId]);
-      queryClient.invalidateQueries(['sales-invoices']);
-      queryClient.invalidateQueries(['general-customers-list']);
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setDeletingPayment(null);
       setDeletePaymentError('');
     },

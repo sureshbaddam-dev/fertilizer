@@ -99,6 +99,7 @@ export default function SuppliersPage() {
     mutationFn: supplierService.createSupplier,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setIsDrawerOpen(false);
       setApiError(null);
       reset();
@@ -110,6 +111,7 @@ export default function SuppliersPage() {
     mutationFn: supplierService.updateSupplier,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setIsDrawerOpen(false);
       setEditingSupplier(null);
       setApiError(null);
@@ -122,6 +124,7 @@ export default function SuppliersPage() {
     mutationFn: supplierService.deactivateSupplier,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, supplier: null, type: 'archive' });
       setDeleteConfirmInput('');
     },
@@ -134,6 +137,7 @@ export default function SuppliersPage() {
     mutationFn: supplierService.restoreSupplier,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, supplier: null, type: 'restore' });
     },
   });

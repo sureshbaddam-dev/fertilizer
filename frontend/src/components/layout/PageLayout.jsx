@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopNavbar from './TopNavbar';
-import BillingDrawer from '../billing/BillingDrawer';
+
+const BillingDrawer = lazy(() => import('../billing/BillingDrawer'));
 
 export default function PageLayout({
   sidebarOpen,
@@ -62,11 +63,13 @@ export default function PageLayout({
         </main>
       </div>
 
-      <BillingDrawer
-        isOpen={showDrawer}
-        onClose={onCloseNewBill}
-        quickAddedProduct={quickAddedProduct}
-      />
+      <Suspense fallback={null}>
+        <BillingDrawer
+          isOpen={showDrawer}
+          onClose={onCloseNewBill}
+          quickAddedProduct={quickAddedProduct}
+        />
+      </Suspense>
     </div>
   );
 }

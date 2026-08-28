@@ -110,5 +110,6 @@ productBatchSchema.plugin(softDeletePlugin);
 productBatchSchema.index({ userId: 1, productId: 1, batchNumber: 1 });
 productBatchSchema.index({ userId: 1, productId: 1, isDeleted: 1, isActive: 1, currentStock: 1, createdAt: 1 });
 productBatchSchema.index({ userId: 1, purchaseId: 1, isDeleted: 1 });
+productBatchSchema.index({ userId: 1, currentStock: 1, expiryDate: 1 });
 
 export const ProductBatch = mongoose.model('ProductBatch', productBatchSchema);
