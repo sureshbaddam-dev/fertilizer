@@ -1,6 +1,5 @@
 import { getItemUnitPrice } from './pricing';
 import { formatCustomerLedgerAddress } from './statementCalculator';
-import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
 
 async function getJsPdf() {
   const { default: jsPDF } = await import('jspdf');

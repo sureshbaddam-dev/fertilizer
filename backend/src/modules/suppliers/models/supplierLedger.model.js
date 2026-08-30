@@ -69,5 +69,7 @@ const supplierLedgerSchema = new mongoose.Schema(
 );
 
 supplierLedgerSchema.index({ supplierId: 1, date: -1 });
+supplierLedgerSchema.index({ userId: 1, supplierId: 1, isDeleted: 1, date: -1 });
+supplierLedgerSchema.index({ userId: 1, isDeleted: 1, date: -1 });
 
 export const SupplierLedger = mongoose.model('SupplierLedger', supplierLedgerSchema);

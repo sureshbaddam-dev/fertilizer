@@ -4,6 +4,8 @@ import { logger } from './config/logger.config.js';
 import { connectDatabase, disconnectDatabase } from './config/database.config.js';
 import { connectRedis, disconnectRedis } from './config/redis.config.js';
 
+// VEDIXA ERP Server Instance
+
 
 let server;
 

@@ -7,10 +7,13 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import PageLayout from '../../components/ui/PageLayout';
+import UserAvatar from '../../components/ui/UserAvatar';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function UserProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user: authUser, updateUser } = useAuth();
 
   const [formData, setFormData] = useState({
     ownerName: '',
@@ -35,7 +38,7 @@ export default function UserProfilePage() {
     queryFn: subscriptionService.getMySubscription,
   });
 
-  const currentUser = userRes?.data || userRes || authService.getCurrentUser() || {};
+  const currentUser = userRes?.data || userRes || authUser || authService.getCurrentUser() || {};
   const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
 
   useEffect(() => {
@@ -46,11 +49,15 @@ export default function UserProfilePage() {
         email: currentUser.email || '',
       });
     }
-  }, [userRes]);
+  }, [userRes, authUser]);
 
   const profileMutation = useMutation({
     mutationFn: (data) => authService.updateProfile(data),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const updatedUser = res?.data || res;
+      if (updatedUser) {
+        updateUser(updatedUser);
+      }
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       setSaveSuccessMsg('User account profile updated successfully.');
       setSaveErrorMsg('');
@@ -92,9 +99,7 @@ export default function UserProfilePage() {
         {/* 1. Personal Account Profile Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#047857] flex items-center justify-center font-bold">
-              <User className="w-5 h-5" />
-            </div>
+            <UserAvatar src={currentUser.profileImage} name={currentUser.ownerName} size={44} />
             <div>
               <h2 className="text-base font-black text-slate-900 tracking-tight">Personal Account Details</h2>
               <p className="text-xs text-slate-500 font-medium">Manage your personal owner identity and contact information.</p>

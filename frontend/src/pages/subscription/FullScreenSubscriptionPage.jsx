@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Star, LogOut, Info, AlertTriangle, Clock, Ticket } from 'lucide-react';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 import { loadRazorpaySDK } from '../../utils/loadExternalScript';
 import BrandLogo from '../../components/common/BrandLogo';
 import Button from '../../components/ui/Button';
@@ -13,6 +14,7 @@ import Modal from '../../components/ui/Modal';
 export default function FullScreenSubscriptionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { logout: authLogout } = useAuth();
 
   // State for checkout modal, coupon drawer, & messages
   const [checkoutPlan, setCheckoutPlan] = useState(null);
@@ -105,15 +107,11 @@ export default function FullScreenSubscriptionPage() {
   // Sign Out Handler
   const handleLogout = async () => {
     try {
-      await authService.logout();
+      await authLogout();
     } catch (_e) {
       // Continue cleanup
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      queryClient.clear();
-      window.location.href = '/login';
     }
+    navigate('/login', { replace: true });
   };
 
   // Shared VEDIXA ERP Feature List across all plan durations

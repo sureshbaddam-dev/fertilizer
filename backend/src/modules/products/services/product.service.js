@@ -18,6 +18,7 @@ import { Brand } from '../../masters/models/brand.model.js';
 import { Company } from '../../masters/models/company.model.js';
 import { Unit } from '../../masters/models/unit.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
+import { cloudinaryProductImageService } from './cloudinaryProductImage.service.js';
 import { deleteFromCloudinary } from '../../../utils/cloudinary.utils.js';
 
 export async function generateNextBatchNumber(userId, session = null) {
@@ -752,6 +753,16 @@ export const productService = {
 
     const newProduct = await productRepository.create(payload);
 
+    if (newProduct && newProduct.image && typeof newProduct.image === 'string' && !newProduct.image.startsWith('/assets/')) {
+      cloudinaryProductImageService.enrichImageLibraryRecord({
+        imageUrl: newProduct.image,
+        searchableName: newProduct.name,
+        brand: brandDoc?.name || '',
+        category: categoryDoc?.name || '',
+        unit: unitDoc?.name || '',
+      }).catch(() => {});
+    }
+
     if (incomingBatchCode) {
       const batchData = {
         userId,
@@ -849,6 +860,17 @@ export const productService = {
     if (data.defaultSellingPrice !== undefined) payload.defaultSellingPrice = Number(data.defaultSellingPrice) || 0;
 
     await productRepository.update(id, payload, userId);
+
+    const updatedImage = payload.image || product.image;
+    if (updatedImage && typeof updatedImage === 'string' && !updatedImage.startsWith('/assets/')) {
+      cloudinaryProductImageService.enrichImageLibraryRecord({
+        imageUrl: updatedImage,
+        searchableName: payload.name || product.name,
+        brand: brandDoc?.name || '',
+        category: categoryDoc?.name || '',
+        unit: unitDoc?.name || '',
+      }).catch(() => {});
+    }
 
     const rawBatchInput = (data.batchCode || data.batchNumber || '').toString().trim();
     const batchCode = (rawBatchInput.toUpperCase().startsWith('BATCH-') || rawBatchInput.toUpperCase().startsWith('AUTO'))

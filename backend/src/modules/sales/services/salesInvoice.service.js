@@ -72,20 +72,34 @@ export const salesInvoiceService = {
   async getAllInvoices(query = {}, userId) {
     if (!userId) throw new Error('userId is required');
 
-    // 1. Authoritative DB Synchronization for userId invoices
-    const allDbInvoicesDocs = await SalesInvoice.find({ userId }).exec();
-    for (const doc of allDbInvoicesDocs) {
-      const normTotal = Math.max(0, normalizeMoney(doc.totalAmount || 0));
-      const normPaid = Math.max(0, normalizeMoney(doc.paidAmount || 0));
-      const effectiveDue = Math.max(0, normalizeMoney(normTotal - normPaid));
-      const authStatus = calculateInvoicePaymentStatus(normTotal, normPaid, effectiveDue, doc.status);
+    // 1. Authoritative DB Synchronization for userId invoices needing status sync
+    const unadjustedInvoices = await SalesInvoice.find(
+      {
+        userId,
+        $or: [
+          { status: { $exists: false } },
+          { dueAmount: { $exists: false } },
+          { dueStatus: { $exists: false } },
+        ],
+      },
+      { _id: 1, totalAmount: 1, paidAmount: 1, dueAmount: 1, status: 1 }
+    ).lean().exec();
 
-      if (doc.status !== authStatus || Math.abs((doc.dueAmount || 0) - effectiveDue) > 0.001) {
-        doc.status = authStatus;
-        doc.dueAmount = effectiveDue;
-        doc.dueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
-        await doc.save();
-      }
+    if (unadjustedInvoices.length > 0) {
+      const bulkSyncOps = unadjustedInvoices.map((doc) => {
+        const normTotal = Math.max(0, normalizeMoney(doc.totalAmount || 0));
+        const normPaid = Math.max(0, normalizeMoney(doc.paidAmount || 0));
+        const effectiveDue = Math.max(0, normalizeMoney(normTotal - normPaid));
+        const authStatus = calculateInvoicePaymentStatus(normTotal, normPaid, effectiveDue, doc.status);
+        const dueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
+        return {
+          updateOne: {
+            filter: { _id: doc._id },
+            update: { $set: { status: authStatus, dueAmount: effectiveDue, dueStatus } },
+          },
+        };
+      });
+      await SalesInvoice.bulkWrite(bulkSyncOps);
     }
 
     const filter = { userId };

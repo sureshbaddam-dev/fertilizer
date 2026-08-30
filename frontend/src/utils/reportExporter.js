@@ -1,5 +1,3 @@
-import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
-
 /**
  * Export Executive Analytics Report to PDF
  */

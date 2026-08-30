@@ -587,7 +587,8 @@ export const authService = {
         email: user.email,
         mobile: user.mobile,
         role: user.role,
-        profilePicUrl: user.profilePicUrl,
+        profilePicUrl: user.profilePicUrl || '',
+        profileImage: user.profilePicUrl || '',
         isProfileComplete,
         shopName,
       },
@@ -856,19 +857,25 @@ export const authService = {
       throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
     }
     const shopSettings = await ShopSettings.findOne({ userId: user._id });
+    const userObj = user.toObject();
     return {
-      ...user.toObject(),
+      ...userObj,
+      profileImage: userObj.profilePicUrl || '',
       shopName: shopSettings?.shopName || '',
       shopSettings: shopSettings || null,
     };
   },
 
   async updateProfile(userId, updateData) {
-    const allowedUpdates = ['ownerName', 'email', 'profilePicUrl'];
+    const allowedUpdates = ['ownerName', 'email', 'profilePicUrl', 'profileImage'];
     const updateObj = {};
     for (const key of allowedUpdates) {
       if (updateData[key] !== undefined) {
-        updateObj[key] = updateData[key];
+        if (key === 'profileImage') {
+          updateObj['profilePicUrl'] = updateData[key];
+        } else {
+          updateObj[key] = updateData[key];
+        }
       }
     }
 
@@ -886,8 +893,10 @@ export const authService = {
     }
 
     const shopSettings = await ShopSettings.findOne({ userId });
+    const userObj = user.toObject();
     return {
-      ...user.toObject(),
+      ...userObj,
+      profileImage: userObj.profilePicUrl || '',
       shopName: shopSettings?.shopName || '',
       shopSettings: shopSettings || null,
     };

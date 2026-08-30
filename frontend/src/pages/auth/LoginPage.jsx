@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Lock, Phone, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
 import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 import BrandLogo from '../../components/common/BrandLogo';
 
 import {
@@ -12,6 +13,7 @@ import {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login, loginWithGoogle } = useAuth();
 
   // Form State
   const [mobile, setMobile] = useState('');
@@ -56,7 +58,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setServerError('');
     try {
-      const res = await authService.googleAuth(token);
+      const res = await loginWithGoogle(token);
       if (res.success) {
         if (res.data?.isProfileComplete) {
           navigate('/dashboard', { replace: true });
@@ -154,7 +156,7 @@ export default function LoginPage() {
         ? { email: mobile.trim(), password }
         : { mobile: mobile.trim(), password };
 
-      const response = await authService.login(payload);
+      const response = await login(payload);
       if (response.success) {
         const user = response.data?.user || response.data || {};
         const isComplete = Boolean(

@@ -1,15 +1,32 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Sparkles, Plus, Check } from 'lucide-react';
 import FormDrawer from '../ui/FormDrawer';
 import SmartMasterSelect from '../ui/SmartMasterSelect';
 import ImageUpload from '../ui/ImageUpload';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
 import { authService } from '../../services/authService';
+
+import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
+
+const ImageUploadControlled = ({ control, field, onSelectImageDetails }) => {
+  const productName = useWatch({ control, name: 'name' });
+  return (
+    <ImageUpload
+      label="Product Image"
+      value={field.value}
+      onChange={field.onChange}
+      endpoint="/products/upload-image"
+      fieldName="image"
+      productName={productName}
+      onSelectImageDetails={onSelectImageDetails}
+    />
+  );
+};
 
 const productSchema = z.object({
   image: z.string().optional(),
@@ -40,6 +57,11 @@ export default function QuickAddProductDrawer({
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.id || currentUser?._id;
 
+  const [unmatchedBrand, setUnmatchedBrand] = useState('');
+  const [unmatchedCategory, setUnmatchedCategory] = useState('');
+  const [unmatchedUnit, setUnmatchedUnit] = useState('');
+  const [isCreatingMaster, setIsCreatingMaster] = useState(false);
+
   const { data: mastersData, isLoading: isMastersLoading } = useQuery({
     queryKey: ['masters-all', currentUserId],
     queryFn: masterService.getAllMasters,
@@ -55,6 +77,9 @@ export default function QuickAddProductDrawer({
     register,
     handleSubmit,
     control,
+    watch,
+    getValues,
+    setValue,
     reset,
     formState: { errors },
   } = useForm({
@@ -75,8 +100,26 @@ export default function QuickAddProductDrawer({
     },
   });
 
-  // Pre-fill form when editingProduct or initialName changes
+  const handleSharedImageSelect = (imgData) => {
+    if (!imgData) return;
+    const currentTypedName = getValues('name');
+    applySelectedImageMetadata(
+      imgData,
+      { brands, categories, units },
+      (fieldName, val) => setValue(fieldName, val, { shouldValidate: true, shouldDirty: true, shouldTouch: true }),
+      { setUnmatchedBrand, setUnmatchedCategory, setUnmatchedUnit },
+      { currentName: currentTypedName }
+    );
+  };
+
+  // Pre-fill form when drawer opens or editingProduct / initialName changes
   useEffect(() => {
+    if (!isOpen) return;
+
+    setUnmatchedBrand('');
+    setUnmatchedCategory('');
+    setUnmatchedUnit('');
+
     if (editingProduct) {
       const supplierIdVal = editingProduct.supplierId?._id || editingProduct.supplierId || '';
       const brandIdVal = editingProduct.brandId?._id || editingProduct.brandId || '';
@@ -103,17 +146,17 @@ export default function QuickAddProductDrawer({
         name: initialName || '',
         code: '',
         barcode: '',
-        supplierId: suppliers[0]?._id || '',
-        brandId: brands[0]?._id || '',
-        categoryId: categories[0]?._id || '',
-        unitId: units[0]?._id || '',
+        supplierId: '',
+        brandId: '',
+        categoryId: '',
+        unitId: '',
         discount: '',
         discountType: 'Percentage',
         gstRate: '',
         minStockAlert: '10',
       });
     }
-  }, [editingProduct?._id, editingProduct?.id, initialName, isOpen]);
+  }, [isOpen, editingProduct?._id, editingProduct?.id, initialName]);
 
   // Create Mutation
   const createMutation = useMutation({
@@ -190,6 +233,54 @@ export default function QuickAddProductDrawer({
     return unitDoc;
   };
 
+  const handleAddUnmatchedBrand = async () => {
+    if (!unmatchedBrand || isCreatingMaster) return;
+    try {
+      setIsCreatingMaster(true);
+      const newBrand = await handleCreateBrandInline(unmatchedBrand);
+      if (newBrand && newBrand._id) {
+        setValue('brandId', newBrand._id, { shouldValidate: true, shouldDirty: true });
+      }
+      setUnmatchedBrand('');
+    } catch (err) {
+      console.error('Failed to add brand:', err);
+    } finally {
+      setIsCreatingMaster(false);
+    }
+  };
+
+  const handleAddUnmatchedCategory = async () => {
+    if (!unmatchedCategory || isCreatingMaster) return;
+    try {
+      setIsCreatingMaster(true);
+      const newCat = await handleCreateCategoryInline(unmatchedCategory);
+      if (newCat && newCat._id) {
+        setValue('categoryId', newCat._id, { shouldValidate: true, shouldDirty: true });
+      }
+      setUnmatchedCategory('');
+    } catch (err) {
+      console.error('Failed to add category:', err);
+    } finally {
+      setIsCreatingMaster(false);
+    }
+  };
+
+  const handleAddUnmatchedUnit = async () => {
+    if (!unmatchedUnit || isCreatingMaster) return;
+    try {
+      setIsCreatingMaster(true);
+      const newUnit = await handleCreateUnitInline(unmatchedUnit);
+      if (newUnit && newUnit._id) {
+        setValue('unitId', newUnit._id, { shouldValidate: true, shouldDirty: true });
+      }
+      setUnmatchedUnit('');
+    } catch (err) {
+      console.error('Failed to add unit:', err);
+    } finally {
+      setIsCreatingMaster(false);
+    }
+  };
+
   return (
     <FormDrawer
       isOpen={isOpen}
@@ -203,12 +294,10 @@ export default function QuickAddProductDrawer({
           name="image"
           control={control}
           render={({ field }) => (
-            <ImageUpload
-              label="Product Image"
-              value={field.value}
-              onChange={field.onChange}
-              endpoint="/products/upload-image"
-              fieldName="image"
+            <ImageUploadControlled
+              control={control}
+              field={field}
+              onSelectImageDetails={handleSharedImageSelect}
             />
           )}
         />
@@ -226,58 +315,124 @@ export default function QuickAddProductDrawer({
         </div>
 
         {/* 3. Brand (Master) */}
-        <Controller
-          name="brandId"
-          control={control}
-          render={({ field }) => (
-            <SmartMasterSelect
-              label="Brand Master"
-              options={brands}
-              value={field.value}
-              onChange={field.onChange}
-              onAddNew={handleCreateBrandInline}
-              placeholder="Select Brand..."
-              isLoading={isMastersLoading}
-              error={errors.brandId?.message}
-            />
+        <div className="space-y-1">
+          <Controller
+            name="brandId"
+            control={control}
+            render={({ field }) => (
+              <SmartMasterSelect
+                label="Brand Master"
+                options={brands}
+                value={field.value}
+                onChange={(val) => {
+                  field.onChange(val);
+                  if (val) setUnmatchedBrand('');
+                }}
+                onAddNew={handleCreateBrandInline}
+                placeholder="Select Brand..."
+                isLoading={isMastersLoading}
+                error={errors.brandId?.message}
+              />
+            )}
+          />
+          {unmatchedBrand && (
+            <div className="p-2 bg-emerald-50/90 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-1.5 font-medium truncate">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Image Brand: <strong>"{unmatchedBrand}"</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddUnmatchedBrand}
+                disabled={isCreatingMaster}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-md transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add "{unmatchedBrand}" to Master</span>
+              </button>
+            </div>
           )}
-        />
+        </div>
 
         {/* 4. Category * */}
-        <Controller
-          name="categoryId"
-          control={control}
-          render={({ field }) => (
-            <SmartMasterSelect
-              label="Category *"
-              options={categories}
-              value={field.value}
-              onChange={field.onChange}
-              onAddNew={handleCreateCategoryInline}
-              placeholder="Select Category..."
-              isLoading={isMastersLoading}
-              error={errors.categoryId?.message}
-            />
+        <div className="space-y-1">
+          <Controller
+            name="categoryId"
+            control={control}
+            render={({ field }) => (
+              <SmartMasterSelect
+                label="Category *"
+                options={categories}
+                value={field.value}
+                onChange={(val) => {
+                  field.onChange(val);
+                  if (val) setUnmatchedCategory('');
+                }}
+                onAddNew={handleCreateCategoryInline}
+                placeholder="Select Category..."
+                isLoading={isMastersLoading}
+                error={errors.categoryId?.message}
+              />
+            )}
+          />
+          {unmatchedCategory && (
+            <div className="p-2 bg-emerald-50/90 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-1.5 font-medium truncate">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Image Category: <strong>"{unmatchedCategory}"</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddUnmatchedCategory}
+                disabled={isCreatingMaster}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-md transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add "{unmatchedCategory}" to Master</span>
+              </button>
+            </div>
           )}
-        />
+        </div>
 
         {/* 5. Unit * */}
-        <Controller
-          name="unitId"
-          control={control}
-          render={({ field }) => (
-            <SmartMasterSelect
-              label="Unit *"
-              options={units}
-              value={field.value}
-              onChange={field.onChange}
-              onAddNew={handleCreateUnitInline}
-              placeholder="Select Unit..."
-              isLoading={isMastersLoading}
-              error={errors.unitId?.message}
-            />
+        <div className="space-y-1">
+          <Controller
+            name="unitId"
+            control={control}
+            render={({ field }) => (
+              <SmartMasterSelect
+                label="Unit *"
+                options={units}
+                value={field.value}
+                onChange={(val) => {
+                  field.onChange(val);
+                  if (val) setUnmatchedUnit('');
+                }}
+                onAddNew={handleCreateUnitInline}
+                placeholder="Select Unit..."
+                isLoading={isMastersLoading}
+                error={errors.unitId?.message}
+              />
+            )}
+          />
+          {unmatchedUnit && (
+            <div className="p-2 bg-emerald-50/90 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-1.5 font-medium truncate">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Image Unit: <strong>"{unmatchedUnit}"</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddUnmatchedUnit}
+                disabled={isCreatingMaster}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-md transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add "{unmatchedUnit}" to Master</span>
+              </button>
+            </div>
           )}
-        />
+        </div>
 
         {/* 6. Discount & GST Row */}
         <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl">

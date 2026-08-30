@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowLeft, Check, X, ChevronDown } from 'lucide-react';
+import ImageUpload from '../ui/ImageUpload';
+import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
 
 export default function EditProductDrawer({
   isOpen,
@@ -24,6 +26,26 @@ export default function EditProductDrawer({
     trackExpiry: 'No',
     notes: '',
   });
+
+  const [unmatchedBrand, setUnmatchedBrand] = useState('');
+  const [unmatchedCategory, setUnmatchedCategory] = useState('');
+  const [unmatchedUnit, setUnmatchedUnit] = useState('');
+
+  const handleSharedImageSelect = (imgData) => {
+    if (!imgData) return;
+    applySelectedImageMetadata(
+      imgData,
+      { brands, categories, units },
+      (fieldName, val) => {
+        setFormData((prev) => {
+          const next = { ...prev, [fieldName]: val };
+          if (onDraftChange) onDraftChange(next);
+          return next;
+        });
+      },
+      { setUnmatchedBrand, setUnmatchedCategory, setUnmatchedUnit }
+    );
+  };
 
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [isBatchDropdownOpen, setIsBatchDropdownOpen] = useState(false);
@@ -73,9 +95,9 @@ export default function EditProductDrawer({
       setFormData({
         image: product.image || '',
         name: product.name || '',
-        categoryId: product.categoryId?._id || product.categoryId || categories[0]?._id || '',
+        categoryId: product.categoryId?._id || product.categoryId || '',
         brandId: product.brandId?._id || product.brandId || '',
-        unitId: product.defaultUnitId?._id || product.unitId?._id || product.defaultUnitId || product.unitId || units[0]?._id || '',
+        unitId: product.defaultUnitId?._id || product.unitId?._id || product.defaultUnitId || product.unitId || '',
         description: product.description || '',
         lowStockAlert: Number(product.minimumStockAlert ?? product.lowStockAlert ?? 10),
         hsnCode: product.hsnCode || '',
@@ -258,6 +280,18 @@ export default function EditProductDrawer({
             <span>1. Basic Information</span>
           </div>
 
+          <div className="pt-1">
+            <ImageUpload
+              label="Product Image"
+              value={formData.image}
+              onChange={(newUrl) => handleProductChange('image', newUrl)}
+              endpoint="/products/upload-image"
+              fieldName="image"
+              productName={formData.name}
+              onSelectImageDetails={handleSharedImageSelect}
+            />
+          </div>
+
           <div className="grid grid-cols-12 gap-2 items-center">
             <div className="col-span-12 sm:col-span-6">
               <label className="font-medium text-gray-700 block text-[10px] mb-0.5">Product Name *</label>
@@ -276,9 +310,13 @@ export default function EditProductDrawer({
               <div className="relative">
                 <select
                   value={formData.categoryId}
-                  onChange={(e) => handleProductChange('categoryId', e.target.value)}
+                  onChange={(e) => {
+                    handleProductChange('categoryId', e.target.value);
+                    if (e.target.value) setUnmatchedCategory('');
+                  }}
                   className="w-full px-2 pr-6 h-7 bg-white border border-gray-300 rounded text-gray-800 text-[11px] appearance-none focus:outline-none focus:border-[#047857] focus:ring-1 focus:ring-[#047857]"
                 >
+                  <option value="">-- Select Category --</option>
                   {categories.map((c) => (
                     <option key={c._id || c.name} value={c._id}>
                       {c.name}
@@ -294,7 +332,10 @@ export default function EditProductDrawer({
               <div className="relative">
                 <select
                   value={formData.brandId}
-                  onChange={(e) => handleProductChange('brandId', e.target.value)}
+                  onChange={(e) => {
+                    handleProductChange('brandId', e.target.value);
+                    if (e.target.value) setUnmatchedBrand('');
+                  }}
                   className="w-full px-2 pr-6 h-7 bg-white border border-gray-300 rounded text-gray-800 text-[11px] appearance-none focus:outline-none focus:border-[#047857] focus:ring-1 focus:ring-[#047857] font-semibold"
                 >
                   <option value="">-- Select Brand --</option>
@@ -313,9 +354,13 @@ export default function EditProductDrawer({
               <div className="relative">
                 <select
                   value={formData.unitId}
-                  onChange={(e) => handleProductChange('unitId', e.target.value)}
+                  onChange={(e) => {
+                    handleProductChange('unitId', e.target.value);
+                    if (e.target.value) setUnmatchedUnit('');
+                  }}
                   className="w-full px-2 pr-6 h-7 bg-white border border-gray-300 rounded text-gray-800 text-[11px] appearance-none focus:outline-none focus:border-[#047857] focus:ring-1 focus:ring-[#047857]"
                 >
+                  <option value="">-- Select Unit --</option>
                   {units.map((u) => (
                     <option key={u._id || u.name} value={u._id}>
                       {u.name} ({u.shortName || 'Unit'})

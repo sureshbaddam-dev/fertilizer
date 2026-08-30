@@ -2,6 +2,7 @@ import { asyncHandler } from '../../../utils/asyncHandler.js';
 import { sendSuccess } from '../../../common/apiResponse.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { productService } from '../services/product.service.js';
+import { cloudinaryProductImageService } from '../services/cloudinaryProductImage.service.js';
 import { logger } from '../../../config/logger.config.js';
 
 export const getProducts = asyncHandler(async (req, res) => {
@@ -79,7 +80,37 @@ export const uploadProductImage = asyncHandler(async (req, res) => {
     });
   }
   const imageUrl = req.file.path || req.file.secure_url || req.file.url || `/uploads/products/${req.file.filename}`;
-  return sendSuccess(res, 'Product image uploaded successfully', { imageUrl }, HTTP_STATUS.OK);
+  const cloudinaryPublicId = req.file.filename || req.file.public_id || req.file.originalname || imageUrl;
+
+  const searchableName = req.body.searchableName || req.body.productName || req.file.originalname?.replace(/\.[^/.]+$/, '') || 'Product Image';
+  const brand = req.body.brand || '';
+  const category = req.body.category || '';
+  const unit = req.body.unit || '';
+  const sha256 = req.file.sha256 || '';
+
+  // Enrich uploaded Cloudinary asset context metadata
+  try {
+    await cloudinaryProductImageService.registerImage({
+      imageUrl,
+      cloudinaryPublicId,
+      searchableName,
+      brand,
+      category,
+      unit,
+      sha256,
+      originalFileName: req.file.originalname || '',
+      userId: req.user._id,
+    });
+  } catch (err) {
+    logger.warn({ err }, 'Could not enrich Cloudinary asset context metadata');
+  }
+
+  return sendSuccess(res, 'Product image uploaded successfully', { imageUrl, cloudinaryPublicId, sha256 }, HTTP_STATUS.OK);
+});
+
+export const searchCloudinaryProductImages = asyncHandler(async (req, res) => {
+  const data = await cloudinaryProductImageService.searchLibrary(req.query);
+  return sendSuccess(res, 'Cloudinary product images fetched successfully', data, HTTP_STATUS.OK);
 });
 
 export const getProductHistory = asyncHandler(async (req, res) => {

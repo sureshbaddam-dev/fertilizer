@@ -1,33 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { authService } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
+import VedixaWorkspaceLoader from '../components/common/VedixaWorkspaceLoader';
 
 export function ProtectedRoute({ children }) {
   const location = useLocation();
-  const [isAuth, setIsAuth] = useState(() => authService.isAuthenticated());
-  const [isInitializing, setIsInitializing] = useState(() => authService.isInitializing);
+  const { isAuthenticated, isAuthReady } = useAuth();
 
-  useEffect(() => {
-    const handleAuthChange = () => {
-      setIsAuth(authService.isAuthenticated());
-      setIsInitializing(authService.isInitializing);
-    };
-
-    const unsubscribe = authService.subscribe(handleAuthChange);
-    return () => unsubscribe();
-  }, []);
-
-  if (isInitializing) {
+  // If auth is still resolving on initial load, show branded workspace loader
+  // NEVER redirect while auth initialization is still pending!
+  if (!isAuthReady) {
     return (
-      <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 font-sans text-white">
-        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-bold tracking-wide text-emerald-400">Authenticating Session...</p>
-        <p className="text-xs text-slate-400 mt-1">Verifying secure access token</p>
-      </div>
+      <VedixaWorkspaceLoader
+        message="Preparing your workspace..."
+        subtext="Verifying secure access session"
+      />
     );
   }
 
-  if (!isAuth) {
+  // Only redirect after initialization confirms there is no valid session
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -35,34 +27,26 @@ export function ProtectedRoute({ children }) {
 }
 
 export function PublicOnlyRoute({ children }) {
-  const [isAuth, setIsAuth] = useState(() => authService.isAuthenticated());
-  const [isInitializing, setIsInitializing] = useState(() => authService.isInitializing);
+  const { isAuthenticated, isAuthReady, user } = useAuth();
 
-  useEffect(() => {
-    const handleAuthChange = () => {
-      setIsAuth(authService.isAuthenticated());
-      setIsInitializing(authService.isInitializing);
-    };
-
-    const unsubscribe = authService.subscribe(handleAuthChange);
-    return () => unsubscribe();
-  }, []);
-
-  if (isInitializing) {
+  if (!isAuthReady) {
     return (
-      <div className="min-h-screen w-full bg-slate-900 flex flex-col items-center justify-center p-4 font-sans text-white">
-        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-sm font-bold tracking-wide text-emerald-400">Loading App...</p>
-      </div>
+      <VedixaWorkspaceLoader
+        message="Preparing your workspace..."
+        subtext="Loading application modules"
+      />
     );
   }
 
-  if (isAuth) {
-    const user = authService.getCurrentUser();
+  if (isAuthenticated) {
     const isComplete = Boolean(
       user?.isProfileComplete ||
-      (user?.ownerName && user?.ownerName !== 'Pending Setup' && user?.mobile && !user?.mobile.startsWith('pending_'))
+      (user?.ownerName &&
+        user?.ownerName !== 'Pending Setup' &&
+        user?.mobile &&
+        !String(user.mobile).startsWith('pending_'))
     );
+
     if (!isComplete) {
       return <Navigate to="/shop-setup" replace />;
     }
@@ -71,5 +55,3 @@ export function PublicOnlyRoute({ children }) {
 
   return children;
 }
-
-

@@ -73,10 +73,32 @@ router.get(
       unitService.getAllUnits({ isActive: 'true' }, userId).catch(() => ({ units: [] })),
     ]);
 
-    const suppliers = suppliersRes?.suppliers || [];
-    const brands = brandsRes?.brands || [];
-    const categories = categoriesRes?.categories || [];
-    const units = unitsRes?.units || [];
+    const suppliers = (suppliersRes?.suppliers || []).map((s) => ({
+      _id: s._id,
+      name: s.name,
+      companyName: s.companyName,
+      mobile: s.mobile,
+      gstin: s.gstin,
+      status: s.status,
+    }));
+    const brands = (brandsRes?.brands || []).map((b) => ({
+      _id: b._id,
+      name: b.name,
+      companyName: b.companyName,
+      isActive: b.isActive,
+    }));
+    const categories = (categoriesRes?.categories || []).map((c) => ({
+      _id: c._id,
+      name: c.name,
+      description: c.description,
+      isActive: c.isActive,
+    }));
+    const units = (unitsRes?.units || []).map((u) => ({
+      _id: u._id,
+      name: u.name,
+      shortName: u.shortName,
+      isActive: u.isActive,
+    }));
 
     return sendSuccess(
       res,

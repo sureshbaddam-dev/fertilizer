@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import { queryClient } from '../utils/queryClient';
+import { normalizeUser } from '../utils/imageUtils';
 
 let listeners = [];
 let isInitializing = true;
@@ -23,8 +24,9 @@ const saveTokens = (data) => {
     localStorage.setItem('mandhi_refresh_token', data.refreshToken);
   }
   if (data?.user) {
-    localStorage.setItem('vedixa_user', JSON.stringify(data.user));
-    localStorage.setItem('mandhi_user', JSON.stringify(data.user));
+    const normalized = normalizeUser(data.user);
+    localStorage.setItem('vedixa_user', JSON.stringify(normalized));
+    localStorage.setItem('mandhi_user', JSON.stringify(normalized));
   }
   try {
     queryClient.invalidateQueries(['user-profile']);
@@ -193,7 +195,12 @@ export const authService = {
 
   getCurrentUser() {
     const userStr = localStorage.getItem('vedixa_user') || localStorage.getItem('mandhi_user');
-    return userStr ? JSON.parse(userStr) : null;
+    if (!userStr) return null;
+    try {
+      return normalizeUser(JSON.parse(userStr));
+    } catch (_e) {
+      return null;
+    }
   },
 
   getAccessToken() {
@@ -233,6 +240,22 @@ export const authService = {
           } catch (_err) {
             clearTokens();
           }
+        } else {
+          // If token is valid but user profile in localStorage is missing or needs sync
+          const currentUser = this.getCurrentUser();
+          if (!currentUser) {
+            try {
+              const res = await this.getProfile();
+              const profileData = res?.data || res;
+              if (profileData) {
+                const normalized = normalizeUser(profileData);
+                localStorage.setItem('vedixa_user', JSON.stringify(normalized));
+                localStorage.setItem('mandhi_user', JSON.stringify(normalized));
+              }
+            } catch (_err) {
+              // Non-fatal, token is still active
+            }
+          }
         }
       }
     } catch (_err) {
@@ -250,8 +273,9 @@ export const authService = {
   async updateProfile(data) {
     const res = await apiClient.put('/auth/me', data);
     if (res.success && res.data) {
-      localStorage.setItem('vedixa_user', JSON.stringify(res.data));
-      localStorage.setItem('mandhi_user', JSON.stringify(res.data));
+      const normalized = normalizeUser(res.data);
+      localStorage.setItem('vedixa_user', JSON.stringify(normalized));
+      localStorage.setItem('mandhi_user', JSON.stringify(normalized));
       notifyListeners();
     }
     return res;

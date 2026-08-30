@@ -4,11 +4,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Bell, CheckCheck, Menu, Plus, Search, Store, Clock, CheckCircle2, MessageSquare, Megaphone, ChevronDown, ChevronRight, User, CreditCard, LogOut } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 import ProductAvatar from '../ui/ProductAvatar';
+import UserAvatar from '../ui/UserAvatar';
 import { productService } from '../../services/productService';
 import { dashboardService } from '../../services/dashboardService';
 import { authService } from '../../services/authService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
 import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
 import { playNotificationChime } from '../../utils/soundUtils';
 import { formatRelativeTimeIST } from '../../utils/dateUtils';
@@ -19,6 +21,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const navigate = useNavigate();
   const location = useLocation();
   const { settings } = useSettings();
+  const { user: authUser, logout: authLogout } = useAuth();
 
   const userId = settings?.userId || settings?._id || 'user_default';
   const soundStorageKey = `vedixa_notif_sound_${userId}`;
@@ -77,9 +80,9 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     refetchOnWindowFocus: false,
   });
 
-  const currentUser = authService.getCurrentUser() || {};
+  const currentUser = authUser || authService.getCurrentUser() || {};
   const userProfile = userProfileRes?.data || userProfileRes || {};
-  const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'b.suresh';
+  const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'Store Owner';
   const userMobile = userProfile.mobile || currentUser.mobile || 'Not added';
   const userEmail = userProfile.email || currentUser.email || 'Not added';
 
@@ -90,7 +93,14 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     currentUser?.shopName;
 
   const shopName = rawShopName && rawShopName.trim() ? rawShopName.trim() : 'Not added';
-  const userProfilePic = userProfile.profilePicUrl || currentUser.profilePicUrl || settings?.logoUrl || settings?.shopLogo || null;
+  const profileImage =
+    userProfile.profileImage ||
+    userProfile.profilePicUrl ||
+    currentUser.profileImage ||
+    currentUser.profilePicUrl ||
+    settings?.logoUrl ||
+    settings?.shopLogo ||
+    '';
 
   const getInitials = (name) => {
     if (!name) return 'BS';
@@ -112,11 +122,9 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const handleSignOut = async () => {
     try {
-      await authService.logout();
+      await authLogout();
     } catch (_err) {}
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = '/login';
+    navigate('/login', { replace: true });
   };
 
   const handleNewBillClick = () => {
@@ -518,17 +526,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                 className="flex items-center gap-2 cursor-pointer focus:outline-none group py-1 px-1 rounded-full hover:bg-slate-50 transition-colors"
                 aria-label="User account menu"
               >
-                {userProfilePic ? (
-                  <img
-                    src={userProfilePic}
-                    alt={userName}
-                    className="h-9 w-9 rounded-full border border-slate-200 bg-white object-cover shadow-2xs group-hover:border-emerald-500 transition-colors"
-                  />
-                ) : (
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-xs shadow-2xs">
-                    {userInitials}
-                  </div>
-                )}
+                <UserAvatar src={profileImage} name={userName} size={36} />
                 <div className="hidden sm:flex items-center gap-1.5 text-left">
                   <span className="text-xs font-bold text-slate-900 leading-tight">
                     {userName}
@@ -540,6 +538,15 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
               {/* PROFILE DROPDOWN CARD */}
               {isProfileOpen && (
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl z-50 overflow-hidden font-sans p-4 space-y-3.5 animate-in fade-in duration-150">
+                  {/* USER SUMMARY HEADER */}
+                  <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                    <UserAvatar src={profileImage} name={userName} size={44} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-extrabold text-slate-900 truncate leading-tight">{userName}</p>
+                      <p className="text-[11px] font-medium text-slate-500 truncate">{shopName}</p>
+                    </div>
+                  </div>
+
                   {/* ACCOUNT DETAILS */}
                   <div className="space-y-2.5 text-xs">
                     <div>

@@ -33,17 +33,7 @@ export const productService = {
     const cleanId = (targetId || '').toString().trim();
     const generatedUrl = `/products/${cleanId}`;
 
-    console.log('====================================================');
-    console.log('🔍 [productService.updateProduct] EDIT PRODUCT REQUEST');
-    console.log('----------------------------------------------------');
-    console.log('• Selected Product :', idOrPayload);
-    console.log('• Product ID       :', cleanId || 'UNDEFINED/MISSING');
-    console.log('• Generated API URL:', generatedUrl);
-    console.log('• Payload          :', payload);
-    console.log('====================================================');
-
     if (!cleanId || cleanId === 'undefined' || cleanId === 'null') {
-      console.error('❌ [productService.updateProduct] Product ID is missing! Aborting API request.');
       throw new Error('Product ID is missing. Cannot update product.');
     }
 
@@ -64,5 +54,9 @@ export const productService = {
 
   async updateBatch(batchId, data) {
     return await apiClient.patch(`/products/batches/${batchId}`, data);
+  },
+
+  async searchCloudinaryProductImages(params = {}) {
+    return await apiClient.get('/products/cloudinary-images/search', { params });
   },
 };

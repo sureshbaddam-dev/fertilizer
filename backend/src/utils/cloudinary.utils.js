@@ -66,7 +66,7 @@ export const deleteFromCloudinary = async (urlOrPublicId) => {
  * Uploads a file buffer directly to Cloudinary.
  * If Cloudinary credentials are missing, falls back to writing to backend/uploads.
  */
-export const uploadToCloudinaryStream = (fileBuffer, folder = 'general', filename = null) => {
+export const uploadToCloudinaryStream = (fileBuffer, folder = 'general', filename = null, options = {}) => {
   return new Promise((resolve, reject) => {
     // Fallback to local disk if Cloudinary environment variables are missing
     if (!envConfig.cloudinary.cloudName || !envConfig.cloudinary.apiKey || !envConfig.cloudinary.apiSecret) {
@@ -91,12 +91,18 @@ export const uploadToCloudinaryStream = (fileBuffer, folder = 'general', filenam
 
     // Cloudinary Stream Upload
     const cleanFilename = filename ? filename.replace(/\.[^/.]+$/, '') : `${folder}-${Date.now()}`;
+    const uploadOptions = {
+      folder: `fertilizer_erp/${folder}`,
+      public_id: cleanFilename,
+      resource_type: 'image',
+    };
+
+    if (options.context && typeof options.context === 'object' && Object.keys(options.context).length > 0) {
+      uploadOptions.context = options.context;
+    }
+
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: `fertilizer_erp/${folder}`,
-        public_id: cleanFilename,
-        resource_type: 'image',
-      },
+      uploadOptions,
       (error, result) => {
         if (error) {
           logger.error('Cloudinary stream upload error:', error);

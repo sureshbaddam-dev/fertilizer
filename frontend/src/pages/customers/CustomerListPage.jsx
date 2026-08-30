@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { VEDIXA_LOGO_BASE64 } from '../../utils/vedixaLogoBase64';
 import {
   Search,
   Filter,

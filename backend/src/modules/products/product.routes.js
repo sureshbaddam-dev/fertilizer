@@ -8,6 +8,7 @@ import {
   deactivateProduct,
   restoreProduct,
   uploadProductImage,
+  searchCloudinaryProductImages,
   getProductHistory,
   updateBatch,
 } from './controllers/product.controller.js';
@@ -22,6 +23,7 @@ router.use(requireActiveSubscription);
 
 router.get('/', getProducts);
 router.get('/top-selling', getTopSellingProducts);
+router.get('/cloudinary-images/search', searchCloudinaryProductImages);
 router.post('/', createProduct);
 router.post('/upload-image', uploadProductImageMiddleware.single('image'), uploadProductImage);
 router.patch('/batches/:batchId', updateBatch);

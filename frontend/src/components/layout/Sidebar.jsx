@@ -23,6 +23,8 @@ import ShopDiscountModal from '../settings/ShopDiscountModal';
 import { dashboardService } from '../../services/dashboardService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
+import UserAvatar from '../ui/UserAvatar';
 import { useSettings } from '../../contexts/SettingsContext';
 import BrandLogo from '../common/BrandLogo';
 import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
@@ -60,12 +62,14 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
   const { data: subRes } = useQuery({
     queryKey: ['my-subscription'],
     queryFn: () => subscriptionService.getMySubscription(),
-    staleTime: 10 * 1000,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
-  const currentUser = authService.getCurrentUser() || {};
+  const { user: authUser, logout: authLogout } = useAuth();
+  const currentUser = authUser || authService.getCurrentUser() || {};
   const userProfile = userProfileRes?.data || userProfileRes || {};
-  const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'b.suresh';
+  const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'Store Owner';
   const userMobile = userProfile.mobile || currentUser.mobile || 'Not added';
 
   const rawShopName =
@@ -75,16 +79,15 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
     currentUser?.shopName;
 
   const shopName = rawShopName && rawShopName.trim() ? rawShopName.trim() : 'Not added';
-  const userProfilePic = userProfile.profilePicUrl || currentUser.profilePicUrl || settings?.logoUrl || settings?.shopLogo || null;
+  const profileImage =
+    userProfile.profileImage ||
+    userProfile.profilePicUrl ||
+    currentUser.profileImage ||
+    currentUser.profilePicUrl ||
+    settings?.logoUrl ||
+    settings?.shopLogo ||
+    '';
 
-  const getInitials = (name) => {
-    if (!name) return 'BS';
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
-  };
-
-  const userInitials = getInitials(userName);
   const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
 
   const handleNavClick = (e, item) => {
@@ -92,19 +95,16 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
     if (!item.isUnrestricted && !hasActiveSub) {
       e.preventDefault();
       setSubModalFeature(item.featureName || item.name);
+      setIsSubModalOpen(true);
+      return;
     }
   };
 
   const handleSignOut = async () => {
     try {
-      await authService.logout();
-    } catch (err) {
-      console.error('Logout error:', err);
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
+      await authLogout();
+    } catch (_err) {}
+    navigate('/login', { replace: true });
   };
 
   const { data: overviewRes } = useQuery({
@@ -125,45 +125,38 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
 
   return (
     <>
-      {/* Backdrop for tapping outside mobile sidebar drawer */}
+      {/* Mobile Backdrop */}
       {isOpen && (
         <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden transition-opacity"
         />
       )}
 
+      {/* Sidebar Container */}
       <aside
-        className={`fixed left-0 top-0 lg:top-[var(--topbar-height)] z-50 flex h-full lg:h-[calc(100vh-var(--topbar-height))] w-[260px] shrink-0 flex-col justify-start lg:justify-between overflow-y-auto border-r border-slate-200/80 bg-white px-3 py-3 shadow-xl lg:shadow-none transition-transform duration-200 ease-in-out lg:z-30 lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed top-0 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+          isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        } flex flex-col font-sans`}
       >
-        {/* Top Section: Logo Header + Navigation Menu (Top-Aligned) */}
-        <div className="flex flex-col w-full space-y-2">
-          {/* Mobile Header: Logo + Close Button */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2 pt-0.5 lg:hidden">
-            <div className="flex items-center h-8">
-              <BrandLogo className="h-full w-auto object-contain" />
-            </div>
-            <button
-              type="button"
-              onClick={onCloseMobile}
-              aria-label="Close menu"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Brand Header */}
+        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100 shrink-0">
+          <BrandLogo isLcp={true} />
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 lg:hidden cursor-pointer"
+            aria-label="Close sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
+        {/* Scrollable Navigation Area */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
           {/* Mobile User Profile Section */}
           <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5 my-1 lg:hidden">
-            {userProfilePic ? (
-              <img src={userProfilePic} alt={userName} className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0" />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black flex items-center justify-center text-xs shrink-0">
-                {userInitials}
-              </div>
-            )}
+            <UserAvatar src={profileImage} name={userName} size={36} />
             <div className="min-w-0 flex-1">
               <span className="block font-bold text-slate-900 text-xs truncate">{userName}</span>
               <span className="block text-[10px] text-slate-500 font-medium truncate">{shopName}</span>

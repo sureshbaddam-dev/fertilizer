@@ -49,11 +49,10 @@ const ReportsPage = lazy(() => import('../pages/reports/ReportsPage'));
 const SupportPage = lazy(() => import('../pages/support/SupportPage'));
 const FullScreenSubscriptionPage = lazy(() => import('../pages/subscription/FullScreenSubscriptionPage'));
 
+import VedixaWorkspaceLoader from '../components/common/VedixaWorkspaceLoader';
+
 const PageLoader = () => (
-  <div className="w-full h-[60vh] flex flex-col items-center justify-center gap-3">
-    <div className="w-8 h-8 border-3 border-[#00783C] border-t-transparent rounded-full animate-spin"></div>
-    <span className="text-xs font-semibold text-gray-500">Loading module...</span>
-  </div>
+  <VedixaWorkspaceLoader compact={true} message="Loading module..." subtext="" />
 );
 
 const withSuspense = (Component) => (

@@ -204,23 +204,29 @@ export const customerService = {
     const customer = await Customer.findOne({ _id: customerId, userId }).exec();
     if (!customer || customer.customerType === 'GENERAL') return null;
 
-    const invoices = await SalesInvoice.find({
-      userId,
-      isDeleted: { $ne: true },
-      $or: [
-        { customerId: customer._id },
-        { customerMobile: customer.mobile, customerType: 'ADDED' },
-      ],
-    }).sort({ date: 1, createdAt: 1 }).lean().exec();
+    const invoices = await SalesInvoice.find(
+      {
+        userId,
+        isDeleted: { $ne: true },
+        $or: [
+          { customerId: customer._id },
+          { customerMobile: customer.mobile, customerType: 'ADDED' },
+        ],
+      },
+      { _id: 1, totalAmount: 1, paidAmount: 1, dueAmount: 1, status: 1, dueStatus: 1 }
+    ).sort({ date: 1, createdAt: 1 }).lean().exec();
 
-    const payments = await CustomerPayment.find({
-      userId,
-      isDeleted: { $ne: true },
-      $or: [
-        { customer: customer._id },
-        { customerMobile: customer.mobile },
-      ],
-    }).sort({ date: 1, createdAt: 1 }).lean().exec();
+    const payments = await CustomerPayment.find(
+      {
+        userId,
+        isDeleted: { $ne: true },
+        $or: [
+          { customer: customer._id },
+          { customerMobile: customer.mobile },
+        ],
+      },
+      { _id: 1, amount: 1, invoiceId: 1 }
+    ).sort({ date: 1, createdAt: 1 }).lean().exec();
 
     // Linked invoice IDs that already have a CustomerPayment record
     const linkedInvoiceIds = new Set(

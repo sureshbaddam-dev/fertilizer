@@ -36,9 +36,6 @@ apiClient.interceptors.request.use(
     const token = localStorage.getItem('vedixa_access_token') || localStorage.getItem('mandhi_access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log(`[apiClient] ${config.method?.toUpperCase()} ${config.url} - Authorization header attached. Token len: ${token.length}`);
-    } else {
-      console.warn(`[apiClient] ${config.method?.toUpperCase()} ${config.url} - NO token found in localStorage!`);
     }
     return config;
   },
@@ -140,6 +137,7 @@ apiClient.interceptors.response.use(
       message: errorMessage,
       errors: error.response?.data?.errors || null,
       statusCode: error.response?.status || 500,
+      ...(typeof error.response?.data === 'object' ? error.response.data : {}),
     };
     return Promise.reject(formattedError);
   }

@@ -18,13 +18,15 @@ import {
 } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { settingService } from '../../services/settingService';
+import { useAuth } from '../../contexts/AuthContext';
 import BrandLogo from '../../components/common/BrandLogo';
 
 export default function ShopSetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user: authUser, isAuthReady, updateUser } = useAuth();
 
-  const currentUser = authService.getCurrentUser() || {};
+  const currentUser = authUser || authService.getCurrentUser() || {};
   const verifiedEmail = currentUser.email || '';
   const currentUserId = currentUser.id || currentUser._id;
 
@@ -67,14 +69,14 @@ export default function ShopSetupPage() {
 
   // If user already has complete profile details in MongoDB, redirect straight to dashboard
   useEffect(() => {
-    if (isCheckingExisting || authService.isInitializing) return;
+    if (isCheckingExisting || !isAuthReady) return;
 
     const isComplete = Boolean(
       currentUser.isProfileComplete ||
         (existingData?.ownerName &&
           existingData.ownerName !== 'Pending Setup' &&
           existingData?.mobile &&
-          !existingData.mobile.startsWith('pending_'))
+          !String(existingData.mobile).startsWith('pending_'))
     );
 
     if (isComplete) {
@@ -172,6 +174,9 @@ export default function ShopSetupPage() {
       });
 
       if (res.success) {
+        if (res.data?.user) {
+          updateUser(res.data.user);
+        }
         const id = currentUser?.id || currentUser?._id;
         queryClient.setQueryData(['shop-settings-global', id, true], res.data);
         queryClient.invalidateQueries(['shop-settings-global']);

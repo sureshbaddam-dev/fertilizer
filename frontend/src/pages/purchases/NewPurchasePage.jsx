@@ -65,10 +65,11 @@ export default function NewPurchasePage() {
   });
 
   const { data: productsData } = useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', currentUserId],
     queryFn: () => productService.getProducts({ isActive: 'true' }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    enabled: !!currentUserId,
   });
 
   const categories = useMemo(() => mastersData?.data?.categories || [], [mastersData]);
@@ -119,8 +120,8 @@ export default function NewPurchasePage() {
       tempId: Date.now() + Math.random(),
       productId: rawProd._id || rawProd.id,
       product: rawProd,
-      categoryId: rawProd.categoryId?._id || rawProd.categoryId || (categories[0]?._id || ''),
-      unitId: rawProd.defaultUnitId?._id || rawProd.unitId?._id || rawProd.unitId || (units[0]?._id || ''),
+      categoryId: rawProd.categoryId?._id || rawProd.categoryId || '',
+      unitId: rawProd.defaultUnitId?._id || rawProd.unitId?._id || rawProd.unitId || '',
       batchNumber: prod.batchCode || prod.batchNumber || '',
       quantity: 10,
       purchaseRate: defaultRate,
