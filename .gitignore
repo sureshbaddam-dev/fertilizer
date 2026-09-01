@@ -37,3 +37,7 @@ Thumbs.db
 .cache/
 .tmp/
 tmp/
+
+# Load tests & performance test suites
+load-tests/
+

@@ -77,5 +77,6 @@ salesInvoiceSchema.index({ userId: 1, date: -1, createdAt: -1 });
 salesInvoiceSchema.index({ userId: 1, customerId: 1, status: 1 });
 salesInvoiceSchema.index({ userId: 1, isDeleted: 1, customerType: 1 });
 salesInvoiceSchema.index({ userId: 1, customerName: 1 });
+salesInvoiceSchema.index({ userId: 1, 'items.productId': 1 });
 
 export const SalesInvoice = mongoose.model('SalesInvoice', salesInvoiceSchema);

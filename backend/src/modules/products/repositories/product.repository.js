@@ -11,7 +11,8 @@ export const productRepository = {
     const query = Product.find(filter)
       .populate('brandId', 'name shortName logo')
       .populate('categoryId', 'name slug icon color')
-      .populate('defaultUnitId', 'name shortName allowDecimals');
+      .populate('defaultUnitId', 'name shortName allowDecimals')
+      .lean();
 
     if (options.sort) query.sort(options.sort);
     if (options.skip) query.skip(options.skip);

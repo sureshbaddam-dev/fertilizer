@@ -189,16 +189,15 @@ export const productService = {
     if (query.search && query.search.trim()) {
       const searchRegex = new RegExp(query.search.trim(), 'i');
 
-      // Lookup matching Brands / Companies
-      const matchingBrands = await companyRepository.findAll({ userId, name: searchRegex });
+      // Parallelize lookups for matching Brands, Categories, and Batches
+      const [matchingBrands, matchingCategories, matchingBatches] = await Promise.all([
+        companyRepository.findAll({ userId, name: searchRegex }),
+        categoryRepository.findAll({ userId, name: searchRegex }),
+        ProductBatch.find({ userId, batchNumber: searchRegex, isActive: true }).lean().exec(),
+      ]);
+
       const brandIds = matchingBrands.map((b) => b._id);
-
-      // Lookup matching Categories
-      const matchingCategories = await categoryRepository.findAll({ userId, name: searchRegex });
       const categoryIds = matchingCategories.map((c) => c._id);
-
-      // Lookup matching Batches
-      const matchingBatches = await ProductBatch.find({ userId, batchNumber: searchRegex, isActive: true }).lean().exec();
       const batchProductIds = matchingBatches.map((b) => b.productId);
 
       filter.$or = [
@@ -237,7 +236,7 @@ export const productService = {
     if (query.isActive !== undefined) {
       filter.isActive = query.isActive === 'true' || query.isActive === true;
     } else if (query.includeInactive !== 'true' && query.includeDeleted !== 'true') {
-      filter.isActive = { $ne: false };
+      filter.isActive = true;
     }
 
     // Hide zero-stock products if inStock filter is passed
@@ -251,17 +250,68 @@ export const productService = {
     const skip = limit > 0 ? (page - 1) * limit : 0;
     const repoOptions = limit > 0 ? { sort, skip, limit } : { sort };
 
-    const productsDocs = await productRepository.findAllPopulated(filter, repoOptions);
-    const total = await productRepository.count(filter);
+    const [productsDocs, total] = await Promise.all([
+      productRepository.findAllPopulated(filter, repoOptions),
+      productRepository.count(filter),
+    ]);
 
-    // FETCH ASSOCIATED PRODUCT BATCHES FOR ALL PRODUCTS IN A SINGLE BULK QUERY (EXCLUDING SOFT-DELETED BATCHES)
+    if (!productsDocs || productsDocs.length === 0) {
+      return { products: [], total: total || 0 };
+    }
+
+    // FETCH ASSOCIATED PRODUCT BATCHES & INWARD/OUTWARD METRICS FOR TARGET PRODUCT IDS IN PARALLEL
     const productIds = productsDocs.map((p) => p._id);
-    const allBatches = await ProductBatch.find({
-      userId,
-      productId: { $in: productIds },
-      isDeleted: { $ne: true },
-      isActive: true,
-    }).lean().exec();
+    const productObjIds = productIds.map((id) => (id instanceof mongoose.Types.ObjectId ? id : new mongoose.Types.ObjectId(id)));
+
+    const [allBatches, purchaseAgg, salesAgg] = await Promise.all([
+      ProductBatch.find({
+        userId,
+        productId: { $in: productIds },
+        isDeleted: { $ne: true },
+        isActive: true,
+      }).lean().exec(),
+      PurchaseItem.aggregate([
+        { $match: { userId: userObjId, productId: { $in: productObjIds }, isDeleted: { $ne: true } } },
+        {
+          $lookup: {
+            from: 'purchases',
+            localField: 'purchaseId',
+            foreignField: '_id',
+            as: 'purchaseDoc',
+          },
+        },
+        {
+          $unwind: { path: '$purchaseDoc', preserveNullAndEmptyArrays: true },
+        },
+        {
+          $match: {
+            $or: [
+              { purchaseDoc: { $exists: false } },
+              { 'purchaseDoc.isDeleted': { $ne: true } },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: '$productId',
+            totalPurchasedQty: { $sum: { $toDouble: { $ifNull: ['$quantity', 0] } } },
+            lastPurchaseDate: { $max: { $ifNull: ['$purchaseDoc.purchaseDate', '$createdAt'] } },
+          },
+        },
+      ]),
+      SalesInvoice.aggregate([
+        { $match: { userId: userObjId, 'items.productId': { $in: productObjIds } } },
+        { $unwind: '$items' },
+        { $match: { 'items.productId': { $in: productObjIds } } },
+        {
+          $group: {
+            _id: '$items.productId',
+            totalSoldQty: { $sum: { $toDouble: { $ifNull: ['$items.quantity', 0] } } },
+            lastSaleDate: { $max: { $ifNull: ['$date', '$createdAt'] } },
+          },
+        },
+      ]),
+    ]);
 
     const batchMap = {};
     allBatches.forEach((b) => {
@@ -269,37 +319,6 @@ export const productService = {
       if (!batchMap[pid]) batchMap[pid] = [];
       batchMap[pid].push(b);
     });
-
-    // BULK AGGREGATIONS FOR INWARD (PURCHASES) & OUTWARD (SALES) METRICS
-    const purchaseAgg = await PurchaseItem.aggregate([
-      { $match: { userId: userObjId, isDeleted: { $ne: true } } },
-      {
-        $lookup: {
-          from: 'purchases',
-          localField: 'purchaseId',
-          foreignField: '_id',
-          as: 'purchaseDoc',
-        },
-      },
-      {
-        $unwind: { path: '$purchaseDoc', preserveNullAndEmptyArrays: true },
-      },
-      {
-        $match: {
-          $or: [
-            { purchaseDoc: { $exists: false } },
-            { 'purchaseDoc.isDeleted': { $ne: true } },
-          ],
-        },
-      },
-      {
-        $group: {
-          _id: '$productId',
-          totalPurchasedQty: { $sum: { $toDouble: { $ifNull: ['$quantity', 0] } } },
-          lastPurchaseDate: { $max: { $ifNull: ['$purchaseDoc.purchaseDate', '$createdAt'] } },
-        },
-      },
-    ]);
 
     const purchaseMap = new Map();
     purchaseAgg.forEach((item) => {
@@ -310,18 +329,6 @@ export const productService = {
         });
       }
     });
-
-    const salesAgg = await SalesInvoice.aggregate([
-      { $match: { userId: userObjId } },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.productId',
-          totalSoldQty: { $sum: { $toDouble: { $ifNull: ['$items.quantity', 0] } } },
-          lastSaleDate: { $max: { $ifNull: ['$date', '$createdAt'] } },
-        },
-      },
-    ]);
 
     const salesMap = new Map();
     salesAgg.forEach((item) => {

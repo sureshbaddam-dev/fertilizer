@@ -25,13 +25,39 @@ export const customerService = {
       ];
     }
 
-    const [customers, totalCustomers, activeCustomers, inactiveCustomers, blockedCustomers] = await Promise.all([
-      Customer.find(filter).sort({ name: 1 }).lean().exec(),
-      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED' }),
-      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Active' }),
-      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Inactive' }),
-      Customer.countDocuments({ userId, isActive: { $ne: false }, customerType: 'ADDED', status: 'Blocked' }),
+    const userObjId = new mongoose.Types.ObjectId(userId);
+
+    const [customers, countsAgg] = await Promise.all([
+      Customer.find(filter)
+        .select('_id name mobile village mandal district address customerType status outstandingBalance createdAt updatedAt')
+        .sort({ name: 1 })
+        .lean()
+        .exec(),
+      Customer.aggregate([
+        { $match: { userId: userObjId, isActive: { $ne: false }, customerType: 'ADDED' } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
+
+    let totalCustomers = 0;
+    let activeCustomers = 0;
+    let inactiveCustomers = 0;
+    let blockedCustomers = 0;
+
+    countsAgg.forEach((item) => {
+      const cnt = Number(item.count || 0);
+      totalCustomers += cnt;
+      const statusLower = (item._id || '').toLowerCase();
+      if (statusLower === 'active') activeCustomers += cnt;
+      else if (statusLower === 'inactive') inactiveCustomers += cnt;
+      else if (statusLower === 'blocked') blockedCustomers += cnt;
+      else activeCustomers += cnt;
+    });
 
     const totalOutstanding = customers.reduce((acc, c) => acc + (c.outstandingBalance || 0), 0);
     const customersWithDue = customers.filter((c) => (c.outstandingBalance || 0) > 0).length;

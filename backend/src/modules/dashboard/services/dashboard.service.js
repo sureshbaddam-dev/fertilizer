@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { Product } from '../../products/models/product.model.js';
 import { Category } from '../../masters/models/category.model.js';
@@ -27,18 +28,15 @@ export const dashboardService = {
 
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const { ProductBatch } = await import('../../products/models/productBatch.model.js');
+    const userObjId = new mongoose.Types.ObjectId(userId);
 
-    // Parallelize all independent MongoDB queries in a single Promise.all batch
+    // Parallelize consolidated MongoDB operations in a single Promise.all batch
     const [
       rangeInvoices,
       recentInvoices,
-      lowStockDocs,
-      totalLowStock,
-      totalOutOfStock,
-      expiryAlerts,
-      expiredProducts,
+      productFacetDocs,
+      batchFacetDocs,
       dbCategories,
-      categoryCountsAgg,
       shopDiscount,
     ] = await Promise.all([
       // 1. Single combined query for Today & Yesterday Invoices
@@ -57,66 +55,113 @@ export const dashboardService = {
         .lean()
         .exec(),
 
-      // 3. Low Stock Documents
-      Product.find({
-        userId,
-        isActive: true,
-        $expr: {
-          $and: [
-            { $gt: ['$totalStock', 0] },
-            {
-              $lte: [
-                '$totalStock',
-                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
-              ],
-            },
-          ],
-        },
-      })
-        .populate('brandId', 'name')
-        .sort({ totalStock: 1 })
-        .limit(5)
-        .lean()
-        .exec(),
-
-      // 4. Low Stock Count
-      Product.countDocuments({
-        userId,
-        isActive: true,
-        $expr: {
-          $and: [
-            { $gt: ['$totalStock', 0] },
-            {
-              $lte: [
-                '$totalStock',
-                { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
-              ],
-            },
-          ],
-        },
-      }),
-
-      // 5. Out of Stock Count
-      Product.countDocuments({ userId, totalStock: { $lte: 0 }, isActive: true }),
-
-      // 6. Expiry Alerts Count
-      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $gte: now, $lte: in30Days } }),
-
-      // 7. Expired Products Count
-      ProductBatch.countDocuments({ userId, currentStock: { $gt: 0 }, expiryDate: { $lt: now } }),
-
-      // 8. Categories List
-      Category.find({ userId }).lean().exec(),
-
-      // 9. Product Count by Category Aggregation
+      // 3. Consolidated Product Facet: Low Stock List, Low Stock Count, Out of Stock Count, Category Counts
       Product.aggregate([
-        { $match: { userId, isActive: true } },
-        { $group: { _id: '$categoryId', prodCount: { $sum: 1 } } },
+        { $match: { userId: userObjId, isActive: true } },
+        {
+          $facet: {
+            lowStockList: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $gt: ['$totalStock', 0] },
+                      {
+                        $lte: [
+                          '$totalStock',
+                          { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              { $sort: { totalStock: 1 } },
+              { $limit: 5 },
+              {
+                $lookup: {
+                  from: 'brands',
+                  localField: 'brandId',
+                  foreignField: '_id',
+                  as: 'brandDoc',
+                },
+              },
+              {
+                $addFields: {
+                  brandId: {
+                    $let: {
+                      vars: { b: { $arrayElemAt: ['$brandDoc', 0] } },
+                      in: { _id: '$$b._id', name: '$$b.name' },
+                    },
+                  },
+                },
+              },
+              { $project: { brandDoc: 0 } },
+            ],
+            lowStockCount: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $gt: ['$totalStock', 0] },
+                      {
+                        $lte: [
+                          '$totalStock',
+                          { $ifNull: ['$minimumStockAlert', { $ifNull: ['$lowStockAlert', 10] }] },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              { $count: 'count' },
+            ],
+            outOfStockCount: [
+              { $match: { totalStock: { $lte: 0 } } },
+              { $count: 'count' },
+            ],
+            categoryCounts: [
+              { $group: { _id: '$categoryId', prodCount: { $sum: 1 } } },
+            ],
+          },
+        },
       ]),
 
-      // 10. Shop Discount Settings
+      // 4. Consolidated ProductBatch Facet: Expiry Alerts & Expired Products
+      ProductBatch.aggregate([
+        { $match: { userId: userObjId, currentStock: { $gt: 0 } } },
+        {
+          $facet: {
+            expiryAlerts: [
+              { $match: { expiryDate: { $gte: now, $lte: in30Days } } },
+              { $count: 'count' },
+            ],
+            expiredProducts: [
+              { $match: { expiryDate: { $lt: now } } },
+              { $count: 'count' },
+            ],
+          },
+        },
+      ]),
+
+      // 5. Categories List
+      Category.find({ userId }).lean().exec(),
+
+      // 6. Shop Discount Settings
       shopDiscountService.getShopDiscount(userId),
     ]);
+
+    // Unpack Product Facet results
+    const productFacet = productFacetDocs?.[0] || {};
+    const lowStockDocs = productFacet.lowStockList || [];
+    const totalLowStock = productFacet.lowStockCount?.[0]?.count || 0;
+    const totalOutOfStock = productFacet.outOfStockCount?.[0]?.count || 0;
+    const categoryCountsAgg = productFacet.categoryCounts || [];
+
+    // Unpack Batch Facet results
+    const batchFacet = batchFacetDocs?.[0] || {};
+    const expiryAlerts = batchFacet.expiryAlerts?.[0]?.count || 0;
+    const expiredProducts = batchFacet.expiredProducts?.[0]?.count || 0;
 
     // Separate today and yesterday invoices in memory
     const todayInvoices = rangeInvoices.filter((inv) => {

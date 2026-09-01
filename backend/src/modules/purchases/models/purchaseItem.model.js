@@ -100,5 +100,6 @@ const purchaseItemSchema = new mongoose.Schema(
 );
 
 purchaseItemSchema.index({ userId: 1, purchaseId: 1, isDeleted: 1 });
+purchaseItemSchema.index({ userId: 1, productId: 1, isDeleted: 1 });
 
 export const PurchaseItem = mongoose.model('PurchaseItem', purchaseItemSchema);
