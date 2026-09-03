@@ -72,14 +72,6 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     refetchOnWindowFocus: false,
   });
 
-  // Fetch Dashboard Overview for lightweight unread count badge
-  const { data: overviewRes } = useQuery({
-    queryKey: ['dashboard-overview'],
-    queryFn: () => dashboardService.getDashboardOverview(),
-    staleTime: 2 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
   const currentUser = authUser || authService.getCurrentUser() || {};
   const userProfile = userProfileRes?.data || userProfileRes || {};
   const userName = userProfile.ownerName || currentUser.ownerName || settings?.ownerName || 'Store Owner';
@@ -116,9 +108,6 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const currentSub = subData?.subscription || null;
   const planName = currentSub?.planId?.name || currentSub?.planName || (currentSub?.planCode ? currentSub.planCode.replace(/_/g, ' ') : '3 Months');
   const expiryFormatted = currentSub?.expiryDate ? new Date(currentSub.expiryDate).toLocaleDateString('en-IN') : null;
-
-  const overviewData = overviewRes?.data || overviewRes;
-  const overviewUnreadCount = overviewData?.unreadNotificationCount ?? 0;
 
   const handleSignOut = async () => {
     try {
@@ -214,7 +203,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
     read: n.read || readNotifIds.includes(n.id),
   }));
 
-  const unreadNotifCount = notificationsList.filter((n) => !n.read).length || overviewUnreadCount;
+  const unreadNotifCount = notificationsList.filter((n) => !n.read).length;
 
   // Track seen notification IDs to play sound ONLY for genuinely NEW notifications
   const seenNotifIdsRef = useRef(new Set());

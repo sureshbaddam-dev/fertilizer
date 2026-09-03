@@ -722,6 +722,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setIsWhatsAppProcessing(true);
     isSubmittingRef.current = true;
 
+    // Allocate popup tab synchronously during active user click gesture to prevent browser popup suppression
+    let waWindow = null;
+    try {
+      waWindow = window.open('about:blank', '_blank');
+    } catch (_e) {
+      waWindow = null;
+    }
+
     try {
       let savedInvoice = lastSavedInvoice;
 
@@ -809,14 +817,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         selectedMonth: defaultMonthStr,
       });
 
-      // 4. Generate Monthly Statement PDF (isolated so PDF download failure never blocks WhatsApp)
-      try {
-        await generateMonthlyStatementPdf(freshCustomer, shopSettings, monthlyData);
-      } catch (pdfErr) {
-        console.warn('Monthly Statement PDF generation warning:', pdfErr);
-      }
-
-      // 5. Open WhatsApp Redirect
+      // 4. Open WhatsApp Redirect deterministically
       const cleanPhone = custMobile.replace(/\D/g, '');
       const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
@@ -832,7 +833,18 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       });
 
       const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(waMsg)}`;
-      window.open(waUrl, '_blank');
+
+      if (waWindow && !waWindow.closed) {
+        waWindow.location.href = waUrl;
+        waWindow.focus?.();
+      } else {
+        window.location.assign(waUrl);
+      }
+
+      // 5. Generate Monthly Statement PDF in background (non-blocking)
+      generateMonthlyStatementPdf(freshCustomer, shopSettings, monthlyData).catch((pdfErr) => {
+        console.warn('Monthly Statement PDF generation warning:', pdfErr);
+      });
 
       setItems([]);
       setManualDiscountValue('');
@@ -841,6 +853,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       setNotes('');
       onClose();
     } catch (err) {
+      if (waWindow && !waWindow.closed) {
+        try {
+          waWindow.close();
+        } catch (_) {}
+      }
       alert(err?.response?.data?.message || err?.message || 'Failed to save bill or generate WhatsApp statement.');
     } finally {
       setIsWhatsAppProcessing(false);

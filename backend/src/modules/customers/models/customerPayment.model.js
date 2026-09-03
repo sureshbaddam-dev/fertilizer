@@ -21,5 +21,7 @@ const customerPaymentSchema = new mongoose.Schema(
 customerPaymentSchema.index({ userId: 1, customer: 1, createdAt: -1 });
 customerPaymentSchema.index({ userId: 1, isDeleted: 1, createdAt: -1 });
 customerPaymentSchema.index({ userId: 1, customer: 1, isDeleted: 1, createdAt: -1 });
+customerPaymentSchema.index({ userId: 1, customerMobile: 1, isDeleted: 1 });
 
 export const CustomerPayment = mongoose.model('CustomerPayment', customerPaymentSchema);
+

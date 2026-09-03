@@ -9,7 +9,7 @@ const customerSchema = new mongoose.Schema(
     mandal: { type: String, default: 'Narketpally' },
     district: { type: String, default: 'Nalgonda' },
     address: { type: String, default: '' },
-    customerType: { type: String, enum: ['ADDED', 'GENERAL'], default: 'ADDED', index: true },
+    customerType: { type: String, enum: ['ADDED', 'GENERAL', 'Registered', 'Walk-in', 'regular', 'walkin'], default: 'ADDED', index: true },
     type: { type: String, default: 'Regular' }, // Regular, Wholesale
     status: { type: String, default: 'Active' }, // Active, Inactive, Blocked
     isActive: { type: Boolean, default: true, index: true },

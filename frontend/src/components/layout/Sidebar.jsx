@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import ShopDiscountModal from '../settings/ShopDiscountModal';
 import { dashboardService } from '../../services/dashboardService';
+import { settingService } from '../../services/settingService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -107,15 +108,14 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
     navigate('/login', { replace: true });
   };
 
-  const { data: overviewRes } = useQuery({
-    queryKey: ['dashboard-overview'],
-    queryFn: () => dashboardService.getDashboardOverview(),
-    staleTime: 2 * 60 * 1000,
+  const { data: discountRes } = useQuery({
+    queryKey: ['shop-discount'],
+    queryFn: () => settingService.getShopDiscount(),
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  const dashboardData = overviewRes?.data || overviewRes;
-  const shopDiscount = dashboardData?.shopDiscount;
+  const shopDiscount = discountRes?.data?.data || discountRes?.data || discountRes;
 
   const discountLabel = shopDiscount?.isEnabled
     ? shopDiscount.discountType === 'percentage'

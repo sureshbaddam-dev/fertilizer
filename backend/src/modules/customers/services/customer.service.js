@@ -239,7 +239,22 @@ export const customerService = {
           { customerMobile: customer.mobile, customerType: 'ADDED' },
         ],
       },
-      { _id: 1, totalAmount: 1, paidAmount: 1, dueAmount: 1, status: 1, dueStatus: 1 }
+      {
+        _id: 1,
+        invoiceNumber: 1,
+        date: 1,
+        createdAt: 1,
+        items: 1,
+        subtotal: 1,
+        discountAmount: 1,
+        taxAmount: 1,
+        totalAmount: 1,
+        paidAmount: 1,
+        dueAmount: 1,
+        paymentMode: 1,
+        status: 1,
+        dueStatus: 1,
+      }
     ).sort({ date: 1, createdAt: 1 }).lean().exec();
 
     const payments = await CustomerPayment.find(
@@ -251,7 +266,16 @@ export const customerService = {
           { customerMobile: customer.mobile },
         ],
       },
-      { _id: 1, amount: 1, invoiceId: 1 }
+      {
+        _id: 1,
+        amount: 1,
+        invoiceId: 1,
+        date: 1,
+        createdAt: 1,
+        refNo: 1,
+        paymentMode: 1,
+        notes: 1,
+      }
     ).sort({ date: 1, createdAt: 1 }).lean().exec();
 
     // Linked invoice IDs that already have a CustomerPayment record
@@ -284,7 +308,18 @@ export const customerService = {
     customer.totalPaid = totalPaid;
     customer.outstandingBalance = outstandingBalance;
     customer.advanceBalance = advanceBalance;
-    await customer.save();
+
+    await Customer.updateOne(
+      { _id: customer._id },
+      {
+        $set: {
+          totalPurchases,
+          totalPaid,
+          outstandingBalance,
+          advanceBalance,
+        },
+      }
+    );
 
     const invoiceBulkOps = [];
     for (const inv of invoices) {

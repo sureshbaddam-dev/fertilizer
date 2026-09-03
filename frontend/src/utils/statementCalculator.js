@@ -1,3 +1,24 @@
+function parseTxDate(tx) {
+  if (!tx) return new Date();
+  const raw = tx.rawDate || tx.date || tx.createdAt || tx.updatedAt;
+  if (!raw) return new Date();
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) return d;
+  if (typeof raw === 'string') {
+    const parts = raw.trim().split(/[-/ ]/);
+    if (parts.length === 3) {
+      const p1 = parseInt(parts[0], 10);
+      const p2 = parseInt(parts[1], 10) - 1;
+      const p3 = parseInt(parts[2], 10);
+      if (p3 > 1000) {
+        const customD = new Date(p3, p2, p1);
+        if (!isNaN(customD.getTime())) return customD;
+      }
+    }
+  }
+  return new Date();
+}
+
 /**
  * Centralized Authoritative Customer Statement Calculator.
  * Computes exact Opening Balance, New Purchases, Payments, Closing Due, and Running Balance Transactions
@@ -21,7 +42,7 @@ export function calculateCustomerStatement({
     const fullTxs = rawList
       .filter(Boolean)
       .map((tx) => {
-        const txDate = new Date(tx.rawDate || tx.date || tx.createdAt);
+        const txDate = parseTxDate(tx);
         const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
         const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
 
@@ -53,6 +74,7 @@ export function calculateCustomerStatement({
     return {
       statementType: 'FULL',
       periodLabel: 'Full Historical Ledger',
+      monthLabel: 'Full Ledger Statement',
       openingBalance: openBal,
       newPurchases,
       payments,
@@ -74,7 +96,7 @@ export function calculateCustomerStatement({
     const periodList = [];
 
     rawList.filter(Boolean).forEach((tx) => {
-      const txDate = new Date(tx.rawDate || tx.date || tx.createdAt);
+      const txDate = parseTxDate(tx);
       const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
       const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
 
@@ -115,6 +137,7 @@ export function calculateCustomerStatement({
     return {
       statementType: 'CUSTOM',
       periodLabel: `${fromLabel} to ${toLabel}`,
+      monthLabel: `${fromLabel} to ${toLabel}`,
       openingBalance: openBal,
       newPurchases: periodDebits,
       payments: periodCredits,
@@ -143,7 +166,7 @@ export function calculateCustomerStatement({
   const monthList = [];
 
   rawList.filter(Boolean).forEach((tx) => {
-    const txDate = new Date(tx.rawDate || tx.date || tx.createdAt);
+    const txDate = parseTxDate(tx);
     const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
     const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
 
