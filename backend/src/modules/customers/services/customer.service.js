@@ -29,7 +29,9 @@ export const customerService = {
 
     const [customers, countsAgg] = await Promise.all([
       Customer.find(filter)
-        .select('_id name mobile village mandal district address customerType status outstandingBalance createdAt updatedAt')
+        .select(
+          '_id name mobile village mandal district address customerType type status totalPurchases totalPaid outstandingBalance advanceBalance creditLimit gstin createdAt updatedAt'
+        )
         .sort({ name: 1 })
         .lean()
         .exec(),
