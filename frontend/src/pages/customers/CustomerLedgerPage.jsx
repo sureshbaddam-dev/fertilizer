@@ -684,21 +684,11 @@ export default function CustomerLedgerPage() {
     }
   };
 
-  const handleWhatsAppStatement = async () => {
+  const handleWhatsAppStatement = () => {
     const custMobile = (customer?.mobile || '').trim();
     if (!custMobile) {
       alert("Customer mobile number is missing. Please add the customer's mobile/WhatsApp number first.");
       return;
-    }
-
-    try {
-      if (statementType === 'MONTHLY') {
-        await generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation);
-      } else {
-        await generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period');
-      }
-    } catch (err) {
-      console.warn('PDF generation warning before WhatsApp redirect:', err);
     }
 
     const cleanPhone = custMobile.replace(/\D/g, '');
@@ -715,7 +705,20 @@ export default function CustomerLedgerPage() {
     });
 
     const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(waMsg)}`;
+    
+    // 1. Open WhatsApp immediately on active user click gesture to prevent browser popup blocking
     window.open(waUrl, '_blank');
+
+    // 2. Generate PDF in background (non-blocking)
+    if (statementType === 'MONTHLY') {
+      generateMonthlyStatementPdf(customer, shopSettings, monthlyCalculation).catch((err) => {
+        console.warn('PDF generation warning:', err);
+      });
+    } else {
+      generateLedgerPdf(customer, shopSettings, displayTransactions, totals, statementType === 'FULL' ? 'Full History' : 'Custom Period').catch((err) => {
+        console.warn('PDF generation warning:', err);
+      });
+    }
   };
 
   const handleOpenEditPayment = (p) => {

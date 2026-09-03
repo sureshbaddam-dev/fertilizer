@@ -23,6 +23,99 @@ import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import AddCustomerModal from '../customers/AddCustomerModal';
 
+// Memoized Cart Item Row Component to isolate re-renders on quantity / price input
+const CartItemRow = React.memo(function CartItemRow({
+  item,
+  onUpdateQty,
+  onDirectQtyInput,
+  onUpdatePrice,
+  onDeleteItem,
+}) {
+  const targetId = item.originalProductId || item.id;
+  const lineTotalVal = item.lineTotal !== undefined ? item.lineTotal : (item.qty * item.price);
+
+  return (
+    <div className="p-2 sm:p-2.5 hover:bg-gray-50/60 transition-colors flex items-center justify-between gap-2 text-xs">
+      {/* 1. Product Image & Name */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <ProductAvatar src={item.image} name={item.name} size={32} />
+        <div className="min-w-0">
+          <span className="font-bold text-gray-900 block text-xs truncate leading-tight" title={item.name}>
+            {item.name}
+          </span>
+          <span className="text-[10px] text-gray-500 font-medium truncate block">
+            {item.brand}{item.batchNumber ? ` • Batch: ${item.batchNumber}` : ''}
+          </span>
+          {item.discountVal > 0 && (
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 block w-fit mt-0.5">
+              Discount: {item.discountType === 'Percentage' ? `${item.discountVal}%` : `₹${item.discountVal}`}
+            </span>
+          )}
+          {item.isFifoSplit && item.fifoSplitNotice && (
+            <span className="text-[9.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded block mt-0.5 leading-tight">
+              ✨ {item.fifoSplitNotice}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Qty Counter (Buttons + Direct Typing) */}
+      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white shrink-0">
+        <button
+          type="button"
+          onClick={() => onUpdateQty(targetId, -1)}
+          className="px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold transition-colors cursor-pointer"
+          title="Decrease Qty"
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+        <input
+          type="number"
+          min="1"
+          onFocus={(e) => e.target.select()}
+          value={item.qty}
+          onChange={(e) => onDirectQtyInput(targetId, e.target.value)}
+          className="w-12 h-6 text-center font-mono font-bold text-gray-900 text-xs focus:outline-none focus:bg-emerald-50 border-x border-gray-200"
+          title="Click to type quantity"
+        />
+        <button
+          type="button"
+          onClick={() => onUpdateQty(targetId, 1)}
+          className="px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold transition-colors cursor-pointer"
+          title="Increase Qty"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* 3. Selling Price (Editable) */}
+      <div className="w-18 sm:w-20 shrink-0">
+        <input
+          type="number"
+          value={item.price}
+          onChange={(e) => onUpdatePrice(targetId, e.target.value)}
+          className="w-full h-7 px-1 bg-gray-50 border border-gray-200 rounded-lg font-mono font-bold text-right text-xs focus:outline-none focus:border-[#00783C]"
+        />
+      </div>
+
+      {/* 4. Line Amount = Qty x Effective Selling Price */}
+      <div className="w-20 text-right font-mono font-extrabold text-gray-900 text-xs shrink-0">
+        ₹ {lineTotalVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+      </div>
+
+      {/* 5. Delete Button */}
+      <button
+        type="button"
+        onClick={() => onDeleteItem(targetId)}
+        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer shrink-0"
+        title="Remove item"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+});
+
 export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const queryClient = useQueryClient();
 
@@ -38,6 +131,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Customer Autocomplete Field State
   const [customerInput, setCustomerInput] = useState('');
+  const [debouncedCustomerInput, setDebouncedCustomerInput] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isNewCustModalOpen, setIsNewCustModalOpen] = useState(false);
@@ -63,9 +157,15 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Debounce Drawer Product Search
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedDrawerProdSearch(drawerProdSearch.trim()), 300);
+    const timer = setTimeout(() => setDebouncedDrawerProdSearch(drawerProdSearch.trim()), 250);
     return () => clearTimeout(timer);
   }, [drawerProdSearch]);
+
+  // Debounce Customer Autocomplete Search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedCustomerInput(customerInput.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [customerInput]);
 
   // Reset product suggestions dropdown state on drawer open (suggestions remain HIDDEN initially)
   useEffect(() => {
@@ -96,12 +196,13 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch Customers for Autocomplete
+  // Fetch Customers for Autocomplete (with debouncing and stable cache)
   const { data: drawerCustomersApi } = useQuery({
-    queryKey: ['drawer-customers', customerInput],
-    queryFn: () => customerService.getCustomers({ search: customerInput }),
-    enabled: customerMode === 'add',
+    queryKey: ['drawer-customers', debouncedCustomerInput],
+    queryFn: () => customerService.getCustomers({ search: debouncedCustomerInput }),
+    enabled: customerMode === 'add' && Boolean(isOpen),
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const drawerCustomerOptions = useMemo(
@@ -109,12 +210,13 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     [drawerCustomersApi?.data?.customers]
   );
 
-  // Fetch Top Selling Products for In-Drawer Product Search
+  // Fetch Top Selling Products for In-Drawer Product Search (with stable cache)
   const { data: drawerProductsApi } = useQuery({
     queryKey: ['drawer-top-selling-products', debouncedDrawerProdSearch],
     queryFn: () => productService.getTopSellingProducts({ search: debouncedDrawerProdSearch }),
-    enabled: isDrawerProdDropdownOpen,
-    staleTime: 5000,
+    enabled: isDrawerProdDropdownOpen && Boolean(isOpen),
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const drawerProductOptions = useMemo(
@@ -126,8 +228,8 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const { data: shopDiscountApi } = useQuery({
     queryKey: ['shop-discount'],
     queryFn: () => settingService.getShopDiscount(),
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const shopDiscountData = shopDiscountApi?.data?.data || shopDiscountApi?.data;
@@ -145,8 +247,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const isSelectingProdRef = useRef(false);
 
   // Add Product to Cart
-  // Fix Bug #1: Pass focusSearch=false when quick adding from home screen product card click
-  const addProductToCart = (product, options = { focusSearch: false }) => {
+  const addProductToCart = useCallback((product, options = { focusSearch: false }) => {
     if (!product) return;
     isSelectingProdRef.current = true;
 
@@ -170,7 +271,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
             : (product.discount ?? 0))
     );
 
-    const discType = product.discountType || activeBatch?.discountType || product.discountType || 'Percentage';
+    const discType = product.discountType || activeBatch?.discountType || 'Percentage';
 
     setItems((prev) => {
       const existingIdx = prev.findIndex((i) => i.id === pId);
@@ -217,7 +318,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setTimeout(() => {
       isSelectingProdRef.current = false;
     }, 150);
-  };
+  }, []);
 
   const handleProdSearchKeyDown = (e) => {
     if (!isDrawerProdDropdownOpen || drawerProductOptions.length === 0) return;
@@ -248,7 +349,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       lastProcessedProductRef.current = quickAddedProduct;
       addProductToCart(quickAddedProduct, { focusSearch: false });
     }
-  }, [quickAddedProduct]);
+  }, [quickAddedProduct, addProductToCart]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -273,22 +374,23 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
   };
 
-  const handleUpdateQty = (id, delta) => {
+  // Stabilized Item Update Handlers via useCallback
+  const handleUpdateQty = useCallback((id, delta) => {
     setItems((prev) =>
       prev
         .map((i) => {
-          if (i.id !== id) return i;
+          if (i.id !== id && i.originalProductId !== id) return i;
           const maxStock = Number(i.totalStock || i.currentStock || 99999);
           const newQty = Math.min(maxStock, Math.max(1, (Number(i.qty) || 0) + delta));
           return { ...i, qty: newQty };
         })
         .filter((i) => i.qty > 0)
     );
-  };
+  }, []);
 
-  const handleDirectQtyInput = (id, rawVal) => {
+  const handleDirectQtyInput = useCallback((id, rawVal) => {
     if (rawVal === '') {
-      setItems((prev) => prev.map((i) => (i.id === id || i._id === id ? { ...i, qty: '' } : i)));
+      setItems((prev) => prev.map((i) => (i.id === id || i._id === id || i.originalProductId === id ? { ...i, qty: '' } : i)));
       return;
     }
     const sanitizedVal = rawVal.length > 1 && rawVal.startsWith('0') ? rawVal.replace(/^0+/, '') || '0' : rawVal;
@@ -297,33 +399,34 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
     setItems((prev) =>
       prev.map((i) => {
-        if (i.id !== id && i._id !== id) return i;
+        if (i.id !== id && i._id !== id && i.originalProductId !== id) return i;
         return { ...i, qty: val };
       })
     );
-  };
+  }, []);
 
-  const handleUpdatePrice = (id, newPrice) => {
+  const handleUpdatePrice = useCallback((id, newPrice) => {
     const priceVal = parseFloat(newPrice);
     setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, price: isNaN(priceVal) || priceVal < 0 ? 0 : priceVal } : i))
+      prev.map((i) => (i.id === id || i.originalProductId === id ? { ...i, price: isNaN(priceVal) || priceVal < 0 ? 0 : priceVal } : i))
     );
-  };
+  }, []);
 
-  const handleDeleteItem = (id) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  };
+  const handleDeleteItem = useCallback((id) => {
+    setItems((prev) => prev.filter((i) => i.id !== id && i.originalProductId !== id));
+  }, []);
 
-  const handleClearCart = () => {
+  const handleClearCart = useCallback(() => {
     setItems([]);
     setManualDiscountValue('');
     setPaidAmountInput('');
     setIsPaidAmountCustom(false);
     setLastSavedInvoice(null);
-  };
+  }, []);
 
   const [fifoPreview, setFifoPreview] = useState(null);
 
+  // Debounced FIFO preview to eliminate network stutter during typing
   useEffect(() => {
     if (items.length === 0) {
       setFifoPreview(null);
@@ -331,11 +434,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
 
     let isMounted = true;
-    const fetchPreview = async () => {
+    const timer = setTimeout(async () => {
       try {
         const payload = {
           items: items.map((i) => ({
-            productId: i.id || i._id,
+            productId: i.id || i._id || i.originalProductId,
             qty: Number(i.qty) || 1,
             price: Number(i.price) || 0,
           })),
@@ -348,11 +451,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       } catch (err) {
         console.error('FIFO preview fetch error:', err);
       }
-    };
+    }, 400);
 
-    fetchPreview();
     return () => {
       isMounted = false;
+      clearTimeout(timer);
     };
   }, [items]);
 
@@ -361,7 +464,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     if (fifoPreview && Array.isArray(fifoPreview.items) && fifoPreview.items.length > 0) {
       const itemMap = new Map();
       items.forEach((i) => {
-        const idStr = (i.id || i._id || i.productId)?.toString();
+        const idStr = (i.id || i._id || i.productId || i.originalProductId)?.toString();
         if (idStr) itemMap.set(idStr, i);
       });
 
@@ -576,19 +679,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     mutationFn: (data) => invoiceService.createInvoice(data),
     onSuccess: () => {
       isSubmittingRef.current = false;
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
       queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
       queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
       queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['topbar-top-selling-products'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-notifications'] });
 
       alert('Bill submitted & saved successfully!');
       setItems([]);
@@ -725,7 +823,106 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     // Allocate popup tab synchronously during active user click gesture to prevent browser popup suppression
     let waWindow = null;
     try {
-      waWindow = window.open('about:blank', '_blank');
+      waWindow = window.open('', '_blank');
+      if (waWindow && waWindow.document) {
+        waWindow.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening WhatsApp Statement - VEDIXA ERP</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f0fdf4;
+      color: #14532d;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #bbf7d0;
+      border-radius: 1.25rem;
+      padding: 2.25rem 2rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid #dcfce7;
+      border-top-color: #16a34a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1.25rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #14532d;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      font-size: 0.875rem;
+      color: #4b5563;
+      margin-bottom: 1.5rem;
+      line-height: 1.4;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background-color: #16a34a;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 0.875rem;
+      padding: 0.8rem 1.75rem;
+      border-radius: 0.75rem;
+      text-decoration: none;
+      box-shadow: 0 4px 6px -1px rgba(22, 163, 74, 0.3);
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background-color: #15803d;
+      transform: translateY(-1px);
+    }
+    .hint {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      margin-top: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="spinner" class="spinner"></div>
+    <h2 id="heading">Generating WhatsApp Statement...</h2>
+    <p id="subtext">Saving bill and compiling customer ledger statement.</p>
+    <a id="btn-redirect" class="btn" style="display: none;" href="#" target="_self">
+      <span>Open WhatsApp Now</span>
+      <span>&rarr;</span>
+    </a>
+    <div id="hint" class="hint">Please keep this window open while we prepare your statement...</div>
+  </div>
+  <script>
+    window.addEventListener('message', function(e) {
+      if (e.data && e.data.type === 'REDIRECT_WHATSAPP' && e.data.url) {
+        window.location.replace(e.data.url);
+      }
+    });
+  <\/script>
+</body>
+</html>`);
+        waWindow.document.close();
+      }
     } catch (_e) {
       waWindow = null;
     }
@@ -764,11 +961,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         savedInvoice = savedRes?.data?.invoice || savedRes?.invoice || savedRes?.data || savedRes || {};
         setLastSavedInvoice(savedInvoice);
 
-        queryClient.invalidateQueries(['sales-invoices']);
-        queryClient.invalidateQueries(['products-list']);
-        queryClient.invalidateQueries(['customer-ledger-profile']);
-        queryClient.invalidateQueries(['general-customers-list']);
-        queryClient.invalidateQueries(['dashboard-stats']);
+        queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+        queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       }
 
       // 2. Re-fetch fresh Customer Ledger directly from database
@@ -835,10 +1032,47 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       const waUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(waMsg)}`;
 
       if (waWindow && !waWindow.closed) {
-        waWindow.location.href = waUrl;
-        waWindow.focus?.();
+        // 1. Update window DOM elements so user can click fallback button if browser delays auto-navigation
+        try {
+          if (waWindow.document) {
+            const heading = waWindow.document.getElementById('heading');
+            const subtext = waWindow.document.getElementById('subtext');
+            const btn = waWindow.document.getElementById('btn-redirect');
+            const hint = waWindow.document.getElementById('hint');
+            if (heading) heading.innerText = 'Redirecting to WhatsApp...';
+            if (subtext) subtext.innerText = 'Opening WhatsApp chat with customer statement.';
+            if (btn) {
+              btn.href = waUrl;
+              btn.style.display = 'inline-flex';
+            }
+            if (hint) hint.innerText = 'If WhatsApp does not open automatically, click the button above.';
+          }
+        } catch (_) {}
+
+        // 2. Post message to trigger in-window script navigation
+        try {
+          waWindow.postMessage({ type: 'REDIRECT_WHATSAPP', url: waUrl }, '*');
+        } catch (_) {}
+
+        // 3. Direct navigation
+        try {
+          waWindow.location.replace(waUrl);
+        } catch (_) {
+          try {
+            waWindow.location.href = waUrl;
+          } catch (_) {}
+        }
+
+        try {
+          waWindow.focus?.();
+        } catch (_) {}
       } else {
-        window.location.assign(waUrl);
+        const proceed = window.confirm(
+          'Your browser blocked the WhatsApp popup window. Would you like to open WhatsApp now?'
+        );
+        if (proceed) {
+          window.location.href = waUrl;
+        }
       }
 
       // 5. Generate Monthly Statement PDF in background (non-blocking)
@@ -855,8 +1089,25 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     } catch (err) {
       if (waWindow && !waWindow.closed) {
         try {
-          waWindow.close();
+          if (waWindow.document) {
+            const heading = waWindow.document.getElementById('heading');
+            const subtext = waWindow.document.getElementById('subtext');
+            const spinner = waWindow.document.getElementById('spinner');
+            const hint = waWindow.document.getElementById('hint');
+            if (spinner) spinner.style.display = 'none';
+            if (heading) {
+              heading.innerText = 'Unable to Open WhatsApp';
+              heading.style.color = '#dc2626';
+            }
+            if (subtext) subtext.innerText = err?.response?.data?.message || err?.message || 'Failed to save bill or generate WhatsApp statement.';
+            if (hint) hint.innerText = 'This window will close automatically.';
+          }
         } catch (_) {}
+        setTimeout(() => {
+          try {
+            waWindow.close();
+          } catch (_) {}
+        }, 3000);
       }
       alert(err?.response?.data?.message || err?.message || 'Failed to save bill or generate WhatsApp statement.');
     } finally {
@@ -1183,87 +1434,17 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
               {displayItems.map((item, idx) => {
                 const itemKey = `${item.id || item.productId || 'cart-item'}-${item.batchNumber || idx}-${idx}`;
                 return (
-                  <div key={itemKey} className="p-2 sm:p-2.5 hover:bg-gray-50/60 transition-colors flex items-center justify-between gap-2 text-xs">
-                  {/* 1. Product Image & Name */}
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <ProductAvatar src={item.image} name={item.name} size={32} />
-                    <div className="min-w-0">
-                      <span className="font-bold text-gray-900 block text-xs truncate leading-tight" title={item.name}>
-                        {item.name}
-                      </span>
-                      <span className="text-[10px] text-gray-500 font-medium truncate block">
-                        {item.brand}{item.batchNumber ? ` • Batch: ${item.batchNumber}` : ''}
-                      </span>
-                      {item.discountVal > 0 && (
-                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 block w-fit mt-0.5">
-                          Discount: {item.discountType === 'Percentage' ? `${item.discountVal}%` : `₹${item.discountVal}`}
-                        </span>
-                      )}
-                      {item.isFifoSplit && item.fifoSplitNotice && (
-                        <span className="text-[9.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded block mt-0.5 leading-tight">
-                          ✨ {item.fifoSplitNotice}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 2. Qty Counter (Buttons + Direct Typing) */}
-                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateQty(item.originalProductId || item.id, -1)}
-                      className="px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold transition-colors cursor-pointer"
-                      title="Decrease Qty"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      onFocus={(e) => e.target.select()}
-                      value={item.qty}
-                      onChange={(e) => handleDirectQtyInput(item.originalProductId || item.id, e.target.value)}
-                      className="w-12 h-6 text-center font-mono font-bold text-gray-900 text-xs focus:outline-none focus:bg-emerald-50 border-x border-gray-200"
-                      title="Click to type quantity"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateQty(item.originalProductId || item.id, 1)}
-                      className="px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-bold transition-colors cursor-pointer"
-                      title="Increase Qty"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* 3. Selling Price (Editable) */}
-                  <div className="w-18 sm:w-20 shrink-0">
-                    <input
-                      type="number"
-                      value={item.price}
-                      onChange={(e) => handleUpdatePrice(item.originalProductId || item.id, e.target.value)}
-                      className="w-full h-7 px-1 bg-gray-50 border border-gray-200 rounded-lg font-mono font-bold text-right text-xs focus:outline-none focus:border-[#00783C]"
-                    />
-                  </div>
-
-                  {/* 4. Line Amount = Qty x Effective Selling Price */}
-                  <div className="w-20 text-right font-mono font-extrabold text-gray-900 text-xs shrink-0">
-                    ₹ {(item.lineTotal || (item.qty * item.price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </div>
-
-                  {/* 5. Delete Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteItem(item.originalProductId || item.id)}
-                    className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                    title="Remove item"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                  <CartItemRow
+                    key={itemKey}
+                    item={item}
+                    onUpdateQty={handleUpdateQty}
+                    onDirectQtyInput={handleDirectQtyInput}
+                    onUpdatePrice={handleUpdatePrice}
+                    onDeleteItem={handleDeleteItem}
+                  />
+                );
+              })}
+            </div>
           )}
         </div>
 

@@ -176,20 +176,19 @@ export default function InvoiceDetailsPage() {
 
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
 
-  const handleSendFinalWhatsApp = async () => {
+  const handleSendFinalWhatsApp = () => {
     if (!invoice) return;
-    // 1. Download Invoice PDF locally (isolated so errors never block WhatsApp)
-    try {
-      await handleDownloadPdf();
-    } catch (err) {
-      console.warn('PDF download warning:', err);
-    }
 
-    // 2. Open WhatsApp Web with text and Pay Link
+    // 1. Open WhatsApp Web immediately on active user click gesture to prevent browser popup blocking
     const custMobile = invoice.customerMobile || invoice.customer?.mobile || '';
     const cleanPhone = custMobile.replace(/\D/g, '');
     const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
     window.open(`https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(editableMessage)}`, '_blank');
+
+    // 2. Download Invoice PDF locally in background (non-blocking)
+    handleDownloadPdf().catch((err) => {
+      console.warn('PDF download warning:', err);
+    });
 
     // 3. Close document preview modal & open "Invoice Ready to Share" success dialog
     setIsWhatsappPreviewOpen(false);
