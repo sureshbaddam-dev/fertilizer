@@ -24,7 +24,7 @@ import AddCustomerModal from '../../components/customers/AddCustomerModal';
 import { customerService } from '../../services/customerService';
 import { useSettings } from '../../contexts/SettingsContext';
 import Button from '../../components/ui/Button';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 
 // Edit Customer Modal Component
 function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {

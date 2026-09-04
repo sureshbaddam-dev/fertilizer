@@ -6,7 +6,7 @@ import { subscriptionService } from '../../services/subscriptionService';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import UserAvatar from '../../components/ui/UserAvatar';
 import { useAuth } from '../../contexts/AuthContext';
 

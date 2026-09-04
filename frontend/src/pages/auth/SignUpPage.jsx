@@ -23,6 +23,7 @@ import {
 import { authService } from '../../services/authService';
 import BrandLogo from '../../components/common/BrandLogo';
 import PasswordRequirementsHelper, { isPasswordStrong } from '../../components/auth/PasswordRequirementsHelper';
+import { validateGstNumber } from '../../utils/validationUtils';
 
 export default function SignUpPage() {
   const navigate = useNavigate();
@@ -303,11 +304,6 @@ export default function SignUpPage() {
   };
 
   // STEP 4: Handle Business Details Submit (All Business Details OPTIONAL)
-  const validateGstNumber = (gst) => {
-    if (!gst || !gst.trim()) return true; // Optional
-    return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(gst.trim());
-  };
-
   const handleFinalSignup = async (e) => {
     if (e) e.preventDefault();
     setServerError('');

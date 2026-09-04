@@ -96,7 +96,6 @@ export default function Sidebar({ isOpen, onCloseMobile, isBillingOpen, onBlockN
     if (!item.isUnrestricted && !hasActiveSub) {
       e.preventDefault();
       setSubModalFeature(item.featureName || item.name);
-      setIsSubModalOpen(true);
       return;
     }
   };

@@ -13,7 +13,7 @@ import {
   Info,
   RotateCcw,
 } from 'lucide-react';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import StatCard from '../../components/ui/StatCard';
 import Button from '../../components/ui/Button';
 import { productService } from '../../services/productService';

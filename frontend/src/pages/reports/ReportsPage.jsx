@@ -48,7 +48,7 @@ import {
 } from 'recharts';
 
 import { reportsService } from '../../services/reportsService';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import { exportReportToPDF, exportReportToExcel, printExecutiveReport } from '../../utils/reportExporter';
 
 const BRAND_GREEN = '#047857';

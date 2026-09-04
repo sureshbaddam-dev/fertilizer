@@ -20,6 +20,7 @@ import { authService } from '../../services/authService';
 import { settingService } from '../../services/settingService';
 import { useAuth } from '../../contexts/AuthContext';
 import BrandLogo from '../../components/common/BrandLogo';
+import { validateGstNumber } from '../../utils/validationUtils';
 
 export default function ShopSetupPage() {
   const navigate = useNavigate();
@@ -141,12 +142,6 @@ export default function ShopSetupPage() {
     }
 
     setStep(2);
-  };
-
-  // Validate GST Number (Optional)
-  const validateGstNumber = (gst) => {
-    if (!gst || !gst.trim()) return true;
-    return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i.test(gst.trim());
   };
 
   // Final Submit Handler

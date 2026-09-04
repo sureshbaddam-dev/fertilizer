@@ -117,3 +117,9 @@ export function getImageUrl(imagePath) {
 
   return `${SERVER_URL}/${trimmed}`;
 }
+
+/**
+ * Normalizes a value for form inputs, converting 0 / '0' / null / undefined to empty string.
+ */
+export const toInputValue = (val) =>
+  val === 0 || val === '0' || val === null || val === undefined ? '' : String(val);

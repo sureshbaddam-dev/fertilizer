@@ -21,7 +21,7 @@ import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { exportInvoiceHistoryToExcel } from '../../utils/excelExporter';
 import Button from '../../components/ui/Button';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 
 export default function BillsHistoryPage() {
   const navigate = useNavigate();

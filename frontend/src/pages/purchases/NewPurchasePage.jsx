@@ -8,7 +8,7 @@ import PurchaseItemsTable from '../../components/purchases/PurchaseItemsTable';
 import PurchaseSummaryCards from '../../components/purchases/PurchaseSummaryCards';
 import QuickAddProductDrawer from '../../components/purchases/QuickAddProductDrawer';
 import QuickAddSupplierDrawer from '../../components/purchases/QuickAddSupplierDrawer';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import { supplierService } from '../../services/supplierService';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';

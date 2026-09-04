@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import HelpSupportHome from './components/HelpSupportHome';
 import MyRequestsList from './components/MyRequestsList';
 import RequestDetailsView from './components/RequestDetailsView';

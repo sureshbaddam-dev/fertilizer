@@ -12,6 +12,7 @@ import { masterService } from '../../services/masterService';
 import { authService } from '../../services/authService';
 
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
+import { toInputValue } from '../../utils/imageUtils';
 
 const ImageUploadControlled = ({ control, field, onSelectImageDetails }) => {
   const productName = useWatch({ control, name: 'name' });
@@ -42,8 +43,6 @@ const productSchema = z.object({
   gstRate: z.union([z.string(), z.number()]).optional(),
   minStockAlert: z.union([z.string(), z.number()]).optional(),
 });
-
-const toInputValue = (val) => (val === 0 || val === '0' || val === null || val === undefined ? '' : String(val));
 
 export default function QuickAddProductDrawer({
   isOpen,

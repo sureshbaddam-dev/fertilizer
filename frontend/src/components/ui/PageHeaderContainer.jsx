@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-export default function PageLayout({
+export default function PageHeaderContainer({
   title,
   subtitle,
   breadcrumb,

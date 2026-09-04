@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowLeft, Check, X, ChevronDown } from 'lucide-react';
 import ImageUpload from '../ui/ImageUpload';
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
+import { toInputValue } from '../../utils/imageUtils';
 
 export default function EditProductDrawer({
   isOpen,
@@ -186,8 +187,6 @@ export default function EditProductDrawer({
   };
 
   const selectedBatchObj = rawBatches.find((b) => (b._id || b.id || b.batchNumber) === selectedBatchId) || stockAvailableBatches[0] || null;
-
-  const toInputValue = (val) => (val === 0 || val === '0' || val === null || val === undefined ? '' : String(val));
 
   const cost = Number(batchFormData.purchasePrice) || 0;
   const sell = Number(batchFormData.sellingPrice) || 0;

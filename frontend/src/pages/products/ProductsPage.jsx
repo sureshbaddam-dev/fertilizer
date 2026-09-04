@@ -8,7 +8,7 @@ import ProductsRightSummary from '../../components/products/ProductsRightSummary
 import ProductDetailsDrawer from '../../components/products/ProductDetailsDrawer';
 import EditProductDrawer from '../../components/products/EditProductDrawer';
 import QuickAddProductDrawer from '../../components/purchases/QuickAddProductDrawer';
-import PageLayout from '../../components/ui/PageLayout';
+import PageLayout from '../../components/ui/PageHeaderContainer';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
 import { authService } from '../../services/authService';
