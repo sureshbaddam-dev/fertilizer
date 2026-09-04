@@ -83,6 +83,19 @@ export const getOrCreateSubscriptionSettings = async () => {
   return settings;
 };
 
+const ADMIN_ROLES = ['admin', 'super_admin', 'SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'];
+
+export const getMerchantUserFilter = () => {
+  const envAdminPhone = process.env.ADMIN_PHONE_NUMBER || '+919848081875';
+  const cleanAdminPhone = envAdminPhone.replace(/\D/g, '');
+  const last10AdminPhone = cleanAdminPhone.slice(-10);
+
+  return {
+    role: { $nin: ADMIN_ROLES },
+    mobile: { $nin: [envAdminPhone, cleanAdminPhone, last10AdminPhone, `+91${last10AdminPhone}`] },
+  };
+};
+
 export const adminService = {
   // 1. DASHBOARD STATS & ANALYTICS
   getDashboardStats: async () => {
@@ -91,6 +104,8 @@ export const adminService = {
     const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const todayStr = now.toISOString().split('T')[0];
+
+    const merchantFilter = getMerchantUserFilter();
 
     const [
       totalUsers,
@@ -105,9 +120,9 @@ export const adminService = {
       totalBusinesses,
       todayVisitor,
     ] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'admin' } }),
-      User.countDocuments({ role: { $ne: 'admin' }, isActive: true }),
-      User.countDocuments({ createdAt: { $gte: startOfToday } }),
+      User.countDocuments(merchantFilter),
+      User.countDocuments({ ...merchantFilter, isActive: true }),
+      User.countDocuments({ ...merchantFilter, createdAt: { $gte: startOfToday } }),
       UserSubscription.countDocuments({ status: 'ACTIVE', expiryDate: { $gte: now } }),
       UserSubscription.countDocuments({ activationType: 'ADMIN_MANUAL', couponCode: 'DEMO' }),
       UserSubscription.countDocuments({ status: 'ACTIVE', expiryDate: { $gte: now, $lte: next7Days } }),
@@ -148,7 +163,7 @@ export const adminService = {
     // Registrations over last 30 days
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const registrations = await User.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo }, role: { $ne: 'admin' } } },
+      { $match: { ...getMerchantUserFilter(), createdAt: { $gte: thirtyDaysAgo } } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -185,15 +200,7 @@ export const adminService = {
 
   // 2. USER MANAGEMENT & 360 PROFILE
   getUsersList: async ({ filter = 'ALL', search = '', page = 1, limit = 20 }) => {
-    const adminRoles = ['admin', 'super_admin', 'SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'SUPPORT_ADMIN'];
-    const envAdminPhone = process.env.ADMIN_PHONE_NUMBER || '+919848081875';
-    const cleanAdminPhone = envAdminPhone.replace(/\D/g, '');
-    const last10AdminPhone = cleanAdminPhone.slice(-10);
-
-    const query = {
-      role: { $nin: adminRoles },
-      mobile: { $nin: [envAdminPhone, cleanAdminPhone, last10AdminPhone, `+91${last10AdminPhone}`] },
-    };
+    const query = { ...getMerchantUserFilter() };
     const now = new Date();
 
     if (search) {
@@ -735,7 +742,7 @@ export const adminService = {
       },
     ]);
 
-    const totalRegistrations = await User.countDocuments({ role: { $ne: 'admin' } });
+    const totalRegistrations = await User.countDocuments(getMerchantUserFilter());
     const totalPaidUsers = await UserSubscription.countDocuments({ status: 'ACTIVE', amountPaid: { $gt: 0 } });
 
     const totalHitsCount = totalVisitorsAgg[0]?.totalHits || todayVisitor?.totalHits || 0;
@@ -948,7 +955,7 @@ export const adminService = {
     const now = new Date();
 
     if (notifData.targetAudience === 'ALL_USERS') {
-      targetUsers = await User.find({ role: { $ne: 'admin' } }).select('_id');
+      targetUsers = await User.find(getMerchantUserFilter()).select('_id');
     } else if (notifData.targetAudience === 'DEMO_USERS') {
       const demoSubs = await UserSubscription.find({ couponCode: 'DEMO' }).select('userId');
       targetUsers = demoSubs.map((s) => ({ _id: s.userId }));
