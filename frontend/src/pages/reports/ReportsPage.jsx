@@ -287,7 +287,7 @@ export default function ReportsPage() {
         {activeTab === 'SALES' && (
           <div className="space-y-6">
             {/* Sales KPIs Grid (9 Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-3.5">
               <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Today's Sales</span>
                 <p className="text-lg font-extrabold font-mono text-slate-900">₹ {(salesData.todaySales || 0).toLocaleString('en-IN')}</p>
@@ -543,7 +543,7 @@ export default function ReportsPage() {
         {activeTab === 'PURCHASES' && (
           <div className="space-y-6">
             {/* Purchase KPIs Grid (8 Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3 sm:gap-3.5">
               <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Today's Purchase</span>
                 <p className="text-lg font-extrabold font-mono text-slate-900">₹ {(purchasesData.todayPurchase || 0).toLocaleString('en-IN')}</p>
@@ -780,7 +780,7 @@ export default function ReportsPage() {
             </div>
 
             {/* 10 Executive KPIs Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-3.5">
               <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
                 <span className="text-[11px] font-extrabold uppercase text-slate-400">Total Sales</span>
                 <p className="text-lg font-extrabold font-mono text-slate-900">₹ {(overallData.totalSales || 0).toLocaleString('en-IN')}</p>

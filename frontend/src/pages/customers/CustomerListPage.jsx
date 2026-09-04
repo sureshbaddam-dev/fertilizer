@@ -577,7 +577,7 @@ export default function CustomerListPage() {
           i + 1,
           c.name || 'Customer',
           c.mobile || '-',
-          c.village || c.address || 'Narketpally',
+          c.village || c.address || '',
           Math.round(p).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
           Math.round(pd).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
           Math.round(d).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
@@ -888,7 +888,7 @@ export default function CustomerListPage() {
 
                           {/* Village / Area */}
                           <td className="py-2.5 px-3 font-medium text-gray-700 whitespace-nowrap">
-                            {c.village || c.address || 'Narketpally'}
+                            {c.village || c.address || '—'}
                           </td>
 
                           {/* Total Purchases */}
@@ -1042,7 +1042,7 @@ export default function CustomerListPage() {
                         </div>
                         <div>
                           <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider">Village / Area</span>
-                          <span className="font-medium text-gray-800 block break-words">{c.village || c.address || 'Narketpally'}</span>
+                          <span className="font-medium text-gray-800 block break-words">{c.village || c.address || '—'}</span>
                         </div>
                       </div>
 

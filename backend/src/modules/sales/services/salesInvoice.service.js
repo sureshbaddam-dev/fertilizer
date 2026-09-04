@@ -187,7 +187,7 @@ export const salesInvoiceService = {
     const totalDue = summaryObj.totalDue || 0;
     const totalBills = totalRecords;
 
-    const duePercentage = totalAmount > 0 ? Number(((totalDue / totalAmount) * 100).toFixed(1)) : 0;
+    const duePercentage = totalAmount > 0 ? Number(((totalDue / totalAmount) * 100).toFixed(2)) : 0;
 
     const statusMap = new Map((statusCountResult || []).map((s) => [s._id, s.count]));
     const totalDbBills = (statusCountResult || []).reduce((acc, curr) => acc + (curr.count || 0), 0);
@@ -200,19 +200,22 @@ export const salesInvoiceService = {
       cancelled: statusMap.get('Cancelled') || 0,
     };
 
+    const summaryData = {
+      totalBills,
+      totalAmount,
+      totalPaid,
+      totalDue,
+      duePercentage,
+    };
+
     return {
       invoices,
       total: totalRecords,
       page,
       limit,
       totalPages: Math.ceil(totalRecords / limit) || 1,
-      metrics: {
-        totalBills,
-        totalAmount,
-        totalPaid,
-        totalDue,
-        duePercentage,
-      },
+      metrics: summaryData,
+      summary: summaryData,
       counters,
     };
   },

@@ -292,7 +292,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
       <div className="h-[var(--topbar-height)] px-2.5 sm:px-4 lg:px-6">
         <div className="flex h-full items-center justify-between gap-1.5 sm:gap-3">
           {/* LEFT: Mobile Menu + Large VEDIXA Logo Image */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0 h-full">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 h-full lg:hidden">
             <button
               type="button"
               onClick={onToggleSidebar}
@@ -309,8 +309,8 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
           </div>
 
           {/* CENTER: Search Bar */}
-          <div className="hidden min-w-0 flex-1 px-2 md:flex lg:px-6">
-            <div ref={searchRef} className="relative mx-auto w-full max-w-xl">
+          <div className="hidden min-w-0 flex-1 px-2 md:flex lg:px-4 xl:px-6">
+            <div ref={searchRef} className="relative mx-auto w-full max-w-md xl:max-w-xl">
               <div className="relative flex items-center">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -516,8 +516,8 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                 aria-label="User account menu"
               >
                 <UserAvatar src={profileImage} name={userName} size={36} />
-                <div className="hidden sm:flex items-center gap-1.5 text-left">
-                  <span className="text-xs font-bold text-slate-900 leading-tight">
+                <div className="hidden sm:flex items-center gap-1.5 text-left min-w-0">
+                  <span className="text-xs font-bold text-slate-900 leading-tight max-w-[130px] truncate block">
                     {userName}
                   </span>
                   <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isProfileOpen ? 'rotate-180 text-emerald-600' : ''}`} />

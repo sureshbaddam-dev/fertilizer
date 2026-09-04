@@ -54,8 +54,8 @@ export default function RecentBills({ billsData }) {
               onClick={() => navigate('/invoices')}
             >
               <div className="min-w-0 flex-1">
-                <span className="font-extrabold text-gray-900 block text-xs truncate">{bill.id || bill.invoiceNumber}</span>
-                <span className="text-[11px] text-gray-500 font-medium block truncate">{bill.name || bill.customerName}</span>
+                <span className="font-extrabold text-gray-900 block text-xs truncate">{bill.name || bill.customerName || 'General Customer'}</span>
+                <span className="text-[11px] text-gray-500 font-medium block truncate">{bill.id || bill.invoiceNumber}</span>
               </div>
               <div className="text-right flex flex-col items-end gap-0.5 shrink-0">
                 <span className="font-extrabold text-gray-900 block text-xs truncate">{bill.amount}</span>

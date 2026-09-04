@@ -52,7 +52,7 @@ export default function PageLayout({
       <div className={`app-main-column ${showMobileSearch ? 'pt-[134px] lg:pt-[var(--topbar-height)]' : 'pt-[var(--topbar-height)]'}`}>
         <main
           className={`min-w-0 transition-[padding] duration-200 ease-in-out ${
-            showDrawer ? 'lg:pr-[33.75rem]' : ''
+            showDrawer ? 'xl:pr-[30rem] 2xl:pr-[33.75rem]' : ''
           }`}
         >
           <div className="app-page-frame">

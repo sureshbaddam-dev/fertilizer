@@ -287,7 +287,7 @@
     justify-content: space-between;
     gap: 16px;
     padding: 12px 16px;
-    max-height: var(--header-card-max-height);
+    min-height: auto;
     background: #ffffff;
     border: 1px solid var(--color-border);
     border-radius: var(--border-radius);
@@ -544,6 +544,9 @@
 
 @media (min-width: 1024px) {
   .app-main-column {
+    padding-left: var(--sidebar-width);
+  }
+  .app-topbar {
     padding-left: var(--sidebar-width);
   }
 }

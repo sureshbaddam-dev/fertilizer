@@ -5,9 +5,9 @@ const customerSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     name: { type: String, required: true, index: true },
     mobile: { type: String, required: true },
-    village: { type: String, default: 'Narketpally' },
-    mandal: { type: String, default: 'Narketpally' },
-    district: { type: String, default: 'Nalgonda' },
+    village: { type: String, default: '' },
+    mandal: { type: String, default: '' },
+    district: { type: String, default: '' },
     address: { type: String, default: '' },
     customerType: { type: String, enum: ['ADDED', 'GENERAL', 'Registered', 'Walk-in', 'regular', 'walkin'], default: 'ADDED', index: true },
     type: { type: String, default: 'Regular' }, // Regular, Wholesale

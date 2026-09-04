@@ -341,7 +341,7 @@ export default function ProductsPage() {
       {/* Dynamic Master-Detail Side-by-Side Overlay */}
       {Boolean(selectedViewProduct) && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 transition-all duration-300">
-          <div className={`flex items-start justify-center gap-4 w-full transition-all duration-300 ${
+          <div className={`flex flex-col xl:flex-row items-center xl:items-start justify-center gap-4 w-full transition-all duration-300 ${
             isEditingProduct ? 'max-w-6xl' : 'max-w-[480px]'
           }`}>
             
@@ -369,7 +369,7 @@ export default function ProductsPage() {
 
             {/* 2. Right Panel: Edit Product Form (Opens Side-by-Side when isEditingProduct === true) */}
             {isEditingProduct && (
-              <div className="w-full max-w-[620px] shrink-0 bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-300">
+              <div className="w-full max-w-[620px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-300">
                 <EditProductDrawer
                   isOpen={true}
                   product={selectedViewProduct}

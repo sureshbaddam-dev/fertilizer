@@ -1120,14 +1120,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   return (
     <>
-      {/* Backdrop overlay for Mobile & Tablet (lg:hidden) */}
+      {/* Backdrop overlay for Mobile & Tablet (xl:hidden) */}
       <div
         onClick={handleExplicitClose}
-        className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden transition-opacity"
+        className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs xl:hidden transition-opacity"
       />
 
       <aside
-        className="fixed inset-0 z-50 flex w-full h-full flex-col justify-between overflow-y-auto bg-white text-sm shadow-2xl animate-in slide-in-from-right duration-200 lg:top-[var(--topbar-height)] lg:bottom-0 lg:right-0 lg:left-auto lg:z-40 lg:w-[33.75rem] lg:h-[calc(100vh-var(--topbar-height))] lg:border-l lg:border-slate-200"
+        className="fixed inset-0 z-50 flex w-full h-full flex-col justify-between overflow-y-auto bg-white text-sm shadow-2xl animate-in slide-in-from-right duration-200 lg:top-[var(--topbar-height)] lg:bottom-0 lg:right-0 lg:left-auto lg:z-40 w-full sm:max-w-lg md:max-w-xl lg:max-w-[30rem] 2xl:max-w-[33.75rem] lg:h-[calc(100vh-var(--topbar-height))] lg:border-l lg:border-slate-200"
       >
         {/* Drawer Header */}
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-2xs">
@@ -1265,7 +1265,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                         <div>
                           <span className="font-bold text-gray-900 block">{c.name}</span>
                           <span className="text-[10px] text-gray-500 font-mono">
-                            {c.mobile} • {c.village || 'Narketpally'}
+                            {c.village ? `${c.mobile} • ${c.village}` : c.mobile}
                           </span>
                         </div>
                         {c.outstandingBalance > 0 && (

@@ -472,7 +472,7 @@ export default function InvoiceDetailsPage() {
             </div>
             <div className="flex items-center gap-1.5 text-gray-600 text-xs">
               <MapPin className="w-3.5 h-3.5 text-gray-400" />
-              <span>{invoice.customerAddress || invoice.customer?.village || 'Narketpally'}</span>
+              <span>{invoice.customerAddress || invoice.customer?.village || '—'}</span>
             </div>
           </div>
 
@@ -499,7 +499,7 @@ export default function InvoiceDetailsPage() {
           </h3>
 
           {/* DESKTOP & PRINT BILLED ITEMS TABLE */}
-          <div className="hidden md:block print:block border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
+          <div className="hidden md:block print:block border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
             <table className="w-full text-center text-[11px] border-collapse print-invoice-table print:text-[10px] font-sans">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold text-[10px] uppercase">
                 <tr>

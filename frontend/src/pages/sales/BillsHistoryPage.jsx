@@ -80,13 +80,28 @@ export default function BillsHistoryPage() {
   const invoices = apiResponse?.data?.invoices || [];
   const totalRecords = apiResponse?.data?.total || 0;
   const totalPages = apiResponse?.data?.totalPages || 1;
-  const summary = apiResponse?.data?.summary || {
-    totalBills: 0,
-    totalAmount: 0,
-    totalPaid: 0,
-    totalDue: 0,
-    duePercentage: 0,
-  };
+  const backendSummary = apiResponse?.data?.summary || apiResponse?.data?.metrics || apiResponse?.summary || apiResponse?.metrics;
+  const summary = backendSummary && backendSummary.totalBills !== undefined
+    ? {
+        totalBills: Number(backendSummary.totalBills || 0),
+        totalAmount: Number(backendSummary.totalAmount || 0),
+        totalPaid: Number(backendSummary.totalPaid || 0),
+        totalDue: Number(backendSummary.totalDue || 0),
+        duePercentage: backendSummary.totalAmount > 0
+          ? Number(((Number(backendSummary.totalDue || 0) / Number(backendSummary.totalAmount)) * 100).toFixed(2))
+          : 0,
+      }
+    : {
+        totalBills: invoices.length,
+        totalAmount: invoices.reduce((sum, inv) => sum + Number(inv.totalAmount || inv.grandTotal || 0), 0),
+        totalPaid: invoices.reduce((sum, inv) => sum + Number(inv.paidAmount || inv.amountPaid || 0), 0),
+        totalDue: invoices.reduce((sum, inv) => sum + Number(inv.dueAmount || inv.balanceDue || 0), 0),
+        duePercentage: (() => {
+          const tot = invoices.reduce((sum, inv) => sum + Number(inv.totalAmount || inv.grandTotal || 0), 0);
+          const due = invoices.reduce((sum, inv) => sum + Number(inv.dueAmount || inv.balanceDue || 0), 0);
+          return tot > 0 ? Number(((due / tot) * 100).toFixed(2)) : 0;
+        })(),
+      };
   const counters = apiResponse?.data?.counters || {
     all: 0,
     paid: 0,
@@ -231,7 +246,7 @@ export default function BillsHistoryPage() {
         {/* DESKTOP INVOICES TABLE CONTAINER (hidden md:block) */}
         <div className="hidden md:block flex-1 min-w-0 w-full">
           <div className="bg-white border border-gray-200/80 rounded-2xl shadow-2xs overflow-hidden">
-            <div className="w-full">
+            <div className="w-full overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-bold text-gray-600 uppercase tracking-wider">
                   <tr>
@@ -500,7 +515,7 @@ export default function BillsHistoryPage() {
 
       {/* 5. BOTTOM SUMMARY CARDS (BELOW Pagination Bar) */}
       <div className="pt-1.5">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
           <div className="p-3 bg-white border border-gray-200/80 rounded-2xl shadow-2xs space-y-1">
             <span className="text-[11px] text-gray-500 font-medium block">Total Bills</span>
             <span className="text-base font-bold text-gray-900 font-mono block">{summary.totalBills}</span>
