@@ -81,5 +81,5 @@ export function useSEO({
         scriptTag.remove();
       }
     };
-  }, [title, description, keywords, canonical, ogTitle, ogDescription, ogImage, schema, noIndex]);
+  }, [title, description, canonical, ogTitle, ogDescription, ogImage, schema, noIndex]);
 }
