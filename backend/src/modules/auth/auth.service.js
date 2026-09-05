@@ -944,12 +944,45 @@ export const authService = {
   },
 
   async updateProfile(userId, updateData) {
-    const allowedUpdates = ['ownerName', 'email', 'profilePicUrl', 'profileImage'];
+    if (!userId) {
+      throw new AppError('User authentication required', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const existingUser = await User.findById(userId);
+    if (!existingUser) {
+      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Reject any attempts to modify registered email
+    if (updateData.email !== undefined) {
+      const cleanNewEmail = String(updateData.email).trim().toLowerCase();
+      const currentEmail = String(existingUser.email || '').trim().toLowerCase();
+      if (cleanNewEmail && cleanNewEmail !== currentEmail) {
+        throw new AppError('Registered email address cannot be changed.', HTTP_STATUS.BAD_REQUEST);
+      }
+    }
+
+    // Reject any attempts to modify login mobile ID here
+    if (updateData.mobile !== undefined) {
+      const cleanNewMobile = this.normalizeIndianMobile(updateData.mobile);
+      const currentMobile = String(existingUser.mobile || '').trim();
+      if (cleanNewMobile && cleanNewMobile !== currentMobile) {
+        throw new AppError('Login mobile number cannot be modified from user profile.', HTTP_STATUS.BAD_REQUEST);
+      }
+    }
+
+    const allowedUpdates = ['ownerName', 'profilePicUrl', 'profileImage'];
     const updateObj = {};
     for (const key of allowedUpdates) {
       if (updateData[key] !== undefined) {
         if (key === 'profileImage') {
           updateObj['profilePicUrl'] = updateData[key];
+        } else if (key === 'ownerName') {
+          const cleanName = String(updateData[key]).trim();
+          if (!cleanName) {
+            throw new AppError('Owner Name cannot be empty', HTTP_STATUS.BAD_REQUEST);
+          }
+          updateObj['ownerName'] = cleanName;
         } else {
           updateObj[key] = updateData[key];
         }
@@ -965,9 +998,6 @@ export const authService = {
     }
 
     const user = await User.findByIdAndUpdate(userId, { $set: updateObj }, { new: true }).select('-passwordHash');
-    if (!user) {
-      throw new AppError('User account not found', HTTP_STATUS.NOT_FOUND);
-    }
 
     const shopSettings = await ShopSettings.findOne({ userId });
     const userObj = user.toObject();

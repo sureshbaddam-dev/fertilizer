@@ -254,7 +254,12 @@ export function buildWhatsAppStatementMessage({
     msg += `Pay Now:\nupi://pay?pa=${upiId}&pn=${encodedShop}&am=${due}&cu=INR\n\n`;
   }
 
-  msg += `Thank you,\n${shopName}`;
+  const shopWhatsapp = (shopSettings.whatsappNumber || shopSettings.mobile || '').trim();
+  if (shopWhatsapp) {
+    msg += `Thank you,\n${shopName}\nPhone: ${shopWhatsapp}`;
+  } else {
+    msg += `Thank you,\n${shopName}`;
+  }
 
   return msg;
 }

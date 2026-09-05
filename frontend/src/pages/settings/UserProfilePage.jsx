@@ -73,7 +73,7 @@ export default function UserProfilePage() {
     e.preventDefault();
     setSaveSuccessMsg('');
     setSaveErrorMsg('');
-    profileMutation.mutate(formData);
+    profileMutation.mutate({ ownerName: formData.ownerName.trim() });
   };
 
   const daysRemaining = currentSub?.expiryDate
@@ -109,7 +109,9 @@ export default function UserProfilePage() {
           <form onSubmit={handleSaveProfile} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Owner Name</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Owner Name <span className="text-rose-500">*</span>
+                </label>
                 <Input
                   type="text"
                   value={formData.ownerName}
@@ -119,17 +121,32 @@ export default function UserProfilePage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Mobile Number (Login ID)</label>
-                <Input type="text" value={formData.mobile} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Mobile Number (Login ID)
+                </label>
+                <Input
+                  type="text"
+                  value={formData.mobile}
+                  disabled
+                  className="bg-slate-100/80 text-slate-500 font-semibold cursor-not-allowed select-none"
+                />
+                <p className="text-[11px] text-slate-400 font-medium mt-1">
+                  Permanent login ID phone number.
+                </p>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1">Email Address</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Email Address (Permanent Account ID)
+                </label>
                 <Input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="owner@example.com"
+                  disabled
+                  className="bg-slate-100/80 text-slate-500 font-semibold cursor-not-allowed select-none"
                 />
+                <p className="text-[11px] text-slate-400 font-medium mt-1">
+                  Permanent registered login email (cannot be modified).
+                </p>
               </div>
             </div>
 
@@ -140,7 +157,7 @@ export default function UserProfilePage() {
                 className="btn-agri-primary text-xs font-extrabold px-5 py-2.5 rounded-xl flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
-                <span>{profileMutation.isPending ? 'Saving...' : 'Save Account Profile'}</span>
+                <span>{profileMutation.isPending ? 'Saving...' : 'Save Changes'}</span>
               </Button>
             </div>
           </form>

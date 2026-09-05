@@ -109,11 +109,9 @@ export default function InvoiceDetailsPage() {
 
   const shopGST = shopSettings.gstNumber || shopSettings.gstin || shopSettings.gstNo || '-';
   const shopPhone =
+    shopSettings.whatsappNumber ||
     shopSettings.mobile ||
     shopSettings.phone ||
-    shopSettings.whatsappNumber ||
-    authUser.mobile ||
-    authUser.phone ||
     '-';
   const shopUPI = shopSettings.upiId || '';
   const shopLogo = shopSettings.logoUrl || shopSettings.shopLogo || '';
@@ -156,7 +154,7 @@ export default function InvoiceDetailsPage() {
     if (!invoice) return;
     const custName = invoice.customerName || invoice.customer?.name || 'Valued Customer';
     const shopDisplayName = shopSettings.shopName || 'RAMESH FERTILIZERS & SEEDS AGENCY';
-    const shopMobile = shopSettings.mobile || '9848081875';
+    const shopWhatsapp = (shopSettings.whatsappNumber || shopSettings.mobile || '').trim();
 
     let template =
       shopSettings.invoiceWhatsappTemplate ||
@@ -168,7 +166,8 @@ export default function InvoiceDetailsPage() {
       .replace(/{{INVOICE_NO}}/g, invoice.invoiceNumber || '')
       .replace(/{{AMOUNT}}/g, Number(invoice.totalAmount || 0).toLocaleString('en-IN'))
       .replace(/{{UPI_PAYMENT_LINK}}/g, upiPayLink)
-      .replace(/{{SHOP_MOBILE}}/g, shopMobile);
+      .replace(/{{SHOP_MOBILE}}/g, shopWhatsapp)
+      .replace(/{{SHOP_WHATSAPP}}/g, shopWhatsapp);
 
     setEditableMessage(msg);
     setIsWhatsappPreviewOpen(true);
