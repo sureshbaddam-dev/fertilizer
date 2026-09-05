@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import { User } from './user.model.js';
 import { ShopSettings } from '../settings/models/shopSettings.model.js';
+import { UserSubscription } from '../subscription/userSubscription.model.js';
+import { SubscriptionHistory } from '../admin/models/subscriptionHistory.model.js';
 import { redisService } from '../../services/redis.service.js';
 import { emailService } from '../../services/email.service.js';
 import { logger } from '../../config/logger.config.js';
@@ -256,7 +258,13 @@ export const authService = {
       await redisService.del(`google_sess:${googleSessionToken}`);
     }
 
-    return this._generateAuthResponse(user, false);
+    const trialSub = await this._provisionFreeTrialIfNew(user);
+    const authResp = await this._generateAuthResponse(user, false);
+    return {
+      ...authResp,
+      trialStarted: Boolean(trialSub),
+      subscription: trialSub || authResp.subscription,
+    };
   },
 
   async _generateAndSendVerificationEmail(user) {
@@ -552,6 +560,55 @@ export const authService = {
     };
   },
 
+  async _provisionFreeTrialIfNew(user) {
+    if (!user || !user._id) return null;
+
+    // Check if subscription record already exists for this user (prevent duplicate/re-grant)
+    const existingSub = await UserSubscription.findOne({ userId: user._id });
+    if (existingSub) {
+      return existingSub;
+    }
+
+    const now = new Date();
+    const expiryDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // exactly 7 days
+
+    const sub = await UserSubscription.create({
+      userId: user._id,
+      planCode: 'FERTILIZER_ERP',
+      planName: 'Fertilizer ERP',
+      status: 'ACTIVE',
+      startDate: now,
+      expiryDate,
+      amountPaid: 0,
+      paymentStatus: 'DEMO',
+      couponCode: 'DEMO',
+      activationType: 'ONLINE_PAYMENT',
+      discountTokensTotal: 5,
+      discountTokensRemaining: 5,
+    });
+
+    try {
+      await SubscriptionHistory.create({
+        userId: user._id,
+        userName: user.ownerName || 'Store Owner',
+        userMobile: user.mobile || '',
+        planCode: 'FERTILIZER_ERP',
+        planName: 'Fertilizer ERP',
+        durationLabel: '7 Days Free Trial',
+        durationDays: 7,
+        startDate: now,
+        expiryDate,
+        amountPaid: 0,
+        source: 'DEMO',
+        paymentStatus: 'DEMO',
+      });
+    } catch (histErr) {
+      logger.warn(`Failed to create SubscriptionHistory for trial user ${user._id}: ${histErr.message}`);
+    }
+
+    return sub;
+  },
+
   async _generateAuthResponse(user, isExisting = false) {
     logger.info(`[_generateAuthResponse] Signing accessToken for user._id: ${user._id}, email: ${user.email}, isActive: ${user.isActive}`);
     const accessToken = generateAccessToken(user._id, user.role);
@@ -568,6 +625,19 @@ export const authService = {
         shopName = shopSettings.shopName;
       }
     } catch (_e) {}
+
+    let subscription = null;
+    try {
+      const subDoc = await UserSubscription.findOne({ userId: user._id });
+      if (subDoc) {
+        const isExpired = subDoc.expiryDate && new Date(subDoc.expiryDate) < new Date();
+        if (isExpired && subDoc.status === 'ACTIVE') {
+          subDoc.status = 'EXPIRED';
+          await subDoc.save();
+        }
+        subscription = subDoc;
+      }
+    } catch (_subErr) {}
 
     const isProfileComplete = Boolean(
       user.isProfileComplete ||
@@ -592,6 +662,7 @@ export const authService = {
         isProfileComplete,
         shopName,
       },
+      subscription,
       accessToken,
       refreshToken,
     };
@@ -682,7 +753,13 @@ export const authService = {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    return this._generateAuthResponse(user, true);
+    const trialSub = await this._provisionFreeTrialIfNew(user);
+    const authResp = await this._generateAuthResponse(user, true);
+    return {
+      ...authResp,
+      trialStarted: Boolean(trialSub),
+      subscription: trialSub || authResp.subscription,
+    };
   },
 
   async login({ mobile, email, password }) {

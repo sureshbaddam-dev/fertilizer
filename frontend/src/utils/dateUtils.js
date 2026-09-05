@@ -116,3 +116,17 @@ export function formatRelativeTimeIST(input, fallback = '—') {
 
   return formatISTDateTime(d, fallback);
 }
+
+/**
+ * Calculates remaining days from now until expiryDate in IST.
+ * Returns 0 if expired or invalid.
+ */
+export function calculateRemainingDays(expiryDate) {
+  const d = parseToDate(expiryDate);
+  if (!d) return 0;
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs <= 0) return 0;
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+

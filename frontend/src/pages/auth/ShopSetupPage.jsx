@@ -21,6 +21,7 @@ import { settingService } from '../../services/settingService';
 import { useAuth } from '../../contexts/AuthContext';
 import BrandLogo from '../../components/common/BrandLogo';
 import { validateGstNumber } from '../../utils/validationUtils';
+import { formatISTDate } from '../../utils/dateUtils';
 
 export default function ShopSetupPage() {
   const navigate = useNavigate();
@@ -30,6 +31,10 @@ export default function ShopSetupPage() {
   const currentUser = authUser || authService.getCurrentUser() || {};
   const verifiedEmail = currentUser.email || '';
   const currentUserId = currentUser.id || currentUser._id;
+
+  // Trial welcome modal state
+  const [showTrialWelcomeModal, setShowTrialWelcomeModal] = useState(false);
+  const [trialDetails, setTrialDetails] = useState(null);
 
   // React Query cached shop settings check
   const { data: settingsRes, isLoading: isCheckingExisting } = useQuery({
@@ -177,8 +182,14 @@ export default function ShopSetupPage() {
         queryClient.invalidateQueries(['shop-settings-global']);
         queryClient.invalidateQueries(['shop-settings-profile']);
         queryClient.invalidateQueries(['user-profile']);
+        queryClient.invalidateQueries(['my-subscription']);
 
-        navigate('/dashboard', { replace: true });
+        if (res.data?.subscription?.expiryDate || res.data?.trialStarted) {
+          setTrialDetails(res.data?.subscription || null);
+          setShowTrialWelcomeModal(true);
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
       } else {
         setServerError(res.message || 'Failed to save onboarding details. Please try again.');
       }
@@ -444,6 +455,45 @@ export default function ShopSetupPage() {
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
         <span>SSL Encrypted ERP Authentication</span>
       </div>
+
+      {/* FREE TRIAL WELCOME MODAL */}
+      {showTrialWelcomeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto text-3xl shadow-inner">
+              🎉
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                Welcome to Vedixa!
+              </h3>
+              <p className="text-xs font-bold text-emerald-700 bg-emerald-50 py-1 px-3 rounded-full inline-block border border-emerald-200">
+                Your 7-Day Free Trial has started
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              You have full access to all features of Vedixa ERP until{' '}
+              <strong className="text-slate-900 font-bold">
+                {formatISTDate(trialDetails?.expiryDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))}
+              </strong>.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowTrialWelcomeModal(false);
+                navigate('/dashboard', { replace: true });
+              }}
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Start Using Vedixa</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

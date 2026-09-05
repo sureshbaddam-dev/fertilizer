@@ -10,6 +10,7 @@ import BrandLogo from '../../components/common/BrandLogo';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
+import { formatISTDate, calculateRemainingDays } from '../../utils/dateUtils';
 
 export default function FullScreenSubscriptionPage() {
   const navigate = useNavigate();
@@ -101,8 +102,13 @@ export default function FullScreenSubscriptionPage() {
     queryFn: subscriptionService.getMySubscription,
   });
 
-  const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
-  const hasActiveSub = subRes?.data?.hasActiveSubscription || subRes?.hasActiveSubscription || false;
+  const subData = subRes?.data || subRes || {};
+  const currentSub = subData?.subscription || null;
+  const hasActiveSub = subData?.hasActiveSubscription || false;
+  const isTrial = hasActiveSub && currentSub && (currentSub.paymentStatus === 'DEMO' || currentSub.couponCode === 'DEMO');
+  const isExpired = currentSub?.status === 'EXPIRED' || (currentSub?.expiryDate && new Date(currentSub.expiryDate) < new Date());
+  const remainingDays = currentSub?.expiryDate ? calculateRemainingDays(currentSub.expiryDate) : 0;
+  const planDisplayName = isTrial ? '7-Day Free Trial' : currentSub?.planName || currentSub?.planCode || 'Plan';
 
   // Sign Out Handler
   const handleLogout = async () => {
@@ -296,30 +302,51 @@ export default function FullScreenSubscriptionPage() {
         <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-5 py-3 shadow-2xs h-18">
           <BrandLogo textScale="md" />
 
-          {/* ACTIVE SUBSCRIPTION BANNER (COMPACT & BALANCED) */}
+          {/* ACTIVE / TRIAL / EXPIRED SUBSCRIPTION STATUS PILL */}
           {hasActiveSub && currentSub && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className={`hidden sm:flex items-center gap-2 px-3 py-1 border rounded-xl text-xs font-semibold ${
+              isTrial
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            }`}>
+              {isTrial ? (
+                <span className="text-sm">🎁</span>
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
               <span>
-                Active: <strong>{currentSub.planName || currentSub.planCode}</strong> (Expires:{' '}
-                {new Date(currentSub.expiryDate).toLocaleDateString('en-IN')})
+                Active: <strong>{planDisplayName}</strong> (Expires:{' '}
+                {formatISTDate(currentSub.expiryDate)})
               </span>
               <button
                 onClick={() => navigate('/dashboard')}
-                className="ml-2 px-2.5 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded-lg transition"
+                className={`ml-2 px-2.5 py-0.5 text-white font-bold text-[11px] rounded-lg transition ${
+                  isTrial ? 'bg-amber-800 hover:bg-amber-900' : 'bg-emerald-700 hover:bg-emerald-800'
+                }`}
               >
                 ERP App →
               </button>
             </div>
           )}
 
+          {isExpired && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
+              <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" />
+              <span>
+                <strong>Subscription Expired</strong> ({formatISTDate(currentSub?.expiryDate)})
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center space-x-2.5">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1 cursor-pointer border border-slate-200"
-            >
-              <span>← Back to Dashboard</span>
-            </button>
+            {hasActiveSub && (
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1 cursor-pointer border border-slate-200"
+              >
+                <span>← Back to Dashboard</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowCouponInput(!showCouponInput)}
@@ -365,10 +392,29 @@ export default function FullScreenSubscriptionPage() {
       <main className="max-w-6xl mx-auto w-full flex-1 flex flex-col justify-between space-y-3">
         
         {/* TITLE & HEADING SECTION */}
-        <div className="text-center space-y-1 shrink-0 pt-1">
+        <div className="text-center space-y-1.5 shrink-0 pt-1">
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
             VEDIXA ERP Subscription Plans
           </h1>
+
+          {/* DYNAMIC TRIAL / EXPIRY NOTICES */}
+          {isTrial && remainingDays <= 3 && remainingDays > 0 && (
+            <div className="max-w-lg mx-auto mt-1 p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs font-semibold flex items-center justify-center gap-2">
+              <span className="text-sm">⏳</span>
+              <span>
+                Your 7-Day Free Trial expires in <strong>{remainingDays} {remainingDays === 1 ? 'day' : 'days'}</strong> ({formatISTDate(currentSub.expiryDate)}). Choose a plan to continue without interruption.
+              </span>
+            </div>
+          )}
+
+          {isExpired && (
+            <div className="max-w-lg mx-auto mt-1 p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs font-semibold flex items-center justify-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                Your trial or subscription has expired. Please select a plan below to activate your account.
+              </span>
+            </div>
+          )}
 
           {/* SYSTEM UNAVAILABLE BANNER */}
           {!isSystemActive && (
