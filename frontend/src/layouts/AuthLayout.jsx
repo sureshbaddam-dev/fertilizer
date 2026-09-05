@@ -23,11 +23,11 @@ export default function AuthLayout() {
             {/* Headline */}
             <div className="space-y-0.5">
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight m-0 p-0">
-                Smart Billing for
+                <span>Smart Billing for</span>{' '}
+                <span className="block text-lg sm:text-xl lg:text-2xl font-extrabold text-emerald-800 tracking-tight">
+                  Fertilizers, Seeds &amp; Pesticides
+                </span>
               </h1>
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-emerald-800 tracking-tight m-0 p-0">
-                Fertilizers, Seeds &amp; Pesticides
-              </h2>
             </div>
 
             {/* Feature List */}
@@ -107,9 +107,9 @@ export default function AuthLayout() {
           {/* Compact Hero Banner */}
           <div className="bg-gradient-to-r from-emerald-50 to-emerald-100/50 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
             <div className="space-y-0.5">
-              <h1 className="text-xs font-extrabold text-gray-900 leading-tight m-0 p-0">
+              <div className="text-xs font-extrabold text-gray-900 leading-tight m-0 p-0">
                 Smart Billing for Fertilizers, Seeds &amp; Pesticides
-              </h1>
+              </div>
               <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5">
                 {['Fast Billing', 'Inventory', 'WhatsApp Bills'].map((f) => (
                   <span key={f} className="text-[9px] font-semibold text-emerald-800 flex items-center gap-1">

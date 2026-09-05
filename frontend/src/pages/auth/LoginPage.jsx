@@ -192,9 +192,9 @@ export default function LoginPage() {
       {/* Enterprise Header with Large VEDIXA Logo */}
       <div className="flex flex-col items-center justify-center text-center space-y-2 pb-1 border-b border-slate-100">
         <BrandLogo textScale="lg" />
-        <p className="text-xs font-semibold text-slate-500">
+        <h2 className="text-xs font-semibold text-slate-500 m-0 p-0">
           Enterprise Cloud ERP Sign In
-        </p>
+        </h2>
       </div>
 
       {/* Server Error Alert */}

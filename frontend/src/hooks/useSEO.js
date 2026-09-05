@@ -7,7 +7,6 @@ import { useEffect } from 'react';
 export function useSEO({
   title,
   description,
-  keywords,
   canonical = 'https://vedixaerp.com/',
   ogTitle,
   ogDescription,
@@ -36,10 +35,6 @@ export function useSEO({
       setMetaTag('description', description);
       setMetaTag('og:description', ogDescription || description, true);
       setMetaTag('twitter:description', ogDescription || description);
-    }
-
-    if (keywords) {
-      setMetaTag('keywords', keywords);
     }
 
     if (ogTitle || title) {
