@@ -67,12 +67,24 @@ export const appRouter = createBrowserRouter([
     element: withSuspense(TermsAndConditionsPage),
   },
   {
+    path: '/legal/terms-and-conditions',
+    element: <Navigate to="/terms-and-conditions" replace />,
+  },
+  {
     path: '/privacy-policy',
     element: withSuspense(PrivacyPolicyPage),
   },
   {
+    path: '/legal/privacy-policy',
+    element: <Navigate to="/privacy-policy" replace />,
+  },
+  {
     path: '/refund-cancellation-policy',
     element: withSuspense(RefundCancellationPolicyPage),
+  },
+  {
+    path: '/legal/refund-cancellation-policy',
+    element: <Navigate to="/refund-cancellation-policy" replace />,
   },
   {
     path: '/subscription/plans',

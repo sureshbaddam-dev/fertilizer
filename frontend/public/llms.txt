@@ -1,14 +1,12 @@
 # VEDIXA ERP
 
-> VEDIXA ERP is an enterprise resource planning software for fertilizer, seed, and pesticide businesses in India.
+> VEDIXA ERP is a cloud-based fertilizer shop management and billing software for fertilizer, seed, and pesticide retail businesses in India.
 
-VEDIXA ERP provides fast GST billing, FIFO & batch-wise inventory tracking, customer ledgers, supplier ledgers, WhatsApp invoice sharing, and real-time business analytics.
+VEDIXA ERP provides fast GST billing, FIFO & batch-wise inventory tracking, customer ledgers, supplier ledgers, WhatsApp invoice sharing, and real-time business analytics for agro dealers and agricultural retail stores.
 
 ## Public Links
 
-- [Homepage](https://vedixaerp.com/): Official VEDIXA ERP main portal and product feature overview.
-- [User Login](https://vedixaerp.com/login): Secure user login portal for registered business owners.
-- [User Sign Up](https://vedixaerp.com/signup): Account creation and registration for new agri businesses.
-- [Terms & Conditions](https://vedixaerp.com/legal/terms-and-conditions): Official terms of service and platform agreement.
-- [Privacy Policy](https://vedixaerp.com/legal/privacy-policy): Platform privacy policy and data security standards.
-- [Refund & Cancellation Policy](https://vedixaerp.com/legal/refund-cancellation-policy): Subscription refund, renewal, and cancellation guidelines.
+- [Homepage](https://vedixaerp.com/): Official VEDIXA ERP fertilizer shop management & billing software portal.
+- [Terms & Conditions](https://vedixaerp.com/terms-and-conditions): Official terms of service and platform agreement.
+- [Privacy Policy](https://vedixaerp.com/privacy-policy): Platform privacy policy and data security standards.
+- [Refund & Cancellation Policy](https://vedixaerp.com/refund-cancellation-policy): Subscription refund, renewal, and cancellation guidelines.

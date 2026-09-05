@@ -2,8 +2,16 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Home } from 'lucide-react';
 import BrandLogo from '../../components/common/BrandLogo';
+import { useSEO } from '../../hooks/useSEO';
 
 export default function RefundCancellationPolicyPage() {
+  useSEO({
+    title: 'Refund & Cancellation Policy | VEDIXA ERP',
+    description: 'Read the subscription refund, renewal, and cancellation guidelines for VEDIXA ERP cloud software for fertilizer and agro retail businesses.',
+    canonical: 'https://vedixaerp.com/refund-cancellation-policy',
+    noIndex: false,
+  });
+
   const navigate = useNavigate();
 
   return (

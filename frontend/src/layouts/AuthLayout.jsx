@@ -22,11 +22,11 @@ export default function AuthLayout() {
 
             {/* Headline */}
             <div className="space-y-0.5">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight m-0 p-0">
                 Smart Billing for
               </h1>
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-emerald-800 tracking-tight">
-                Fertilizers, Seeds & Pesticides
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-emerald-800 tracking-tight m-0 p-0">
+                Fertilizers, Seeds &amp; Pesticides
               </h2>
             </div>
 
@@ -51,7 +51,7 @@ export default function AuthLayout() {
           <div className="my-2 lg:my-4 flex justify-center items-center">
             <img
               src={loginProductsImg}
-              alt="Fertilizer Products"
+              alt="Fertilizer, seed, and pesticide shop inventory management software demonstration"
               width="240"
               height="192"
               className="max-h-28 md:max-h-36 lg:max-h-48 xl:max-h-56 object-contain drop-shadow-md"
@@ -107,9 +107,9 @@ export default function AuthLayout() {
           {/* Compact Hero Banner */}
           <div className="bg-gradient-to-r from-emerald-50 to-emerald-100/50 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
             <div className="space-y-0.5">
-              <h2 className="text-xs font-extrabold text-gray-900 leading-tight">
-                Smart Billing for Fertilizers, Seeds & Pesticides
-              </h2>
+              <h1 className="text-xs font-extrabold text-gray-900 leading-tight m-0 p-0">
+                Smart Billing for Fertilizers, Seeds &amp; Pesticides
+              </h1>
               <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5">
                 {['Fast Billing', 'Inventory', 'WhatsApp Bills'].map((f) => (
                   <span key={f} className="text-[9px] font-semibold text-emerald-800 flex items-center gap-1">
@@ -119,7 +119,7 @@ export default function AuthLayout() {
                 ))}
               </div>
             </div>
-            <img src={loginProductsImg} alt="Fertilizer Products" width="120" height="48" className="h-12 object-contain shrink-0 drop-shadow-xs" />
+            <img src={loginProductsImg} alt="Fertilizer, seed, and pesticide shop inventory management software" width="120" height="48" className="h-12 object-contain shrink-0 drop-shadow-xs" />
           </div>
 
           {/* Form Card Slot - IMMEDIATELY VISIBLE ON MOBILE */}

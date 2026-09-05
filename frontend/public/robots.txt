@@ -1,8 +1,15 @@
 User-agent: *
 Allow: /
-Allow: /login
-Allow: /signup
-Allow: /legal/*
+Allow: /terms-and-conditions
+Allow: /privacy-policy
+Allow: /refund-cancellation-policy
+Disallow: /login
+Disallow: /signup
+Disallow: /verify-otp
+Disallow: /verify-email
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /shop-setup
 Disallow: /admin
 Disallow: /admin/*
 Disallow: /dashboard
@@ -13,6 +20,9 @@ Disallow: /customers
 Disallow: /suppliers
 Disallow: /reports
 Disallow: /settings
+Disallow: /subscription
+Disallow: /billing
+Disallow: /invoices
 Disallow: /api/
 
 Sitemap: https://vedixaerp.com/sitemap.xml

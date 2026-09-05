@@ -24,8 +24,16 @@ import { authService } from '../../services/authService';
 import BrandLogo from '../../components/common/BrandLogo';
 import PasswordRequirementsHelper, { isPasswordStrong } from '../../components/auth/PasswordRequirementsHelper';
 import { validateGstNumber } from '../../utils/validationUtils';
+import { useSEO } from '../../hooks/useSEO';
 
 export default function SignUpPage() {
+  useSEO({
+    title: 'Create Account | VEDIXA ERP - Fertilizer & Agri Retail Software',
+    description: 'Register your agricultural retail store on VEDIXA ERP. Start with fast fertilizer billing, pesticide stock management, and customer ledger tracking.',
+    canonical: 'https://vedixaerp.com/signup',
+    noIndex: true,
+  });
+
   const navigate = useNavigate();
 
   // Wizard Step State:

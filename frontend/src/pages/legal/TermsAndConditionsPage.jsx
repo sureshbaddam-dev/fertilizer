@@ -2,8 +2,16 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Home } from 'lucide-react';
 import BrandLogo from '../../components/common/BrandLogo';
+import { useSEO } from '../../hooks/useSEO';
 
 export default function TermsAndConditionsPage() {
+  useSEO({
+    title: 'Terms & Conditions | VEDIXA ERP - Fertilizer Shop Management Software',
+    description: 'Review the official terms and conditions for using the VEDIXA ERP platform, fertilizer billing software, and cloud business management services.',
+    canonical: 'https://vedixaerp.com/terms-and-conditions',
+    noIndex: false,
+  });
+
   const navigate = useNavigate();
 
   return (

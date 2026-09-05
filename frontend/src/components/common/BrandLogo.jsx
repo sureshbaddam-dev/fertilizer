@@ -11,7 +11,7 @@ export default function BrandLogo({
     <div className={`flex items-center justify-center h-auto ${className}`}>
       <img
         src={vedixaLogoImg}
-        alt="VEDIXA ERP Logo"
+        alt="VEDIXA ERP - Fertilizer Shop Management &amp; Billing Software"
         width="192"
         height="96"
         loading="eager"

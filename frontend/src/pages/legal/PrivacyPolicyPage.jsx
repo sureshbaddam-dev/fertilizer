@@ -2,8 +2,16 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Shield, Home } from 'lucide-react';
 import BrandLogo from '../../components/common/BrandLogo';
+import { useSEO } from '../../hooks/useSEO';
 
 export default function PrivacyPolicyPage() {
+  useSEO({
+    title: 'Privacy Policy | VEDIXA ERP - Fertilizer Shop Management Software',
+    description: 'Read the privacy policy of VEDIXA ERP. Learn how we safeguard your agricultural retail business data, billing records, and customer privacy.',
+    canonical: 'https://vedixaerp.com/privacy-policy',
+    noIndex: false,
+  });
+
   const navigate = useNavigate();
 
   return (

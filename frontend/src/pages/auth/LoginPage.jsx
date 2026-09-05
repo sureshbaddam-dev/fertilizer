@@ -10,8 +10,16 @@ import {
   loadGoogleGisScript,
   initGoogleIdClientOnce,
 } from '../../services/googleAuthService';
+import { useSEO } from '../../hooks/useSEO';
 
 export default function LoginPage() {
+  useSEO({
+    title: 'Sign In | VEDIXA ERP - Fertilizer Shop Management Software',
+    description: 'Log in to your VEDIXA ERP account to manage your fertilizer shop billing, seed and pesticide inventory, customer ledgers, and business sales reports.',
+    canonical: 'https://vedixaerp.com/login',
+    noIndex: true,
+  });
+
   const navigate = useNavigate();
   const { login, loginWithGoogle } = useAuth();
 
