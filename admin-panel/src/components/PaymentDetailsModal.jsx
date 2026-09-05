@@ -2,6 +2,7 @@ import React from 'react';
 import { X, CreditCard, ExternalLink, Calendar, CheckCircle2, XCircle, User, Phone, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from './StatusBadge';
+import { formatISTDateTime } from '../utils/adminDateUtils';
 
 export default function PaymentDetailsModal({ isOpen, onClose, payment }) {
   const navigate = useNavigate();
@@ -90,7 +91,7 @@ export default function PaymentDetailsModal({ isOpen, onClose, payment }) {
               <span className="text-slate-500 font-medium">Transaction Date:</span>
               <span className="font-medium text-slate-700 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                {payment.createdAt ? new Date(payment.createdAt).toLocaleString('en-IN') : 'N/A'}
+                {formatISTDateTime(payment.createdAt, 'N/A')}
               </span>
             </div>
             <div className="flex items-center justify-between border-t border-slate-200/80 pt-2">

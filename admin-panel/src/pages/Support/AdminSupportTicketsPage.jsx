@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDateTime } from '../../utils/adminDateUtils';
 
 const STATUS_TABS = [
   { id: 'ALL', label: 'All Requests' },
@@ -363,8 +364,7 @@ export default function AdminSupportTicketsPage() {
                     <td className="py-3.5 px-4 font-medium text-slate-600">{t.category || 'General'}</td>
                     <td className="py-3.5 px-4">{getPriorityBadge(t.priority)}</td>
                     <td className="py-3.5 px-4 text-slate-500 font-medium">
-                      {new Date(t.createdAt).toLocaleDateString()}{' '}
-                      {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatISTDateTime(t.createdAt)}
                     </td>
                     <td className="py-3.5 px-4">{getStatusBadge(t.status)}</td>
                     <td className="py-3.5 px-4 text-right">
@@ -515,7 +515,7 @@ export default function AdminSupportTicketsPage() {
                             {isAdmin ? 'VEDIXA Support (Admin)' : (msg.senderName || 'User')}
                           </span>
                           <span className="text-[9px] font-mono text-slate-400">
-                            {new Date(msg.createdAt).toLocaleString()}
+                            {formatISTDateTime(msg.createdAt)}
                           </span>
                         </div>
                         <p className="leading-relaxed">{msg.message}</p>

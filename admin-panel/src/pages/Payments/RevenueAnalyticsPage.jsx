@@ -25,6 +25,7 @@ import {
 import StatusBadge from '../../components/StatusBadge';
 import PaymentDetailsModal from '../../components/PaymentDetailsModal';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDate } from '../../utils/adminDateUtils';
 
 export default function RevenueAnalyticsPage() {
   const [timeFilter, setTimeFilter] = useState('MONTH'); // 'DAY' | 'WEEK' | 'MONTH' | 'YEAR'
@@ -509,7 +510,7 @@ export default function RevenueAnalyticsPage() {
                     className="hover:bg-slate-50 cursor-pointer transition"
                   >
                     <td className="py-2.5 font-mono font-semibold text-slate-700">
-                      {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN') : 'N/A'}
+                      {formatISTDate(p.createdAt, 'N/A')}
                     </td>
                     <td className="py-2.5">
                       <span className="font-bold text-slate-900 block">{p.userName || p.userId?.ownerName || 'User'}</span>

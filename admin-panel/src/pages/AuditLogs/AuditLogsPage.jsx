@@ -3,6 +3,7 @@ import { FileSpreadsheet, ShieldCheck, RefreshCw } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDateTime } from '../../utils/adminDateUtils';
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState([]);
@@ -31,7 +32,7 @@ export default function AuditLogsPage() {
     { header: 'Target Type', key: 'targetType', render: (row) => <span className="text-[10px] font-bold text-slate-400 uppercase">{row.targetType}</span> },
     { header: 'Details & Rationale', key: 'details', render: (row) => <span className="text-xs text-slate-300 font-medium">{row.details}</span> },
     { header: 'IP Address', key: 'ipAddress', render: (row) => <span className="font-mono text-slate-500 text-[10px]">{row.ipAddress || '127.0.0.1'}</span> },
-    { header: 'Timestamp', key: 'createdAt', render: (row) => new Date(row.createdAt).toLocaleString('en-IN') },
+    { header: 'Timestamp', key: 'createdAt', render: (row) => formatISTDateTime(row.createdAt, '—') },
   ];
 
   return (

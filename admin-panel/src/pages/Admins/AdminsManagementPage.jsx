@@ -3,6 +3,7 @@ import { ShieldCheck, RefreshCw, UserPlus, CheckCircle2 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDate } from '../../utils/adminDateUtils';
 
 export default function AdminsManagementPage() {
   const [admins, setAdmins] = useState([]);
@@ -69,7 +70,7 @@ export default function AdminsManagementPage() {
     { header: 'Mobile Login', key: 'mobile', render: (row) => <span className="font-mono font-bold text-slate-700">{maskMobileNumber(row.mobile)}</span> },
     { header: 'Assigned Role', key: 'role', render: (row) => <StatusBadge status={row.role || 'ADMIN'} /> },
     { header: 'Account Status', key: 'isActive', render: (row) => <StatusBadge status={row.isActive ? 'ACTIVE' : 'BLOCKED'} /> },
-    { header: 'Created Date', key: 'createdAt', render: (row) => new Date(row.createdAt).toLocaleDateString('en-IN') },
+    { header: 'Created Date', key: 'createdAt', render: (row) => formatISTDate(row.createdAt) },
   ];
 
   return (

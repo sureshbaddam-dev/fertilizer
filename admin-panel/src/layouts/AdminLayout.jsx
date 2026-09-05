@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { adminApiService } from '../services/adminApiService';
 import vedixaLogo from '../assets/vedixa_logo.png';
-import { formatISTTime } from '../utils/adminDateUtils';
+import { formatISTTime, formatCurrentISTDateHeader } from '../utils/adminDateUtils';
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -374,7 +374,7 @@ export default function AdminLayout() {
 
             {/* Date Pill */}
             <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-medium text-slate-600">
-              <span>Today, 16 Aug 2026</span>
+              <span>{formatCurrentISTDateHeader()}</span>
             </div>
 
             {/* Admin Profile & Logout */}

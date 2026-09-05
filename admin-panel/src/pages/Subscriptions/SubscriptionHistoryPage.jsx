@@ -4,6 +4,7 @@ import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import SubscriptionsTabs from '../../components/SubscriptionsTabs';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDateTime } from '../../utils/adminDateUtils';
 
 export default function SubscriptionHistoryPage() {
   const [history, setHistory] = useState([]);
@@ -38,8 +39,8 @@ export default function SubscriptionHistoryPage() {
     },
     { header: 'Plan Code', key: 'planCode', render: (row) => <span className="font-mono text-emerald-400 font-bold">{row.planCode}</span> },
     { header: 'Duration Label', key: 'durationLabel' },
-    { header: 'Start Date', key: 'startDate', render: (row) => new Date(row.startDate).toLocaleString('en-IN') },
-    { header: 'Expiry Date', key: 'expiryDate', render: (row) => new Date(row.expiryDate).toLocaleString('en-IN') },
+    { header: 'Start Date', key: 'startDate', render: (row) => formatISTDateTime(row.startDate, '—') },
+    { header: 'Expiry Date', key: 'expiryDate', render: (row) => formatISTDateTime(row.expiryDate, '—') },
     { header: 'Amount Paid (₹)', key: 'amountPaid', render: (row) => <span className="font-bold text-white">₹{row.amountPaid}</span> },
     { header: 'Source', key: 'source', render: (row) => <StatusBadge status={row.source} /> },
     { header: 'Status', key: 'paymentStatus', render: (row) => <StatusBadge status={row.paymentStatus} /> },

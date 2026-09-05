@@ -5,6 +5,7 @@ import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import SubscriptionsTabs from '../../components/SubscriptionsTabs';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDate } from '../../utils/adminDateUtils';
 
 export default function SubscriptionOverviewPage() {
   const navigate = useNavigate();
@@ -105,12 +106,12 @@ export default function SubscriptionOverviewPage() {
     {
       header: 'START DATE',
       key: 'startDate',
-      render: (row) => (row.startDate || row.createdAt ? new Date(row.startDate || row.createdAt).toLocaleDateString('en-IN') : '—'),
+      render: (row) => formatISTDate(row.startDate || row.createdAt, '—'),
     },
     {
       header: 'EXPIRY DATE',
       key: 'expiryDate',
-      render: (row) => (row.expiryDate ? new Date(row.expiryDate).toLocaleDateString('en-IN') : '—'),
+      render: (row) => formatISTDate(row.expiryDate, '—'),
     },
     {
       header: 'AMOUNT',

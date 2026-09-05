@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Calendar, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dashboardService } from '../../services/dashboardService';
+import { formatISTDate } from '../../utils/dateUtils';
 
 export default function TodaySummary({ summaryData }) {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export default function TodaySummary({ summaryData }) {
   const totalBills = summary?.totalBills !== undefined ? summary.totalBills : 0;
   const customersCount = summary?.customers !== undefined ? summary.customers : 0;
   const pendingPayments = summary?.pendingPayments || '₹ 0';
-  const todayDate = summary?.todayDate || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const todayDate = summary?.todayDate ? formatISTDate(summary.todayDate) : formatISTDate(new Date());
   
   const salesGrowth = summary?.salesGrowth !== undefined ? summary.salesGrowth : 0;
   const billsGrowth = summary?.billsGrowth !== undefined ? summary.billsGrowth : 0;

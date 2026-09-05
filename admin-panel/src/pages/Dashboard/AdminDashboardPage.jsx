@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { adminApiService } from '../../services/adminApiService';
 import StatusBadge from '../../components/StatusBadge';
+import { formatCurrentISTDateHeader } from '../../utils/adminDateUtils';
 import {
   AreaChart,
   Area,
@@ -118,7 +119,7 @@ export default function AdminDashboardPage() {
 
         <div className="flex items-center space-x-3 text-xs font-semibold">
           <span className="text-slate-600 font-medium bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl">
-            Today, 16 Aug 2026
+            {formatCurrentISTDateHeader()}
           </span>
           <button
             onClick={fetchDashboardData}

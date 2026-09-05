@@ -5,6 +5,7 @@ import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import PaymentDetailsModal from '../../components/PaymentDetailsModal';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDateTime } from '../../utils/adminDateUtils';
 
 export default function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -121,7 +122,7 @@ export default function TransactionsPage() {
     {
       header: 'TRANSACTION DATE',
       key: 'createdAt',
-      render: (row) => (row.createdAt ? new Date(row.createdAt).toLocaleString('en-IN') : '—'),
+      render: (row) => formatISTDateTime(row.createdAt, '—'),
     },
   ];
 

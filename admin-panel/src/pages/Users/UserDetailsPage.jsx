@@ -34,6 +34,7 @@ import GrantSubscriptionModal from '../../components/GrantSubscriptionModal';
 import SendNotificationModal from '../../components/SendNotificationModal';
 import TypeToConfirmModal from '../../components/TypeToConfirmModal';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDate, formatISTDateTime } from '../../utils/adminDateUtils';
 
 function formatAdminFullAddress(shop = {}, user = {}) {
   const rawAddr = (shop?.address || user?.address || '').trim();
@@ -453,7 +454,7 @@ export default function UserDetailsPage() {
               </span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Reg: {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-IN') : 'No data'}
+                Reg: {formatISTDate(user.createdAt, 'No data')}
               </span>
             </div>
 
@@ -484,7 +485,7 @@ export default function UserDetailsPage() {
             <div className="flex items-center justify-between font-mono">
               <span className="text-slate-500">Expiry:</span>
               <span className="font-bold text-emerald-700">
-                {subscription?.expiryDate ? new Date(subscription.expiryDate).toLocaleDateString('en-IN') : 'No data'}
+                {formatISTDate(subscription?.expiryDate, 'No data')}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -526,7 +527,7 @@ export default function UserDetailsPage() {
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Last Payment Date</span>
             <p className="text-lg font-bold font-mono text-slate-800">
-              {paymentSummary?.lastPaymentDate ? new Date(paymentSummary.lastPaymentDate).toLocaleDateString('en-IN') : 'No data'}
+              {formatISTDate(paymentSummary?.lastPaymentDate, 'No data')}
             </p>
             <span className="text-[10px] font-semibold text-slate-400 block">Most recent payment timestamp</span>
           </div>
@@ -621,7 +622,7 @@ export default function UserDetailsPage() {
                       <StatusBadge status={t.status} />
                     </div>
                     <span className="text-[10px] text-slate-500 font-medium">
-                      {new Date(t.createdAt).toLocaleDateString('en-IN')} {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatISTDateTime(t.createdAt)}
                     </span>
                   </div>
                   <h4 className="text-xs font-bold text-slate-900 mt-2">{t.subject}</h4>
@@ -661,8 +662,8 @@ export default function UserDetailsPage() {
                   <tr key={sh._id} className="hover:bg-slate-50">
                     <td className="p-3 font-bold text-slate-900">{sh.planName}</td>
                     <td className="p-3 font-semibold">{sh.durationLabel || 'No data'}</td>
-                    <td className="p-3 font-mono">{sh.startDate ? new Date(sh.startDate).toLocaleDateString('en-IN') : 'No data'}</td>
-                    <td className="p-3 font-mono">{sh.expiryDate ? new Date(sh.expiryDate).toLocaleDateString('en-IN') : 'No data'}</td>
+                    <td className="p-3 font-mono">{formatISTDate(sh.startDate, 'No data')}</td>
+                    <td className="p-3 font-mono">{formatISTDate(sh.expiryDate, 'No data')}</td>
                     <td className="p-3 font-bold text-emerald-700">{sh.amountPaid !== undefined ? `₹${sh.amountPaid}` : 'No data'}</td>
                     <td className="p-3"><StatusBadge status={sh.source} /></td>
                     <td className="p-3 font-medium text-slate-500">{sh.grantedByAdminName || 'Online System'}</td>

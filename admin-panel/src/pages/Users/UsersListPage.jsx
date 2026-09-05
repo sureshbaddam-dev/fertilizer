@@ -5,6 +5,7 @@ import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import GrantSubscriptionModal from '../../components/GrantSubscriptionModal';
 import { adminApiService } from '../../services/adminApiService';
+import { formatISTDate } from '../../utils/adminDateUtils';
 
 export default function UsersListPage() {
   const navigate = useNavigate();
@@ -111,7 +112,7 @@ export default function UsersListPage() {
     {
       header: 'REGISTRATION DATE',
       key: 'createdAt',
-      render: (row) => new Date(row.createdAt).toLocaleDateString('en-IN'),
+      render: (row) => formatISTDate(row.createdAt),
     },
     {
       header: 'SUBSCRIPTION',
@@ -125,7 +126,7 @@ export default function UsersListPage() {
     {
       header: 'EXPIRY DATE',
       key: 'expiryDate',
-      render: (row) => (row.expiryDate ? new Date(row.expiryDate).toLocaleDateString('en-IN') : 'No Plan'),
+      render: (row) => formatISTDate(row.expiryDate, 'No Plan'),
     },
     {
       header: 'PAYMENT SOURCE',

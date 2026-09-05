@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sparkles, CheckCircle2, Calendar } from 'lucide-react';
 import { adminApiService } from '../services/adminApiService';
+import { formatISTDate } from '../utils/adminDateUtils';
 
 export default function GrantSubscriptionModal({ isOpen, onClose, user, currentSubscription, mode = 'GRANT', onSuccess }) {
   const [subType, setSubType] = useState(mode === 'DEMO' ? 'DEMO' : 'ADMIN_GRANTED'); // 'ADMIN_GRANTED' or 'DEMO'
@@ -171,12 +172,12 @@ export default function GrantSubscriptionModal({ isOpen, onClose, user, currentS
             <div className="flex items-center justify-between text-slate-500">
               <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" />Current Expiry:</span>
               <span className="font-mono font-bold text-slate-700">
-                {currentSubscription?.expiryDate ? currentExpiryDate.toLocaleDateString('en-IN') : 'None'}
+                {formatISTDate(currentSubscription?.expiryDate, 'None')}
               </span>
             </div>
             <div className="flex items-center justify-between text-emerald-800 font-bold border-t border-slate-200/80 pt-1.5">
               <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-emerald-600" />New Expiry:</span>
-              <span className="font-mono text-sm">{newExpiryDate.toLocaleDateString('en-IN')}</span>
+              <span className="font-mono text-sm">{formatISTDate(newExpiryDate)}</span>
             </div>
           </div>
 
