@@ -107,6 +107,14 @@ export const appRouter = createBrowserRouter([
     element: <AuthLayout />,
     children: [
       {
+        index: true,
+        element: (
+          <PublicOnlyRoute>
+            <LoginPage />
+          </PublicOnlyRoute>
+        ),
+      },
+      {
         path: 'login',
         element: (
           <PublicOnlyRoute>
@@ -141,7 +149,6 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       // UNRESTRICTED ROUTES (Always accessible to logged-in users)
-      { index: true, element: withSuspense(HomePage) },
       { path: 'dashboard', element: withSuspense(HomePage) },
       { path: 'support', element: withSuspense(SupportPage) },
       { path: 'subscription', element: withSuspense(FullScreenSubscriptionPage) },

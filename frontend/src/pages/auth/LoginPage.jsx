@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Lock, Phone, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, Loader2 } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -13,11 +13,18 @@ import {
 import { useSEO } from '../../hooks/useSEO';
 
 export default function LoginPage() {
+  const location = useLocation();
+  const isRootLanding = location.pathname === '/';
+
   useSEO({
-    title: 'Sign In | VEDIXA ERP - Fertilizer Shop Management Software',
-    description: 'Log in to your VEDIXA ERP account to manage your fertilizer shop billing, seed and pesticide inventory, customer ledgers, and business sales reports.',
-    canonical: 'https://vedixaerp.com/login',
-    noIndex: true,
+    title: isRootLanding
+      ? 'VEDIXA ERP | Fertilizer Shop Management & Billing Software'
+      : 'Sign In | VEDIXA ERP - Fertilizer Shop Management Software',
+    description: isRootLanding
+      ? 'VEDIXA ERP is smart fertilizer shop management and billing software in India for fertilizers, seeds, and pesticides retail shops. Manage GST billing, inventory, batch tracking, customer ledgers, and sales reports.'
+      : 'Log in to your VEDIXA ERP account to manage your fertilizer shop billing, seed and pesticide inventory, customer ledgers, and business sales reports.',
+    canonical: isRootLanding ? 'https://vedixaerp.com/' : 'https://vedixaerp.com/login',
+    noIndex: !isRootLanding,
   });
 
   const navigate = useNavigate();
