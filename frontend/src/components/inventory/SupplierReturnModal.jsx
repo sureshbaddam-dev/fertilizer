@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { RotateCcw, X, Check, Search, Truck, AlertCircle, ChevronDown, FileText, Calendar } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { purchaseReturnService } from '../../services/purchaseReturnService';
+import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function SupplierReturnModal({ isOpen, onClose, products = [], onSaveReturn }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -133,12 +136,17 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
     setIsSubmitting(true);
 
     try {
+      const currentUserId = user?._id || user?.id || authService.getCurrentUser()?._id || authService.getCurrentUser()?.id;
+      const creatorName = user?.ownerName || user?.name || 'Authorized Staff';
+
       const payload = {
+        userId: currentUserId,
         productId: selectedProduct._id || selectedProduct.id,
         purchaseId: selectedInvoice?.purchaseId || null,
         quantity: numericQty,
         reason,
         notes,
+        createdBy: creatorName,
       };
 
       const response = await purchaseReturnService.processReturn(payload);

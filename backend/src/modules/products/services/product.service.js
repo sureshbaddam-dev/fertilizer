@@ -356,25 +356,41 @@ export const productService = {
       const purData = purchaseMap.get(pIdStr) || {};
       const saleData = salesMap.get(pIdStr) || {};
 
-      // Compute accurate stock value from remaining batch layers
+      // Compute accurate stock value from remaining active batch layers up to product.totalStock
+      let remainingStockToValue = Math.max(0, Number(pObj.totalStock || 0));
       let calculatedStockValue = 0;
-      let unallocatedStock = Math.max(0, Number(pObj.totalStock || 0));
 
-      if (pBatches.length > 0) {
-        pBatches.forEach((b) => {
-          const bStock = Math.max(0, Number(b.currentStock ?? b.quantityRemaining ?? 0));
-          const bRate = Number(b.purchaseRate || 0);
-          calculatedStockValue += bStock * bRate;
-          unallocatedStock -= bStock;
-        });
+      const activeBatchesSorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+      for (const b of activeBatchesSorted) {
+        if (remainingStockToValue <= 0) break;
+        const bStock = Math.max(0, Number(b.currentStock ?? b.quantityRemaining ?? 0));
+        if (bStock <= 0) continue;
+        const allocated = Math.min(bStock, remainingStockToValue);
+        const bRate = Number(b.purchaseRate ?? pObj.defaultPurchaseRate ?? 0);
+        calculatedStockValue += allocated * bRate;
+        remainingStockToValue -= allocated;
       }
 
-      if (unallocatedStock > 0) {
-        calculatedStockValue += unallocatedStock * Number(pObj.defaultPurchaseRate || 0);
+      if (remainingStockToValue > 0) {
+        const fallbackRate = Number(
+          pObj.defaultPurchaseRate ||
+          activeBatches[0]?.purchaseRate ||
+          pBatches[0]?.purchaseRate ||
+          pObj.purchaseRate ||
+          pObj.purchasePrice ||
+          0
+        );
+        calculatedStockValue += remainingStockToValue * fallbackRate;
       }
+
+      const effectivePurchaseRate = activeBatches[0]?.purchaseRate || pBatches[0]?.purchaseRate || pObj.defaultPurchaseRate || pObj.purchasePrice || 0;
 
       return {
         ...pObj,
+        defaultPurchaseRate: pObj.defaultPurchaseRate > 0 ? pObj.defaultPurchaseRate : effectivePurchaseRate,
+        purchaseRate: pObj.purchaseRate > 0 ? pObj.purchaseRate : effectivePurchaseRate,
+        purchasePrice: pObj.purchasePrice > 0 ? pObj.purchasePrice : effectivePurchaseRate,
         defaultSellingPrice: effectiveSellingPrice,
         sellingPrice: effectiveSellingPrice,
         currentSellingPrice: effectiveSellingPrice,
@@ -463,23 +479,43 @@ export const productService = {
       };
     });
 
+    // Compute accurate stock value from remaining active batch layers up to product.totalStock
+    let remainingStockToValue = Math.max(0, Number(productObj.totalStock || 0));
     let calculatedStockValue = 0;
-    let unallocatedStock = Math.max(0, Number(productObj.totalStock || 0));
-    annotatedBatches.forEach((b) => {
+
+    const activeBatchesSorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+    for (const b of activeBatchesSorted) {
+      if (remainingStockToValue <= 0) break;
       const bStock = Math.max(0, Number(b.currentStock ?? b.quantityRemaining ?? 0));
-      const bRate = Number(b.purchaseRate || 0);
-      calculatedStockValue += bStock * bRate;
-      unallocatedStock -= bStock;
-    });
-    if (unallocatedStock > 0) {
-      calculatedStockValue += unallocatedStock * Number(productObj.defaultPurchaseRate || 0);
+      if (bStock <= 0) continue;
+      const allocated = Math.min(bStock, remainingStockToValue);
+      const bRate = Number(b.purchaseRate ?? productObj.defaultPurchaseRate ?? 0);
+      calculatedStockValue += allocated * bRate;
+      remainingStockToValue -= allocated;
+    }
+
+    if (remainingStockToValue > 0) {
+      const fallbackRate = Number(
+        productObj.defaultPurchaseRate ||
+        activeBatches[0]?.purchaseRate ||
+        validBatches[0]?.purchaseRate ||
+        productObj.purchaseRate ||
+        productObj.purchasePrice ||
+        0
+      );
+      calculatedStockValue += remainingStockToValue * fallbackRate;
     }
 
     const primaryBatchNumber = oldestActiveBatch?.batchNumber || annotatedBatches[0]?.batchNumber || undefined;
+    const effectivePurchaseRate = activeBatches[0]?.purchaseRate || validBatches[0]?.purchaseRate || productObj.defaultPurchaseRate || productObj.purchasePrice || 0;
 
     return {
       product: {
         ...productObj,
+        defaultPurchaseRate: productObj.defaultPurchaseRate > 0 ? productObj.defaultPurchaseRate : effectivePurchaseRate,
+        purchaseRate: productObj.purchaseRate > 0 ? productObj.purchaseRate : effectivePurchaseRate,
+        purchasePrice: productObj.purchasePrice > 0 ? productObj.purchasePrice : effectivePurchaseRate,
         defaultSellingPrice: effectiveSellingPrice,
         sellingPrice: effectiveSellingPrice,
         currentSellingPrice: effectiveSellingPrice,
@@ -494,6 +530,154 @@ export const productService = {
       },
       batches: annotatedBatches,
     };
+  },
+
+  /**
+   * Record Damaged Stock Write-off: atomically deduct product and batch stock, create StockLedger entry.
+   */
+  async recordDamagedStock(data, authUserId = null) {
+    const userId = authUserId || data.userId;
+    if (!userId) {
+      throw new AppError('User ID is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const {
+      productId,
+      quantity,
+      reason = 'Bag torn during unloading',
+      notes = '',
+      batchId = null,
+      date,
+      createdBy = 'Godown Staff',
+    } = data;
+
+    const damageQtyNum = Number(quantity);
+    if (!productId) {
+      throw new AppError('Product ID is required', HTTP_STATUS.BAD_REQUEST);
+    }
+    if (!damageQtyNum || damageQtyNum <= 0) {
+      throw new AppError('Damaged quantity must be greater than 0', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const product = await Product.findOne({ _id: productId, userId });
+    if (!product) {
+      throw new AppError('Product not found or access denied', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const currentStock = Number(product.totalStock || 0);
+    if (damageQtyNum > currentStock) {
+      throw new AppError(
+        `Damaged quantity (${damageQtyNum}) cannot exceed available stock (${currentStock})`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const executeSave = async (session = null) => {
+      // 1. Deduct Product.totalStock
+      const newStock = Math.max(0, currentStock - damageQtyNum);
+      const updatedProduct = await Product.findOneAndUpdate(
+        { _id: productId, userId },
+        { totalStock: newStock },
+        session ? { session, new: true } : { new: true }
+      );
+
+      // 2. Deduct from Batches (Prioritize selected batchId, then FIFO)
+      let remainingToDeduct = damageQtyNum;
+      let effectivePurchasePrice = Number(product.defaultPurchaseRate || product.purchasePrice || 0);
+      let deductedBatchId = null;
+      let deductedBatchNumber = '';
+
+      const activeBatches = await ProductBatch.find({
+        userId,
+        productId,
+        isDeleted: { $ne: true },
+        currentStock: { $gt: 0 },
+      }).sort({ createdAt: 1 });
+
+      if (batchId) {
+        const targetIdx = activeBatches.findIndex((b) => b._id.toString() === batchId.toString());
+        if (targetIdx > -1) {
+          const [target] = activeBatches.splice(targetIdx, 1);
+          activeBatches.unshift(target);
+        }
+      }
+
+      for (const b of activeBatches) {
+        if (remainingToDeduct <= 0) break;
+        const deductQty = Math.min(b.currentStock, remainingToDeduct);
+        const updatedBatchStock = b.currentStock - deductQty;
+        await ProductBatch.findByIdAndUpdate(
+          b._id,
+          { currentStock: updatedBatchStock, isActive: updatedBatchStock > 0 },
+          session ? { session } : {}
+        );
+        remainingToDeduct -= deductQty;
+        if (!deductedBatchId) {
+          deductedBatchId = b._id;
+          deductedBatchNumber = b.batchNumber;
+        }
+        if (b.purchaseRate > 0 && effectivePurchasePrice === 0) {
+          effectivePurchasePrice = Number(b.purchaseRate);
+        }
+      }
+
+      const damageValue = damageQtyNum * effectivePurchasePrice;
+
+      // 3. Create StockLedger entry with transactionType: 'DAMAGE'
+      await StockLedger.create(
+        [
+          {
+            userId,
+            transactionType: 'DAMAGE',
+            productId,
+            batchId: deductedBatchId || null,
+            batchNumber: deductedBatchNumber || '',
+            quantity: -damageQtyNum,
+            purchaseRate: effectivePurchasePrice,
+            previousStock: currentStock,
+            currentStock: newStock,
+            createdBy,
+            timestamp: date ? new Date(date) : new Date(),
+            isDeleted: false,
+          },
+        ],
+        session ? { session } : {}
+      );
+
+      return {
+        product: updatedProduct,
+        previousStock: currentStock,
+        currentStock: newStock,
+        damagedQuantity: damageQtyNum,
+        purchaseRate: effectivePurchasePrice,
+        damageValue,
+        reason,
+        notes,
+      };
+    };
+
+    try {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      try {
+        const result = await executeSave(session);
+        await session.commitTransaction();
+        session.endSession();
+        return result;
+      } catch (txnErr) {
+        await session.abortTransaction();
+        session.endSession();
+        if (txnErr.message?.includes('replica set member')) {
+          return await executeSave(null);
+        }
+        throw txnErr;
+      }
+    } catch (err) {
+      if (err.message?.includes('replica set member')) {
+        return await executeSave(null);
+      }
+      throw err;
+    }
   },
 
   async reconcileProductBatches(productId, userId) {

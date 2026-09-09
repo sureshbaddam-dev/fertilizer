@@ -15,18 +15,26 @@ export const purchaseReturnService = {
   /**
    * Get purchase history for a product to auto-determine supplier and invoice details.
    */
-  async getPurchaseHistoryForReturn(productId) {
+  async getPurchaseHistoryForReturn(productId, userId = null) {
     if (!productId) {
       throw new AppError('Product ID is required', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const product = await Product.findById(productId).lean();
+    const productQuery = userId ? { _id: productId, userId } : { _id: productId };
+    let product = await Product.findOne(productQuery).lean();
+    if (!product) {
+      product = await Product.findById(productId).lean();
+    }
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }
 
     // Find all purchase items for this product
-    const purchaseItems = await PurchaseItem.find({ productId })
+    const purchaseItemQuery = { productId };
+    if (userId) {
+      purchaseItemQuery.userId = userId;
+    }
+    const purchaseItems = await PurchaseItem.find(purchaseItemQuery)
       .populate({
         path: 'purchaseId',
         populate: { path: 'supplierId', select: 'name companyName mobile outstandingBalance' },
@@ -72,7 +80,7 @@ export const purchaseReturnService = {
 
     // Calculate previously returned quantities per purchaseId + productId
     const returnAgg = await PurchaseReturn.aggregate([
-      { $match: { productId: new mongoose.Types.ObjectId(productId) } },
+      { $match: { productId: new mongoose.Types.ObjectId(productId), ...(userId ? { userId: new mongoose.Types.ObjectId(userId) } : {}) } },
       { $group: { _id: '$purchaseId', totalReturned: { $sum: '$quantity' } } },
     ]);
 
@@ -135,7 +143,7 @@ export const purchaseReturnService = {
   /**
    * Process Supplier Return: deduct stock, update supplier balance, create ledger entries.
    */
-  async processSupplierReturn(data) {
+  async processSupplierReturn(data, authUserId = null) {
     const {
       productId,
       purchaseId,
@@ -144,6 +152,11 @@ export const purchaseReturnService = {
       notes = '',
       createdBy = 'Ramesh Kumar',
     } = data;
+
+    const userId = authUserId || data.userId;
+    if (!userId) {
+      throw new AppError('User ID is required', HTTP_STATUS.BAD_REQUEST);
+    }
 
     const returnQtyNum = Number(quantity);
     if (!productId) {
@@ -246,6 +259,7 @@ export const purchaseReturnService = {
     const executeSave = async (session = null) => {
       // (A) Create Purchase Return Record
       const returnDoc = new PurchaseReturn({
+        userId,
         returnNumber,
         supplierId,
         purchaseId: purchase?._id || null,
@@ -276,15 +290,41 @@ export const purchaseReturnService = {
         await Product.findByIdAndUpdate(productId, { totalStock: newStock });
       }
 
+      let remainingBatchQtyToDeduct = returnQtyNum;
+
       if (purchaseItem?.batchId) {
-        const batch = await ProductBatch.findById(purchaseItem.batchId);
-        if (batch) {
-          const newBatchStock = Math.max(0, (batch.currentStock || 0) - returnQtyNum);
+        const targetBatch = await ProductBatch.findById(purchaseItem.batchId);
+        if (targetBatch && targetBatch.currentStock > 0) {
+          const deductFromThis = Math.min(targetBatch.currentStock, remainingBatchQtyToDeduct);
+          const updatedStock = targetBatch.currentStock - deductFromThis;
           if (session) {
-            await ProductBatch.findByIdAndUpdate(purchaseItem.batchId, { currentStock: newBatchStock }, { session });
+            await ProductBatch.findByIdAndUpdate(targetBatch._id, { currentStock: updatedStock, isActive: updatedStock > 0 }, { session });
           } else {
-            await ProductBatch.findByIdAndUpdate(purchaseItem.batchId, { currentStock: newBatchStock });
+            await ProductBatch.findByIdAndUpdate(targetBatch._id, { currentStock: updatedStock, isActive: updatedStock > 0 });
           }
+          remainingBatchQtyToDeduct -= deductFromThis;
+        }
+      }
+
+      if (remainingBatchQtyToDeduct > 0) {
+        const activeBatches = await ProductBatch.find({
+          userId,
+          productId,
+          isDeleted: { $ne: true },
+          currentStock: { $gt: 0 },
+        }).sort({ createdAt: 1 });
+
+        for (const b of activeBatches) {
+          if (remainingBatchQtyToDeduct <= 0) break;
+          if (purchaseItem?.batchId && b._id.toString() === purchaseItem.batchId.toString()) continue;
+          const deductQty = Math.min(b.currentStock, remainingBatchQtyToDeduct);
+          const updatedStock = b.currentStock - deductQty;
+          if (session) {
+            await ProductBatch.findByIdAndUpdate(b._id, { currentStock: updatedStock, isActive: updatedStock > 0 }, { session });
+          } else {
+            await ProductBatch.findByIdAndUpdate(b._id, { currentStock: updatedStock, isActive: updatedStock > 0 });
+          }
+          remainingBatchQtyToDeduct -= deductQty;
         }
       }
 
@@ -306,6 +346,7 @@ export const purchaseReturnService = {
 
       // (D) Create Supplier Ledger Entry (RETURN / ADJUSTMENT)
       const supplierLedgerData = {
+        userId,
         supplierId,
         purchaseId: purchase?._id || null,
         transactionType: 'RETURN',
@@ -323,11 +364,14 @@ export const purchaseReturnService = {
 
       // (E) Create Inventory Stock Ledger Entry (RETURN audit)
       const stockLedgerData = {
-        transactionType: 'RETURN',
+        userId,
+        transactionType: 'PURCHASE_RETURN',
         referenceId: returnDoc._id,
+        referenceNumber: returnNumber,
         productId,
         batchId: purchaseItem?.batchId || null,
         quantity: -returnQtyNum,
+        purchaseRate: purchasePrice,
         previousStock: prevStock,
         currentStock: newStock,
         createdBy,
@@ -377,8 +421,9 @@ export const purchaseReturnService = {
   /**
    * Get all supplier returns audit history
    */
-  async getAllReturns() {
-    const returns = await PurchaseReturn.find()
+  async getAllReturns(userId = null) {
+    const filter = userId ? { userId } : {};
+    const returns = await PurchaseReturn.find(filter)
       .populate('productId', 'name brandId categoryId')
       .populate('supplierId', 'name companyName mobile outstandingBalance')
       .populate('purchaseId', 'purchaseNumber supplierInvoiceNumber purchaseDate')

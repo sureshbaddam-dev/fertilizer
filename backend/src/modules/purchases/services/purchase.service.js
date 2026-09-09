@@ -204,7 +204,20 @@ export const purchaseService = {
 
         const currentProduct = await productRepository.findById(item.productId, userId);
         const previousStock = currentProduct ? currentProduct.totalStock : 0;
-        const updatedProduct = await productRepository.incrementStock(item.productId, itemQty, session, userId);
+        const extraUpdates = {};
+        if (!currentProduct?.defaultPurchaseRate || currentProduct.defaultPurchaseRate === 0) {
+          extraUpdates.defaultPurchaseRate = itemRate;
+          extraUpdates.purchasePrice = itemRate;
+        }
+        if ((!currentProduct?.defaultSellingPrice || currentProduct.defaultSellingPrice === 0) && itemSellingPrice > 0) {
+          extraUpdates.defaultSellingPrice = itemSellingPrice;
+          extraUpdates.sellingPrice = itemSellingPrice;
+        }
+        if ((!currentProduct?.defaultMrp || currentProduct.defaultMrp === 0) && itemMrp > 0) {
+          extraUpdates.defaultMrp = itemMrp;
+          extraUpdates.mrp = itemMrp;
+        }
+        const updatedProduct = await productRepository.incrementStock(item.productId, itemQty, session, userId, extraUpdates);
         const currentStock = updatedProduct ? updatedProduct.totalStock : previousStock + itemQty;
 
         const stockLedgerData = {

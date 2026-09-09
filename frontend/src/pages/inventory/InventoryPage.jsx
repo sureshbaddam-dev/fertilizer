@@ -38,30 +38,21 @@ export default function InventoryPage() {
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
 
-  // Local state for stock adjustments (Damage & Returns)
-  const [stockAdjustments, setStockAdjustments] = useState({});
-
   // Fetch Products for Live Stock Data
   const { data: productsApi, isLoading } = useQuery({
     queryKey: ['products-inventory'],
     queryFn: () => productService.getProducts({ limit: 200 }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   const rawProducts = useMemo(() => {
     const fetched = productsApi?.data?.data?.products || productsApi?.data?.products || [];
-    return fetched.map((p) => {
-      const pId = p._id || p.id;
-      const adj = stockAdjustments[pId] || 0;
-      const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
-      const adjustedStock = Math.max(0, baseStock - adj);
-      return {
-        ...p,
-        totalStock: adjustedStock,
-        currentStock: adjustedStock,
-      };
-    });
-  }, [productsApi, stockAdjustments]);
+    return fetched.map((p) => ({
+      ...p,
+      totalStock: Number(p.totalStock ?? p.currentStock ?? 0),
+      currentStock: Number(p.totalStock ?? p.currentStock ?? 0),
+    }));
+  }, [productsApi]);
 
   // Summary Metrics Calculations
   const metrics = useMemo(() => {
@@ -72,25 +63,9 @@ export default function InventoryPage() {
     rawProducts.forEach((p) => {
       const stock = Number(p.totalStock ?? p.currentStock ?? 0);
       const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-      const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
+      const itemVal = Number(p.stockValue ?? p.totalStockValue ?? 0);
 
-      let effectiveRate = 0;
-      if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
-        effectiveRate = Number(p.stockValue) / baseStock;
-      } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
-        effectiveRate = Number(p.totalStockValue) / baseStock;
-      } else {
-        effectiveRate = Number(
-          p.defaultPurchaseRate ||
-          p.purchaseRate ||
-          p.purchasePrice ||
-          p.currentActiveBatch?.purchaseRate ||
-          p.batches?.[0]?.purchaseRate ||
-          0
-        );
-      }
-
-      totalValue += stock * effectiveRate;
+      totalValue += itemVal;
 
       if (stock === 0) {
         outOfStockCount++;
@@ -133,19 +108,8 @@ export default function InventoryPage() {
         const stockA = Number(a.totalStock ?? a.currentStock ?? 0);
         const stockB = Number(b.totalStock ?? b.currentStock ?? 0);
 
-        const baseA = Number(a.totalStock ?? a.currentStock ?? 0);
-        const baseB = Number(b.totalStock ?? b.currentStock ?? 0);
-
-        let rateA = 0;
-        if (a.stockValue && baseA > 0) rateA = a.stockValue / baseA;
-        else rateA = Number(a.defaultPurchaseRate || a.purchaseRate || a.purchasePrice || a.currentActiveBatch?.purchaseRate || 0);
-
-        let rateB = 0;
-        if (b.stockValue && baseB > 0) rateB = b.stockValue / baseB;
-        else rateB = Number(b.defaultPurchaseRate || b.purchaseRate || b.purchasePrice || b.currentActiveBatch?.purchaseRate || 0);
-
-        const valA = stockA * rateA;
-        const valB = stockB * rateB;
+        const valA = Number(a.stockValue ?? a.totalStockValue ?? 0);
+        const valB = Number(b.stockValue ?? b.totalStockValue ?? 0);
 
         if (sortBy === 'STOCK_DESC') return stockB - stockA;
         if (sortBy === 'STOCK_ASC') return stockA - stockB;
@@ -166,27 +130,19 @@ export default function InventoryPage() {
   };
 
   // Handlers for Damaged Stock Write-off & Supplier Return
-  const handleSaveDamage = (damageRecord) => {
-    const pId = damageRecord.productId;
-    setStockAdjustments((prev) => ({
-      ...prev,
-      [pId]: (prev[pId] || 0) + damageRecord.quantity,
-    }));
-    queryClient.invalidateQueries(['dashboard-summary']);
+  const handleSaveDamage = () => {
     queryClient.invalidateQueries(['products-inventory']);
     queryClient.invalidateQueries(['products']);
+    queryClient.invalidateQueries(['dashboard-summary']);
+    queryClient.invalidateQueries(['reports-bi']);
   };
 
-  const handleSaveReturn = (returnRecord) => {
-    const pId = returnRecord.productId;
-    setStockAdjustments((prev) => ({
-      ...prev,
-      [pId]: (prev[pId] || 0) + returnRecord.quantity,
-    }));
-    queryClient.invalidateQueries(['dashboard-summary']);
-    queryClient.invalidateQueries(['supplier-ledger']);
+  const handleSaveReturn = () => {
     queryClient.invalidateQueries(['products-inventory']);
     queryClient.invalidateQueries(['products']);
+    queryClient.invalidateQueries(['dashboard-summary']);
+    queryClient.invalidateQueries(['supplier-ledger']);
+    queryClient.invalidateQueries(['reports-bi']);
   };
 
   return (
@@ -404,26 +360,8 @@ export default function InventoryPage() {
                     const rowIndex = startIndex + idx + 1;
                     const stock = Number(p.totalStock ?? p.currentStock ?? 0);
                     const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-                    const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
-
-                    let purchaseRate = 0;
-                    if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
-                      purchaseRate = Number(p.stockValue) / baseStock;
-                    } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
-                      purchaseRate = Number(p.totalStockValue) / baseStock;
-                    } else {
-                      purchaseRate = Number(
-                        p.defaultPurchaseRate ||
-                        p.purchaseRate ||
-                        p.purchasePrice ||
-                        p.currentActiveBatch?.purchaseRate ||
-                        p.batches?.[0]?.purchaseRate ||
-                        0
-                      );
-                    }
-
                     const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
-                    const stockVal = stock * purchaseRate;
+                    const stockVal = Number(p.stockValue ?? p.totalStockValue ?? (stock * Number(p.defaultPurchaseRate || p.purchaseRate || p.purchasePrice || 0)));
 
                     const companyName = p.brandId?.name || p.companyId?.name || p.company || 'N/A';
                     const categoryName = p.categoryId?.name || p.category || 'Uncategorized';
@@ -545,26 +483,8 @@ export default function InventoryPage() {
                 const rowIndex = startIndex + idx + 1;
                 const stock = Number(p.totalStock ?? p.currentStock ?? 0);
                 const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
-                const baseStock = Number(p.totalStock ?? p.currentStock ?? 0);
-
-                let purchaseRate = 0;
-                if (p.stockValue !== undefined && p.stockValue !== null && Number(p.stockValue) > 0 && baseStock > 0) {
-                  purchaseRate = Number(p.stockValue) / baseStock;
-                } else if (p.totalStockValue !== undefined && p.totalStockValue !== null && Number(p.totalStockValue) > 0 && baseStock > 0) {
-                  purchaseRate = Number(p.totalStockValue) / baseStock;
-                } else {
-                  purchaseRate = Number(
-                    p.defaultPurchaseRate ||
-                    p.purchaseRate ||
-                    p.purchasePrice ||
-                    p.currentActiveBatch?.purchaseRate ||
-                    p.batches?.[0]?.purchaseRate ||
-                    0
-                  );
-                }
-
                 const unitName = p.defaultUnitId?.shortName || p.unit || 'Bag';
-                const stockVal = stock * purchaseRate;
+                const stockVal = Number(p.stockValue ?? p.totalStockValue ?? (stock * Number(p.defaultPurchaseRate || p.purchaseRate || p.purchasePrice || 0)));
                 const companyName = p.brandId?.name || p.companyId?.name || p.company || 'N/A';
                 const categoryName = p.categoryId?.name || p.category || 'Uncategorized';
                 const totalPurchased = p.totalPurchasedQty !== undefined ? p.totalPurchasedQty : 0;

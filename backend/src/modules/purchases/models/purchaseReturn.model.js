@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const purchaseReturnSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'User is required'],
+      index: true,
+    },
     returnNumber: {
       type: String,
       required: true,

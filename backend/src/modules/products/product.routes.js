@@ -11,6 +11,7 @@ import {
   searchCloudinaryProductImages,
   getProductHistory,
   updateBatch,
+  recordDamagedStock,
 } from './controllers/product.controller.js';
 import { uploadProductImageMiddleware } from '../../middlewares/upload.middleware.js';
 import { protect } from '../../middlewares/auth.middleware.js';
@@ -25,6 +26,7 @@ router.get('/', getProducts);
 router.get('/top-selling', getTopSellingProducts);
 router.get('/cloudinary-images/search', searchCloudinaryProductImages);
 router.post('/', createProduct);
+router.post('/damaged-stock', recordDamagedStock);
 router.post('/upload-image', uploadProductImageMiddleware.single('image'), uploadProductImage);
 router.patch('/batches/:batchId', updateBatch);
 router.get('/:id', getProductById);

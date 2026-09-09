@@ -59,4 +59,8 @@ export const productService = {
   async searchCloudinaryProductImages(params = {}) {
     return await apiClient.get('/products/cloudinary-images/search', { params });
   },
+
+  async recordDamagedStock(data) {
+    return await apiClient.post('/products/damaged-stock', data);
+  },
 };

@@ -130,3 +130,9 @@ export const updateBatch = asyncHandler(async (req, res) => {
   const data = await productService.updateBatch(req.params.batchId, req.body, userId);
   return sendSuccess(res, 'Product batch pricing updated successfully', data, HTTP_STATUS.OK);
 });
+
+export const recordDamagedStock = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.body?.userId;
+  const result = await productService.recordDamagedStock(req.body, userId);
+  return sendSuccess(res, 'Damaged stock recorded and written off successfully', result, HTTP_STATUS.CREATED);
+});

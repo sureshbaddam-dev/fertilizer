@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, X, Check, Search } from 'lucide-react';
+import { AlertTriangle, X, Check, Search, AlertCircle } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
+import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function DamageStockModal({ isOpen, onClose, products = [], onSaveDamage }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -10,6 +17,9 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
   const [damagedQty, setDamagedQty] = useState('');
   const [reason, setReason] = useState('Bag torn during unloading');
   const [notes, setNotes] = useState('');
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen) {
@@ -19,6 +29,7 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
       setDamagedQty('');
       setReason('Bag torn during unloading');
       setNotes('');
+      setErrorMessage('');
     }
   }, [isOpen]);
 
@@ -34,7 +45,9 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
   });
 
   const currentStock = selectedProduct ? Number(selectedProduct.totalStock ?? selectedProduct.currentStock ?? 0) : 0;
-  const purchasePrice = selectedProduct ? Number(selectedProduct.defaultPurchaseRate ?? selectedProduct.purchasePrice ?? 0) : 0;
+  const purchasePrice = selectedProduct
+    ? Number(selectedProduct.defaultPurchaseRate ?? selectedProduct.purchaseRate ?? selectedProduct.purchasePrice ?? selectedProduct.currentActiveBatch?.purchaseRate ?? 0)
+    : 0;
   const unitName = selectedProduct ? (selectedProduct.defaultUnitId?.shortName || selectedProduct.unit || 'Bag') : 'Unit';
 
   const numericQty = Number(damagedQty) || 0;
@@ -44,45 +57,66 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
     setSelectedProduct(product);
     setSearchQuery(product.name);
     setIsDropdownOpen(false);
+    setErrorMessage('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+
     if (!selectedProduct) {
-      alert('Please select a product first');
+      setErrorMessage('Please select a product first');
       return;
     }
     if (numericQty <= 0) {
-      alert('Please enter a valid damaged quantity greater than 0');
+      setErrorMessage('Please enter a valid damaged quantity greater than 0');
       return;
     }
     if (numericQty > currentStock) {
-      alert(`Damaged quantity cannot exceed current available stock (${currentStock} ${unitName})`);
+      setErrorMessage(`Damaged quantity cannot exceed current available stock (${currentStock} ${unitName})`);
       return;
     }
 
-    const damageRecord = {
-      productId: selectedProduct._id || selectedProduct.id,
-      productName: selectedProduct.name,
-      company: selectedProduct.brandId?.name || selectedProduct.company || 'Coromandel',
-      unit: unitName,
-      quantity: numericQty,
-      purchasePrice,
-      damageValue,
-      reason,
-      notes,
-      date: new Date().toISOString().slice(0, 10),
-    };
+    setIsSubmitting(true);
 
-    if (onSaveDamage) {
-      onSaveDamage(damageRecord);
+    try {
+      const currentUserId = user?._id || user?.id || authService.getCurrentUser()?._id || authService.getCurrentUser()?.id;
+      const creatorName = user?.ownerName || user?.name || 'Godown Staff';
+
+      const payload = {
+        userId: currentUserId,
+        productId: selectedProduct._id || selectedProduct.id,
+        quantity: numericQty,
+        reason,
+        notes,
+        createdBy: creatorName,
+        date: new Date().toISOString(),
+      };
+
+      const response = await productService.recordDamagedStock(payload);
+
+      // Invalidate queries across the application
+      queryClient.invalidateQueries(['products-inventory']);
+      queryClient.invalidateQueries(['products']);
+      queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries(['reports-bi']);
+
+      if (onSaveDamage) {
+        onSaveDamage(response?.data?.data || payload);
+      }
+      onClose();
+    } catch (err) {
+      console.error('Error recording damaged stock:', err);
+      const msg = err.response?.data?.message || err.message || 'Failed to record damaged stock';
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 font-sans text-xs"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 font-sans text-xs"
       onClick={onClose}
     >
       <div
@@ -105,6 +139,13 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
             <X className="w-4.5 h-4.5" />
           </button>
         </div>
+
+        {errorMessage && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-semibold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           {/* Autocomplete Product Search Box */}
@@ -232,10 +273,20 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
 
             <button
               type="submit"
-              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
+              disabled={isSubmitting || !selectedProduct}
+              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
             >
-              <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>Confirm & Write-Off Stock</span>
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Writing Off...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>Confirm & Write-Off Stock</span>
+                </>
+              )}
             </button>
           </div>
         </form>

@@ -29,12 +29,16 @@ export const productRepository = {
       .exec();
   },
 
-  async incrementStock(productId, qty, session = null, userId = null) {
+  async incrementStock(productId, qty, session = null, userId = null, extraUpdates = {}) {
     const opts = session ? { session } : {};
     const filter = userId ? { _id: productId, userId } : { _id: productId };
+    const update = { $inc: { totalStock: qty } };
+    if (extraUpdates && Object.keys(extraUpdates).length > 0) {
+      update.$set = extraUpdates;
+    }
     return await Product.findOneAndUpdate(
       filter,
-      { $inc: { totalStock: qty } },
+      update,
       { new: true, ...opts }
     ).exec();
   },
