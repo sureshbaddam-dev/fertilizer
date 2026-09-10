@@ -287,8 +287,6 @@ export const salesInvoiceService = {
       }
     }
 
-    const tCustomerLookup = Date.now() - tStart;
-    console.log(`[BILL TIMING] Customer lookup: ${tCustomerLookup}ms`);
 
     const idempotencyKey = data.idempotencyKey || null;
     if (idempotencyKey) {
@@ -337,8 +335,6 @@ export const salesInvoiceService = {
       batchMap.get(key).push(b);
     }
 
-    const tProductLookup = Date.now() - tProdReadStart;
-    console.log(`[BILL TIMING] Product lookup: ${tProductLookup}ms`);
 
     // 2. Stock Validation & Item Snapshots (In-Memory Processing)
     const tValidateStart = Date.now();
@@ -378,9 +374,6 @@ export const salesInvoiceService = {
         }
       }
     }
-    const tValidation = Date.now() - tValidateStart;
-    console.log(`[BILL TIMING] Request validation: ${tValidation}ms`);
-    console.log(`[BILL TIMING] Stock validation: ${tValidation}ms`);
 
     const tSnapshotStart = Date.now();
     const itemSnapshots = [];
@@ -605,17 +598,11 @@ export const salesInvoiceService = {
     const status = calculateInvoicePaymentStatus(grandTotal, paidAmount, newBillDue, data.status);
     let dueStatus = newBillDue <= 0 ? 'No Due' : 'Due In 30 Days';
 
-    const tItemsProc = Date.now() - tSnapshotStart;
-    console.log(`[BILL TIMING] Invoice items processing: ${tItemsProc}ms`);
 
     // 3. Invoice Number Generation
-    const tNumStart = Date.now();
     const autoInvoiceNumber = await generateNextInvoiceNumber(userId);
-    const tNumGen = Date.now() - tNumStart;
-    console.log(`[BILL TIMING] Invoice number generation: ${tNumGen}ms`);
 
     // 4. Save Invoice DB Document
-    const tInvSaveStart = Date.now();
     const newInvoice = await SalesInvoice.create({
       userId,
       invoiceNumber: autoInvoiceNumber,
@@ -638,11 +625,8 @@ export const salesInvoiceService = {
       notes,
       idempotencyKey,
     });
-    const tInvSave = Date.now() - tInvSaveStart;
-    console.log(`[BILL TIMING] Invoice database save: ${tInvSave}ms`);
 
     // 5. Batched Stock Deductions & Stock Ledger Entries
-    const tStockDedStart = Date.now();
 
     if (batchDeductionsToApply.length > 0) {
       const batchBulkOps = batchDeductionsToApply.map((bDeduction) => ({
@@ -703,12 +687,8 @@ export const salesInvoiceService = {
       await StockLedger.insertMany(stockLedgerEntries);
     }
 
-    const tStockDed = Date.now() - tStockDedStart;
-    console.log(`[BILL TIMING] Stock deduction: ${tStockDed}ms`);
-    console.log(`[BILL TIMING] Transaction creation: ${tStockDed}ms`);
 
     // 6. Customer Ledger & Payment Processing
-    const tLedgerStart = Date.now();
     if (customerDoc) {
       customerDoc.totalPurchases = (customerDoc.totalPurchases || 0) + grandTotal;
       customerDoc.totalPaid = (customerDoc.totalPaid || 0) + paidAmount + advanceUsed;
@@ -745,8 +725,6 @@ export const salesInvoiceService = {
 
       await customerService.calculateCustomerBalance(customerDoc._id, userId);
     }
-    const tLedger = Date.now() - tLedgerStart;
-    console.log(`[BILL TIMING] Customer ledger update: ${tLedger}ms`);
 
     return {
       invoice: newInvoice,

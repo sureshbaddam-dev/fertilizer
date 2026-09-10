@@ -13,6 +13,7 @@ import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
 import { authService } from '../../services/authService';
 import { getAgriCategoryColor } from '../../theme/agriTheme';
+import { toast } from '../../contexts/ToastContext';
 
 export default function ProductsPage() {
   const navigate = useNavigate();
@@ -260,9 +261,10 @@ export default function ProductsPage() {
       setIsEditingProduct(false);
       setLiveDraftValues(null);
       setDeleteConfirmInput('');
+      toast.success('Product deleted successfully');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to delete product.');
+      toast.error('Failed to delete product', { description: err?.response?.data?.message || err?.message });
     },
   });
 

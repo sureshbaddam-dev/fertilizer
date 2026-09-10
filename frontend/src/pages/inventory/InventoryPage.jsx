@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Layers,
   Search,
@@ -23,6 +24,7 @@ import DamageStockModal from '../../components/inventory/DamageStockModal';
 import SupplierReturnModal from '../../components/inventory/SupplierReturnModal';
 
 export default function InventoryPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,6 +47,13 @@ export default function InventoryPage() {
     staleTime: 30 * 1000,
   });
 
+  // Fetch Adjustments Summary for 5th KPI Card
+  const { data: adjustmentsApi } = useQuery({
+    queryKey: ['stock-adjustments'],
+    queryFn: () => productService.getStockAdjustments(),
+    staleTime: 30 * 1000,
+  });
+
   const rawProducts = useMemo(() => {
     const fetched = productsApi?.data?.data?.products || productsApi?.data?.products || [];
     return fetched.map((p) => ({
@@ -53,6 +62,17 @@ export default function InventoryPage() {
       currentStock: Number(p.totalStock ?? p.currentStock ?? 0),
     }));
   }, [productsApi]);
+
+  const adjustmentSummary = useMemo(() => {
+    return adjustmentsApi?.data?.data?.summary || adjustmentsApi?.data?.summary || {
+      totalDamagedQty: 0,
+      totalDamagedValue: 0,
+      totalReturnedQty: 0,
+      totalReturnValue: 0,
+      totalAdjustedQty: 0,
+      totalAdjustedValue: 0,
+    };
+  }, [adjustmentsApi]);
 
   // Summary Metrics Calculations
   const metrics = useMemo(() => {
@@ -133,6 +153,7 @@ export default function InventoryPage() {
   const handleSaveDamage = () => {
     queryClient.invalidateQueries(['products-inventory']);
     queryClient.invalidateQueries(['products']);
+    queryClient.invalidateQueries(['stock-adjustments']);
     queryClient.invalidateQueries(['dashboard-summary']);
     queryClient.invalidateQueries(['reports-bi']);
   };
@@ -140,6 +161,7 @@ export default function InventoryPage() {
   const handleSaveReturn = () => {
     queryClient.invalidateQueries(['products-inventory']);
     queryClient.invalidateQueries(['products']);
+    queryClient.invalidateQueries(['stock-adjustments']);
     queryClient.invalidateQueries(['dashboard-summary']);
     queryClient.invalidateQueries(['supplier-ledger']);
     queryClient.invalidateQueries(['reports-bi']);
@@ -178,8 +200,9 @@ export default function InventoryPage() {
         </div>
       )}
     >
-      {/* KPI Metric Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 5 KPI Metric Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-5">
+        {/* Card 1: Total Active Items */}
         <StatCard
           title="Total Active Items"
           value={metrics.totalProducts}
@@ -196,13 +219,15 @@ export default function InventoryPage() {
           }`}
         />
 
+        {/* Card 2: Total Stock Value */}
         <StatCard
           title="Total Stock Value (₹)"
           value={`₹ ${Math.round(metrics.totalInventoryValue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-          subtitle="Valued at Landed Purchase Rate"
+          subtitle="Valued at Purchase Rate"
           icon={DollarSign}
         />
 
+        {/* Card 3: Low Stock */}
         <StatCard
           title="Low Stock Items"
           value={metrics.lowStockCount}
@@ -220,6 +245,7 @@ export default function InventoryPage() {
           }`}
         />
 
+        {/* Card 4: Out of Stock */}
         <StatCard
           title="Out of Stock"
           value={metrics.outOfStockCount}
@@ -235,6 +261,17 @@ export default function InventoryPage() {
               ? 'ring-2 ring-rose-500 border-rose-300 bg-rose-50/20'
               : 'hover:border-rose-300'
           }`}
+        />
+
+        {/* Card 5: Damage / Return Stock (Clickable -> navigates to /inventory/stock-adjustments) */}
+        <StatCard
+          title="Damage / Return Stock"
+          value={`Damaged: ${adjustmentSummary.totalDamagedQty || 0}`}
+          subtitle={`Returns: ${adjustmentSummary.totalReturnedQty || 0} • Click to View`}
+          icon={RotateCcw}
+          trendColor="purple"
+          onClick={() => navigate('/inventory/stock-adjustments')}
+          className="cursor-pointer transition-all hover:border-purple-300 hover:bg-purple-50/20 hover:shadow-xs"
         />
       </div>
 
@@ -540,7 +577,7 @@ export default function InventoryPage() {
                       </div>
                     </div>
 
-                    {/* Stock Details Grid (2 cols on mobile, 3 cols on sm, 5 cols on tablet) */}
+                    {/* Stock Details Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3 text-xs font-mono bg-slate-50/80 p-3 rounded-xl border border-slate-100">
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold block uppercase font-sans">Current Stock</span>

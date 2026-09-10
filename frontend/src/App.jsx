@@ -6,12 +6,16 @@ import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { queryClient } from './utils/queryClient';
 
+import { ToastProvider } from './contexts/ToastContext';
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SettingsProvider>
-          <RouterProvider router={appRouter} />
+          <ToastProvider>
+            <RouterProvider router={appRouter} />
+          </ToastProvider>
         </SettingsProvider>
       </AuthProvider>
     </QueryClientProvider>

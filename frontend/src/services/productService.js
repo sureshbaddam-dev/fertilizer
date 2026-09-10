@@ -63,4 +63,8 @@ export const productService = {
   async recordDamagedStock(data) {
     return await apiClient.post('/products/damaged-stock', data);
   },
+
+  async getStockAdjustments(params = {}) {
+    return await apiClient.get('/products/stock-adjustments', { params });
+  },
 };

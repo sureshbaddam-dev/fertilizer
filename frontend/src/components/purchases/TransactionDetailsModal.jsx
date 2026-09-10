@@ -4,12 +4,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X, FileText, CheckCircle2, Clock, Calendar, Building, Package, CreditCard, Tag, Trash2, AlertTriangle, RotateCcw, Eye } from 'lucide-react';
 import { purchaseService } from '../../services/purchaseService';
 import { supplierService } from '../../services/supplierService';
+import { toast } from '../../contexts/ToastContext';
 
 export default function TransactionDetailsModal({
   isOpen,
   transaction = null,
   supplier = null,
   onClose,
+  onOpenRefund = null,
+  onOpenEditReturn = null,
 }) {
   const queryClient = useQueryClient();
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -41,22 +44,19 @@ export default function TransactionDetailsModal({
 
   const handleConfirmDelete = async (e) => {
     if (e) e.stopPropagation();
-    console.log('Confirming purchase deletion', { deleteInput });
     if (deleteInput !== 'DELETE') return;
 
     const pObj = transaction.purchaseId || {};
     const targetId = pObj._id || (typeof transaction.purchaseId === 'string' ? transaction.purchaseId : null) || transaction.referenceId || transaction._id;
     
-    console.log('API REQUEST STARTED', { targetId, transaction });
     if (!targetId) {
-      alert('Purchase ID could not be identified for this record.');
+      toast.error('Purchase ID could not be identified for this record.');
       return;
     }
 
     try {
       setIsDeleting(true);
-      const res = await purchaseService.deletePurchase(targetId, 'DELETE');
-      console.log('API REQUEST SUCCESSFUL', res);
+      await purchaseService.deletePurchase(targetId, 'DELETE');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] }),
         queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
@@ -66,11 +66,12 @@ export default function TransactionDetailsModal({
       setIsDeleting(false);
       setIsDeleteConfirmOpen(false);
       setDeleteInput('');
+      toast.success('Purchase invoice deleted successfully');
       onClose();
     } catch (err) {
       console.error('Failed to soft-delete purchase invoice:', err);
       setIsDeleting(false);
-      alert(err.response?.data?.message || err.message || 'Failed to soft-delete purchase invoice');
+      toast.error('Failed to delete purchase invoice', { description: err.response?.data?.message || err.message });
     }
   };
   const handleConfirmDeletePayment = async (e) => {
@@ -89,20 +90,31 @@ export default function TransactionDetailsModal({
       setIsDeletingPayment(false);
       setPaymentToDelete(null);
       setDeletePaymentInput('');
+      toast.success('Payment deleted successfully');
       onClose();
     } catch (err) {
       console.error('Failed to soft-delete payment:', err);
       setIsDeletingPayment(false);
-      alert(err.response?.data?.message || err.message || 'Failed to delete payment');
+      toast.error('Failed to delete payment', { description: err.response?.data?.message || err.message });
     }
   };
 
   const isPayment = transaction.transactionType === 'PAYMENT';
+  const isReturn = transaction.transactionType === 'RETURN';
+  const isRefund = transaction.transactionType === 'REFUND';
   const isAdjustment = transaction.transactionType === 'ADJUSTMENT' || transaction.notes?.includes('Opening');
 
-  const dateStr = transaction.date
-    ? new Date(transaction.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const rawDate = transaction.date || transaction.createdAt;
+  const dateObj = rawDate ? new Date(rawDate) : null;
+  const dateStr = dateObj && !isNaN(dateObj.getTime())
+    ? dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : '—';
+  const isMidnightUtc = dateObj && !isNaN(dateObj.getTime()) && dateObj.getUTCHours() === 0 && dateObj.getUTCMinutes() === 0 && dateObj.getUTCSeconds() === 0;
+  const timeStr = dateObj && !isNaN(dateObj.getTime())
+    ? (isMidnightUtc && transaction.createdAt
+        ? new Date(transaction.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+        : dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }))
+    : '';
 
   const supplierObj = supplier || transaction.supplierId || {};
   const supplierName = supplierObj.name || 'Supplier';
@@ -113,20 +125,30 @@ export default function TransactionDetailsModal({
   const purchaseNo = purchaseObj.purchaseNumber || '—';
   const itemsList = purchaseObj.items || [];
 
-  // Linked Payments List
+  // Linked Payments List & Returns
   const linkedPaymentsList = purchaseObj.payments || transaction.payments || [];
   const calcTotalPaid = linkedPaymentsList.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
   const totalInvAmt = isPurchase ? Number(transaction.purchaseAmount || purchaseObj.totalInvoiceAmount || 0) : 0;
-  const calcDue = Math.max(0, totalInvAmt - calcTotalPaid);
+  const returnAmt = isReturn
+    ? Number(transaction.returnAmount || transaction.returnValue || transaction.amount || 0)
+    : Number(purchaseObj.returnAmount || transaction.returnAmount || 0);
+
+  const advanceUsed = Number(purchaseObj.advanceUsed || transaction.advanceUsed || 0);
+  const effectivePaid = calcTotalPaid > 0 ? calcTotalPaid : Number(purchaseObj.paidAmount || transaction.paidAmount || 0);
+  const calcDue = isPurchase
+    ? Math.max(0, Math.round(((totalInvAmt - advanceUsed - effectivePaid - returnAmt) + Number.EPSILON) * 100) / 100)
+    : 0;
 
   // Payment / Ref fields
   const refNo = transaction.referenceNumber || purchaseNo || '—';
 
   // Financials
   const purchaseAmt = isPurchase ? Number(transaction.purchaseAmount || purchaseObj.totalInvoiceAmount || 0) : 0;
-  const paidAmt = isPayment ? Number(transaction.paidAmount || 0) : Number(purchaseObj.paidAmount || 0);
-  const runningBal = Number(transaction.runningBalance || 0);
-  const dueAmt = Number(purchaseObj.dueAmount || 0);
+  const paidAmt = isPayment ? Number(transaction.paidAmount || 0) : (isRefund ? Number(transaction.refundAmount || 0) : effectivePaid);
+  const runningBal = transaction.runningBalance !== undefined && transaction.runningBalance !== null
+    ? Math.round((Number(transaction.runningBalance) + Number.EPSILON) * 100) / 100
+    : Math.round((Number(calcDue) + Number.EPSILON) * 100) / 100;
+  const dueAmt = isPurchase ? calcDue : Number(purchaseObj.dueAmount || 0);
 
   return (
     <div
@@ -160,18 +182,28 @@ export default function TransactionDetailsModal({
                 Purchase
               </span>
             )}
+            {isReturn && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFE4E6] text-[#BE123C] border border-[#FECDD3]">
+                Supplier Return
+              </span>
+            )}
+            {isRefund && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#E0F2FE] text-[#0369A1] border border-[#BAE6FD]">
+                Supplier Refund
+              </span>
+            )}
             {isPayment && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#DCFCE7] text-[#15803D]">
                 Payment
               </span>
             )}
-            {isAdjustment && (
+            {isAdjustment && !isReturn && !isRefund && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FFEDD5] text-[#C2410C]">
                 Adjustment
               </span>
             )}
 
-            {isPayment ? (
+            {isPayment || isReturn || isRefund ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#DCFCE7] text-[#15803D]">
                 <CheckCircle2 className="w-3 h-3" />
                 <span>Success</span>
@@ -247,8 +279,10 @@ export default function TransactionDetailsModal({
               )}
 
               <div className="flex justify-between items-center text-[11px]">
-                <span className="text-gray-500">Transaction Date</span>
-                <span className="font-medium text-gray-800">{dateStr}</span>
+                <span className="text-gray-500">Transaction Date &amp; Time</span>
+                <span className="font-medium text-gray-800">
+                  {dateStr}{timeStr ? ` at ${timeStr}` : ''}
+                </span>
               </div>
             </div>
           </div>
@@ -484,36 +518,106 @@ export default function TransactionDetailsModal({
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Financial Summary</span>
               
               {isPurchase && (
-                <div className="flex justify-between items-center text-gray-700">
-                  <span>Total Purchase Amount</span>
-                  <span className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
-                    ₹ {totalInvAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+                <>
+                  <div className="flex justify-between items-center text-gray-700">
+                    <span>Bill Total (Invoice Amount)</span>
+                    <span className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
+                      ₹ {totalInvAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {advanceUsed > 0 && (
+                    <div className="flex justify-between items-center text-[#047857] font-semibold">
+                      <span>Supplier Advance Used</span>
+                      <span className="font-mono font-bold text-sm whitespace-nowrap">
+                        - ₹ {advanceUsed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-gray-800 font-semibold">
+                    <span>Amount Payable After Advance</span>
+                    <span className="font-mono font-bold whitespace-nowrap">
+                      ₹ {Math.max(0, totalInvAmt - advanceUsed).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {returnAmt > 0 && (
+                    <div className="flex justify-between items-center text-rose-700 font-medium">
+                      <span>Returned / Adjusted</span>
+                      <span className="font-mono font-bold whitespace-nowrap">
+                        - ₹ {returnAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-emerald-800 font-semibold">
+                    <span>Paid Amount</span>
+                    <span className="font-mono font-bold text-sm whitespace-nowrap">
+                      ₹ {effectivePaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-amber-800 font-semibold">
+                    <span>Due Amount</span>
+                    <span className={`font-mono font-bold whitespace-nowrap ${calcDue <= 0 ? 'text-[#047857]' : 'text-amber-800'}`}>
+                      ₹ {calcDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
               )}
 
-              {(isPayment || calcTotalPaid > 0) && (
+              {isReturn && (
+                <>
+                  <div className="flex justify-between items-center text-rose-800 font-semibold">
+                    <span>Return Value</span>
+                    <span className="font-mono font-bold text-sm whitespace-nowrap">
+                      ₹ {returnAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {Number(transaction.refundAmount || 0) > 0 && (
+                    <div className="flex justify-between items-center text-emerald-800 font-semibold">
+                      <span>Refund Received ({transaction.paymentMode || 'Cash'})</span>
+                      <span className="font-mono font-bold whitespace-nowrap">
+                        ₹ {Number(transaction.refundAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-purple-800 font-semibold">
+                    <span>Supplier Credit Created</span>
+                    <span className="font-mono font-bold whitespace-nowrap">
+                      ₹ {Math.max(0, returnAmt - Number(transaction.refundAmount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {isPayment && (
                 <div className="flex justify-between items-center text-emerald-800 font-semibold">
                   <span>Paid Amount</span>
                   <span className="font-mono font-bold text-sm whitespace-nowrap">
-                    ₹ {(isPayment ? Number(transaction.paidAmount || 0) : calcTotalPaid).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹ {Number(transaction.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
 
-              {calcDue > 0 && (
-                <div className="flex justify-between items-center text-amber-800">
-                  <span>Invoice Due Amount</span>
-                  <span className="font-mono font-bold whitespace-nowrap">
-                    ₹ {calcDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              {isRefund && (
+                <div className="flex justify-between items-center text-sky-800 font-semibold">
+                  <span>Refund Received ({transaction.paymentMode || 'Cash'})</span>
+                  <span className="font-mono font-bold text-sm whitespace-nowrap">
+                    ₹ {Number(transaction.refundAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold text-gray-900">
-                <span>Outstanding Balance</span>
-                <span className="font-mono text-sm whitespace-nowrap">
-                  ₹ {runningBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                <span>Final Supplier Balance</span>
+                <span className={`font-mono text-sm whitespace-nowrap ${runningBal < 0 ? 'text-purple-700' : 'text-gray-900'}`}>
+                  {runningBal < 0
+                    ? `-₹ ${Math.abs(runningBal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Advance)`
+                    : `₹ ${runningBal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </span>
               </div>
             </div>
@@ -528,8 +632,6 @@ export default function TransactionDetailsModal({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                console.log('DELETE PURCHASE CLICKED', { transaction, purchaseObj });
-                console.log('Opening delete confirmation');
                 setIsDeleteConfirmOpen(true);
               }}
               className="px-4 py-2 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
@@ -550,6 +652,45 @@ export default function TransactionDetailsModal({
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete Payment</span>
             </button>
+          ) : isReturn ? (
+            <div className="flex items-center gap-2">
+              {(transaction.isCreditUsed || transaction.creditStatus === 'CREDIT_USED') ? (
+                <span className="px-3 py-1 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-xs font-semibold">
+                  Credit Used in Purchase — Refund Not Available
+                </span>
+              ) : (Number(transaction.refundAmount || 0) >= Number(transaction.returnAmount || transaction.returnValue || 0) || transaction.refundStatus === 'REFUNDED') ? (
+                <span className="px-3 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg text-xs font-semibold">
+                  Fully Refunded
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {onOpenRefund && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenRefund(transaction);
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-2xs flex items-center gap-1"
+                    >
+                      <span>Receive Refund</span>
+                    </button>
+                  )}
+                  {onOpenEditReturn && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenEditReturn(transaction);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <span>Edit Return</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           ) : <div />}
 
           <button

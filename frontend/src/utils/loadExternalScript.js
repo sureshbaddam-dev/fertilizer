@@ -29,9 +29,3 @@ export function loadRazorpaySDK() {
   return loadExternalScript('https://checkout.razorpay.com/v1/checkout.js', 'razorpay-sdk-script');
 }
 
-export function loadGoogleSDK() {
-  if (typeof window !== 'undefined' && window.google?.accounts) {
-    return Promise.resolve(true);
-  }
-  return loadExternalScript('https://accounts.google.com/gsi/client', 'google-gsi-script');
-}

@@ -31,6 +31,7 @@ import { authService } from '../../services/authService';
 import { buildFullShopAddress, generateInvoicePdf, printInvoicePdf } from '../../utils/pdfGenerator';
 import { getItemUnitPrice } from '../../utils/pricing';
 import vedixaLogoImg from '../../assets/vedixa_logo.png';
+import { toast } from '../../contexts/ToastContext';
 
 export default function InvoiceDetailsPage() {
   const { invoiceId } = useParams();
@@ -68,10 +69,13 @@ export default function InvoiceDetailsPage() {
       queryClient.invalidateQueries(['products']);
       queryClient.invalidateQueries(['reports-bi']);
       setIsDeleteModalOpen(false);
+      toast.success('Bill deleted successfully');
       navigate(-1);
     },
     onError: (err) => {
-      setDeleteErrorMsg(err?.response?.data?.message || err?.message || 'Failed to delete invoice');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to delete invoice';
+      toast.error(msg);
+      setDeleteErrorMsg(msg);
     },
   });
 

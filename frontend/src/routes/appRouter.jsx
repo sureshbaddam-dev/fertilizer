@@ -45,6 +45,7 @@ const CustomerListPage = lazy(() => import('../pages/customers/CustomerListPage'
 const CustomerLedgerPage = lazy(() => import('../pages/customers/CustomerLedgerPage'));
 const GeneralCustomersPage = lazy(() => import('../pages/customers/GeneralCustomersPage'));
 const InventoryPage = lazy(() => import('../pages/inventory/InventoryPage'));
+const StockAdjustmentsPage = lazy(() => import('../pages/inventory/StockAdjustmentsPage'));
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage'));
 const SupportPage = lazy(() => import('../pages/support/SupportPage'));
 const FullScreenSubscriptionPage = lazy(() => import('../pages/subscription/FullScreenSubscriptionPage'));
@@ -166,6 +167,7 @@ export const appRouter = createBrowserRouter([
       { path: 'customers/ledger', element: withSuspense(CustomerLedgerPage) },
       { path: 'customers/:customerId/ledger', element: withSuspense(CustomerLedgerPage) },
       { path: 'inventory', element: withSuspense(InventoryPage) },
+      { path: 'inventory/stock-adjustments', element: withSuspense(StockAdjustmentsPage) },
       { path: 'suppliers', element: withSuspense(SuppliersPage) },
       { path: 'suppliers/:supplierId/ledger', element: withSuspense(SupplierLedgerPage) },
 

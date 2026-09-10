@@ -22,6 +22,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import AddCustomerModal from '../customers/AddCustomerModal';
+import { toast } from '../../contexts/ToastContext';
 
 // Memoized Cart Item Row Component to isolate re-renders on quantity / price input
 const CartItemRow = React.memo(function CartItemRow({
@@ -688,7 +689,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
 
-      alert('Bill submitted & saved successfully!');
+      toast.success('Bill submitted & saved successfully');
       setItems([]);
       setManualDiscountValue('');
       setPaidAmountInput('');
@@ -698,7 +699,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     },
     onError: (err) => {
       isSubmittingRef.current = false;
-      alert(err?.response?.data?.message || err?.message || 'Failed to submit bill');
+      toast.error('Failed to submit bill', { description: err?.response?.data?.message || err?.message });
     },
   });
 
@@ -706,7 +707,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     if (createInvoiceMutation.isPending || isSubmittingRef.current) return;
 
     if (items.length === 0) {
-      alert('Cart is empty. Please add items to submit bill.');
+      toast.warning('Cart is empty. Please add items to submit bill.');
       return;
     }
 
@@ -715,7 +716,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       if (item.currentStock !== undefined && item.currentStock !== null && Number(item.currentStock) > 0) {
         const available = Math.max(0, Number(item.currentStock));
         if (item.qty > available) {
-          alert(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
+          toast.warning(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
           return;
         }
       }
@@ -726,14 +727,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
     if (customerMode === 'general') {
       if (!generalName.trim() || !generalMobile.trim()) {
-        alert('Please enter General Customer Name and Mobile Number.');
+        toast.warning('Please enter General Customer Name and Mobile Number.');
         return;
       }
       customerData = { name: generalName.trim(), mobile: generalMobile.trim() };
       isAddedCust = false;
     } else {
       if (!selectedCustomer) {
-        alert('Please search and select a customer.');
+        toast.warning('Please search and select a customer.');
         return;
       }
       customerData = selectedCustomer;
@@ -743,20 +744,31 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     isSubmittingRef.current = true;
     const idempotencyKey = `IDEMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const payload = {
+    createInvoiceMutation.mutate({
       customer: customerData,
       customerId: isAddedCust ? selectedCustomer?._id : null,
       customerType: isAddedCust ? 'ADDED' : 'GENERAL',
       customerName: customerData.name,
       customerMobile: customerData.mobile,
-      items: displayItems.map((i) => ({
-        productId: i.originalProductId || i.id || i._id,
-        name: i.name,
-        qty: i.qty,
-        price: i.price,
-        unitPrice: i.price,
-        batchNumber: i.batchNumber || '',
-        gstAmount: isGstEnabled ? (i.qty * i.price * defaultGstRate) / 100 : 0,
+      isAddedCustomer: isAddedCust,
+      customerMode,
+      items: displayItems.map((it) => ({
+        id: it.originalProductId || it.id || it._id,
+        productId: it.originalProductId || it.id || it._id,
+        name: it.name,
+        qty: it.qty,
+        price: it.price,
+        unitPrice: it.price,
+        unit: it.unit,
+        lineTotal: it.lineTotal !== undefined ? it.lineTotal : (it.qty * it.price),
+        currentStock: it.currentStock,
+        primaryBatch: it.primaryBatch || null,
+        batchNumber: it.batchNumber || '',
+        batchCode: it.batchCode || '',
+        gstRate: it.gstRate,
+        gstAmount: isGstEnabled ? (it.qty * it.price * defaultGstRate) / 100 : 0,
+        discount: it.discVal || it.discount,
+        discountType: it.discType || it.discountType,
       })),
       subtotal,
       discountAmount: totalDiscount,
@@ -764,11 +776,10 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       totalAmount: grandTotal,
       paidAmount: effectivePaidAmount,
       paymentMode: selectedPaymentMode,
+      paymentMethod: selectedPaymentMode,
       notes: notes.trim(),
       idempotencyKey,
-    };
-
-    createInvoiceMutation.mutate(payload);
+    });
   };
 
   const [isWhatsAppProcessing, setIsWhatsAppProcessing] = useState(false);
@@ -777,7 +788,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     if (createInvoiceMutation.isPending || isSubmittingRef.current || isWhatsAppProcessing) return;
 
     if (items.length === 0) {
-      alert('Cart is empty. Please add items before sending WhatsApp statement.');
+      toast.warning('Cart is empty. Please add items before sending WhatsApp statement.');
       return;
     }
 
@@ -786,7 +797,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       if (item.currentStock !== undefined && item.currentStock !== null && Number(item.currentStock) > 0) {
         const available = Math.max(0, Number(item.currentStock));
         if (item.qty > available) {
-          alert(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
+          toast.warning(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
           return;
         }
       }
@@ -797,14 +808,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
     if (customerMode === 'general') {
       if (!generalName.trim()) {
-        alert('Please enter General Customer Name.');
+        toast.warning('Please enter General Customer Name.');
         return;
       }
       customerData = { name: generalName.trim(), mobile: generalMobile.trim() };
       isAddedCust = false;
     } else {
       if (!selectedCustomer) {
-        alert('Please search and select a customer.');
+        toast.warning('Please search and select a customer.');
         return;
       }
       customerData = selectedCustomer;
@@ -813,7 +824,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
     const custMobile = (customerData.mobile || '').trim();
     if (!custMobile) {
-      alert('Customer mobile number is missing. Please add a valid mobile/WhatsApp number to send statement.');
+      toast.warning('Customer mobile number is missing. Please add a valid mobile/WhatsApp number.');
       return;
     }
 
@@ -1109,7 +1120,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           } catch (_) {}
         }, 3000);
       }
-      alert(err?.response?.data?.message || err?.message || 'Failed to save bill or generate WhatsApp statement.');
+      toast.error('Failed to generate WhatsApp statement', { description: err?.response?.data?.message || err?.message });
     } finally {
       setIsWhatsAppProcessing(false);
       isSubmittingRef.current = false;

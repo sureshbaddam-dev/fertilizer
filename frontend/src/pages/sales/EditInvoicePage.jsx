@@ -9,7 +9,6 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
-  FileText,
   User,
   Phone,
   MapPin,
@@ -18,6 +17,7 @@ import {
 import { invoiceService } from '../../services/invoiceService';
 import { productService } from '../../services/productService';
 import { getItemUnitPrice } from '../../utils/pricing';
+import { toast } from '../../contexts/ToastContext';
 
 export default function EditInvoicePage() {
   const { invoiceId } = useParams();
@@ -200,6 +200,7 @@ export default function EditInvoicePage() {
       queryClient.invalidateQueries(['customer-ledger-profile']);
       queryClient.invalidateQueries(['dashboard-stats']);
 
+      toast.success('Bill updated successfully!');
       setSuccessMsg('Bill updated successfully!');
       setTimeout(() => {
         // Return to the SAME Invoice Details page
@@ -207,13 +208,16 @@ export default function EditInvoicePage() {
       }, 500);
     },
     onError: (err) => {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to update invoice');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update invoice';
+      toast.error(msg);
+      setErrorMsg(msg);
     },
   });
 
   const handleSave = (e) => {
     e.preventDefault();
     if (items.length === 0) {
+      toast.error('Invoice must contain at least one product item');
       setErrorMsg('Invoice must contain at least one product item');
       return;
     }
@@ -242,8 +246,6 @@ export default function EditInvoicePage() {
       paymentMode,
       notes: notes.trim(),
     };
-
-    console.log('[EditInvoicePage] PUT Payload:', payload);
 
     updateMutation.mutate(payload);
   };

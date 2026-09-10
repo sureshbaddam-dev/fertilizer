@@ -119,12 +119,6 @@ export const getProductHistory = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Product history fetched successfully', data, HTTP_STATUS.OK);
 });
 
-export const getProductInventoryDetails = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
-  const data = await productService.getProductInventoryDetails(req.params.id, userId);
-  return sendSuccess(res, 'Product inventory details fetched successfully', data, HTTP_STATUS.OK);
-});
-
 export const updateBatch = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const data = await productService.updateBatch(req.params.batchId, req.body, userId);
@@ -135,4 +129,10 @@ export const recordDamagedStock = asyncHandler(async (req, res) => {
   const userId = req.user?._id || req.body?.userId;
   const result = await productService.recordDamagedStock(req.body, userId);
   return sendSuccess(res, 'Damaged stock recorded and written off successfully', result, HTTP_STATUS.CREATED);
+});
+
+export const getStockAdjustments = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  const data = await productService.getStockAdjustments(req.query, userId);
+  return sendSuccess(res, 'Stock adjustments retrieved successfully', data, HTTP_STATUS.OK);
 });

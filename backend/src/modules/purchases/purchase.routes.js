@@ -14,6 +14,9 @@ router.use(requireActiveSubscription);
 router.get('/supplier-return/purchase-history', purchaseReturnController.getPurchaseHistoryForReturn);
 router.post('/supplier-return', purchaseReturnController.processSupplierReturn);
 router.get('/supplier-return', purchaseReturnController.getAllReturns);
+router.get('/supplier-return/:id', purchaseReturnController.getReturnById);
+router.put('/supplier-return/:id', purchaseReturnController.updateSupplierReturn);
+router.post('/supplier-return/:id/refund', purchaseReturnController.recordSupplierRefund);
 
 // Standard & Soft-Delete Purchase Routes
 router.get('/', getPurchases);

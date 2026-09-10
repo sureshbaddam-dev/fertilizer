@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, X, AlertCircle, Check } from 'lucide-react';
 import { customerService } from '../../services/customerService';
+import { toast } from '../../contexts/ToastContext';
 
 export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated }) {
   const queryClient = useQueryClient();
@@ -41,11 +42,13 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
     const trimmedDistrict = (formData.district || '').trim();
 
     if (!trimmedMobile) {
+      toast.warning('Mobile Number is required');
       setErrorMsg('Mobile Number is required');
       return;
     }
 
     if (!/^\d{10}$/.test(trimmedMobile)) {
+      toast.warning('Mobile Number must be exactly 10 digits');
       setErrorMsg('Mobile Number must be exactly 10 digits');
       return;
     }
@@ -71,6 +74,8 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
 
+      toast.success('Customer created successfully');
+
       if (onCustomerCreated && newCustomer) {
         onCustomerCreated(newCustomer);
       }
@@ -78,7 +83,9 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
       setFormData({ name: '', mobile: '', village: '', mandal: '', district: '' });
       onClose();
     } catch (err) {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to create customer');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to create customer';
+      toast.error(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }

@@ -33,6 +33,7 @@ import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentRe
 import { calculateCustomerStatement, buildWhatsAppStatementMessage, formatCustomerLedgerAddress } from '../../utils/statementCalculator';
 import PdfCanvasViewer from '../../components/PdfCanvasViewer';
 import vedixaLogoImg from '../../assets/vedixa_logo.png';
+import { toast } from '../../contexts/ToastContext';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -66,10 +67,13 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
       setNotes('');
       setRefNo('');
       setErrorMsg('');
+      toast.success('Payment recorded successfully');
       onClose();
     },
     onError: (err) => {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to persist payment');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to persist payment';
+      toast.error(msg);
+      setErrorMsg(msg);
     },
   });
 
@@ -223,10 +227,13 @@ function RecordAdvanceModal({ isOpen, onClose, customer }) {
       setAmount('');
       setNotes('');
       setErrorMsg('');
+      toast.success('Advance payment recorded successfully');
       onClose();
     },
     onError: (err) => {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to record advance');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to record advance';
+      toast.error(msg);
+      setErrorMsg(msg);
     },
   });
 
@@ -582,13 +589,24 @@ export default function CustomerLedgerPage() {
       queryClient.invalidateQueries(['customer-ledger-profile', customerId]);
       setNewNoteText('');
       setNoteError('');
+      toast.success('Note added successfully');
     },
-    onError: (err) => setNoteError(err?.response?.data?.message || 'Failed to save note'),
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to save note';
+      toast.error(msg);
+      setNoteError(msg);
+    },
   });
 
   const deleteNoteMutation = useMutation({
     mutationFn: (noteId) => customerService.deleteNote(customerId, noteId),
-    onSuccess: () => queryClient.invalidateQueries(['customer-ledger-profile', customerId]),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['customer-ledger-profile', customerId]);
+      toast.success('Note removed');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || 'Failed to remove note');
+    },
   });
 
   const addDocMutation = useMutation({
@@ -598,13 +616,24 @@ export default function CustomerLedgerPage() {
       setNewDocTitle('');
       setNewDocUrl('');
       setDocError('');
+      toast.success('Document uploaded successfully');
     },
-    onError: (err) => setDocError(err?.response?.data?.message || 'Failed to upload document'),
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to upload document';
+      toast.error(msg);
+      setDocError(msg);
+    },
   });
 
   const deleteDocMutation = useMutation({
     mutationFn: (docId) => customerService.deleteDocument(customerId, docId),
-    onSuccess: () => queryClient.invalidateQueries(['customer-ledger-profile', customerId]),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['customer-ledger-profile', customerId]);
+      toast.success('Document deleted');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || 'Failed to delete document');
+    },
   });
 
   // Edit / Delete Payment Mutations
@@ -621,8 +650,13 @@ export default function CustomerLedgerPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setEditingPayment(null);
       setEditPaymentError('');
+      toast.success('Payment updated successfully');
     },
-    onError: (err) => setEditPaymentError(err?.response?.data?.message || 'Failed to update payment'),
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to update payment';
+      toast.error(msg);
+      setEditPaymentError(msg);
+    },
   });
 
   const deletePaymentMutation = useMutation({
@@ -638,8 +672,13 @@ export default function CustomerLedgerPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       setDeletingPayment(null);
       setDeletePaymentError('');
+      toast.success('Payment record deleted');
     },
-    onError: (err) => setDeletePaymentError(err?.response?.data?.message || 'Failed to delete payment'),
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to delete payment';
+      toast.error(msg);
+      setDeletePaymentError(msg);
+    },
   });
 
   const handleApplyFilter = () => {
@@ -687,7 +726,7 @@ export default function CustomerLedgerPage() {
   const handleWhatsAppStatement = () => {
     const custMobile = (customer?.mobile || '').trim();
     if (!custMobile) {
-      alert("Customer mobile number is missing. Please add the customer's mobile/WhatsApp number first.");
+      toast.warning("Customer mobile number is missing. Please add the customer's mobile/WhatsApp number first.");
       return;
     }
 

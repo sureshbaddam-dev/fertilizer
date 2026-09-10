@@ -10,6 +10,8 @@ import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
+import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { parseTransactionTimestamp } from '../../../utils/dateUtils.js';
 
 export const purchaseReturnService = {
   /**
@@ -151,6 +153,8 @@ export const purchaseReturnService = {
       reason = 'Defective batch packaging',
       notes = '',
       createdBy = 'Ramesh Kumar',
+      paymentMode = 'Cash',
+      refundReference = '',
     } = data;
 
     const userId = authUserId || data.userId;
@@ -184,12 +188,12 @@ export const purchaseReturnService = {
     let purchase = null;
     let purchaseItem = null;
     let purchasePrice = Number(product.defaultPurchaseRate || 0);
-    let supplierId = null;
+    let supplierId = data.supplierId || null;
 
     if (purchaseId) {
       purchase = await Purchase.findById(purchaseId).populate('supplierId');
       if (purchase) {
-        supplierId = purchase.supplierId?._id || purchase.supplierId;
+        supplierId = purchase.supplierId?._id || purchase.supplierId || supplierId;
         purchaseItem = await PurchaseItem.findOne({ purchaseId, productId });
         if (purchaseItem && purchaseItem.purchaseRate > 0) {
           purchasePrice = Number(purchaseItem.purchaseRate);
@@ -198,8 +202,8 @@ export const purchaseReturnService = {
     }
 
     // If purchase not specified or not found, try to locate latest purchase item for this product
-    if (!purchaseItem) {
-      purchaseItem = await PurchaseItem.findOne({ productId })
+    if (!purchaseItem && !supplierId) {
+      purchaseItem = await PurchaseItem.findOne({ productId, ...(userId ? { userId } : {}) })
         .populate({ path: 'purchaseId', populate: { path: 'supplierId' } })
         .sort({ createdAt: -1 });
 
@@ -212,7 +216,9 @@ export const purchaseReturnService = {
 
     // Fallback supplier if still null
     if (!supplierId) {
-      const defaultSupplier = product.brandId ? await Supplier.findById(product.brandId) : await Supplier.findOne();
+      const defaultSupplier = product.brandId
+        ? await Supplier.findById(product.brandId)
+        : await Supplier.findOne(userId ? { userId } : {});
       supplierId = defaultSupplier?._id;
     }
 
@@ -248,12 +254,51 @@ export const purchaseReturnService = {
     }
 
     // Calculate Return Value at ORIGINAL Purchase Price
-    const returnValue = returnQtyNum * purchasePrice;
+    const returnValue = normalizeMoney(returnQtyNum * purchasePrice);
+
+    // Settlement Breakdown: Full Credit vs Full Refund vs Partial Refund
+    const rawRefundAmount = Number(data.refundAmount) || 0;
+    if (rawRefundAmount < 0) {
+      throw new AppError('Refund amount cannot be negative', HTTP_STATUS.BAD_REQUEST);
+    }
+    if (rawRefundAmount > returnValue) {
+      throw new AppError('Refund amount cannot exceed total return value', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const refundAmount = normalizeMoney(rawRefundAmount);
+    let settlementType = data.settlementType;
+    if (!settlementType) {
+      if (refundAmount === 0) settlementType = 'CREDIT';
+      else if (refundAmount >= returnValue) settlementType = 'REFUND';
+      else settlementType = 'PARTIAL_REFUND';
+    }
+
+    const refundedAmount = refundAmount;
+    const refundStatus = refundAmount === 0
+      ? 'PENDING_REFUND'
+      : (refundAmount >= returnValue ? 'REFUNDED' : 'PARTIALLY_REFUNDED');
+
+    const creditAmount = normalizeMoney(Math.max(0, returnValue - refundAmount));
+
+    // Determine effective return and refund dates
+    const effectiveReturnDate = parseTransactionTimestamp(data.returnDate || data.date);
+    const effectiveRefundDate = data.refundDate ? parseTransactionTimestamp(data.refundDate) : effectiveReturnDate;
 
     // Generate Return Number
     const count = await PurchaseReturn.countDocuments();
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const returnNumber = `RET-${dateStr}-${String(count + 1).padStart(5, '0')}`;
+    const initialRefundNumber = refundAmount > 0 ? `REF-${dateStr}-${String(count + 1).padStart(5, '0')}` : '';
+
+    const initialRefundsList = refundAmount > 0 ? [{
+      refundNumber: initialRefundNumber,
+      amount: refundAmount,
+      paymentMode,
+      referenceNumber: refundReference,
+      notes: notes ? `Initial Refund: ${notes}` : `Refund at return creation`,
+      date: effectiveRefundDate,
+      createdAt: new Date(),
+    }] : [];
 
     // Execute atomic save operations
     const executeSave = async (session = null) => {
@@ -269,16 +314,23 @@ export const purchaseReturnService = {
         quantity: returnQtyNum,
         purchasePrice,
         returnValue,
+        settlementType,
+        refundAmount,
+        refundedAmount,
+        refundStatus,
+        refunds: initialRefundsList,
+        paymentMode,
+        refundReference,
         reason,
         notes,
-        returnDate: new Date(),
+        returnDate: effectiveReturnDate,
         createdBy,
       });
 
       if (session) await returnDoc.save({ session });
       else await returnDoc.save();
 
-      logger.info(`✅ Created Purchase Return Record ${returnNumber} (-₹${returnValue})`);
+      logger.info(`✅ Created Purchase Return Record ${returnNumber} (Total: ₹${returnValue}, Refunded: ₹${refundedAmount}, Status: ${refundStatus})`);
 
       // (B) Deduct Physical Stock from Product Master & Batch
       const prevStock = currentProductStock;
@@ -330,50 +382,91 @@ export const purchaseReturnService = {
 
       logger.info(`✅ Deducted Product Stock for '${product.name}': ${prevStock} -> ${newStock}`);
 
-      // (C) Reduce Supplier Outstanding Balance
-      const currentSupplierOutstanding = Number(supplier.outstandingBalance || 0);
-      const newSupplierOutstanding = currentSupplierOutstanding - returnValue;
-
-      if (session) {
-        await Supplier.findByIdAndUpdate(supplierId, { outstandingBalance: newSupplierOutstanding }, { session });
-      } else {
-        await Supplier.findByIdAndUpdate(supplierId, { outstandingBalance: newSupplierOutstanding });
+      // (C) If linked to a purchase, update purchase.returnAmount and purchase.dueAmount
+      if (purchase) {
+        const prevReturnAmt = Number(purchase.returnAmount || 0);
+        const newReturnAmt = normalizeMoney(prevReturnAmt + returnValue);
+        const newDue = Math.max(
+          0,
+          normalizeMoney(Number(purchase.totalInvoiceAmount || 0) - Number(purchase.advanceUsed || 0) - Number(purchase.paidAmount || 0) - newReturnAmt)
+        );
+        purchase.returnAmount = newReturnAmt;
+        purchase.dueAmount = newDue;
+        if (session) {
+          await purchase.save({ session });
+        } else {
+          await purchase.save();
+        }
       }
 
-      logger.info(
-        `✅ Updated Supplier Outstanding Balance for '${supplier.name}': ₹${currentSupplierOutstanding} -> ₹${newSupplierOutstanding}`
-      );
-
-      // (D) Create Supplier Ledger Entry (RETURN / ADJUSTMENT)
-      const supplierLedgerData = {
+      // (D) Create Supplier Ledger Entry (RETURN)
+      const returnLedgerData = {
         userId,
         supplierId,
         purchaseId: purchase?._id || null,
+        returnId: returnDoc._id,
         transactionType: 'RETURN',
         purchaseAmount: 0,
         paidAmount: 0,
         dueAmount: 0,
-        runningBalance: newSupplierOutstanding,
+        returnAmount: returnValue,
+        refundAmount: 0,
+        settlementType,
+        paymentMode,
+        runningBalance: 0,
         referenceNumber: returnNumber,
-        notes: `Supplier Return (${returnNumber}) for product '${product.name}' [Qty: ${returnQtyNum} @ ₹${purchasePrice}]: ${reason}`,
-        date: new Date(),
+        notes: `Supplier Return (${returnNumber}) for '${product.name}' [Qty: ${returnQtyNum} @ ₹${purchasePrice}]${notes ? ' | ' + notes : ''}`,
+        date: effectiveReturnDate,
       };
 
-      await SupplierLedger.create([supplierLedgerData], session ? { session } : {});
-      logger.info(`✅ Created Supplier Ledger Return Entry (-₹${returnValue})`);
+      await SupplierLedger.create([returnLedgerData], session ? { session } : {});
+      logger.info(`✅ Created Supplier Ledger RETURN Entry for ${returnNumber} (Credit: ₹${returnValue})`);
 
-      // (E) Create Inventory Stock Ledger Entry (RETURN audit)
+      // (D2) If immediate refund received, create separate REFUND transaction
+      if (refundAmount > 0) {
+        const refundLedgerData = {
+          userId,
+          supplierId,
+          purchaseId: purchase?._id || null,
+          returnId: returnDoc._id,
+          transactionType: 'REFUND',
+          purchaseAmount: 0,
+          paidAmount: 0,
+          dueAmount: 0,
+          returnAmount: 0,
+          refundAmount,
+          settlementType,
+          paymentMode,
+          runningBalance: 0,
+          referenceNumber: initialRefundNumber,
+          notes: `Supplier Refund of ₹${refundAmount.toLocaleString('en-IN')} received via ${paymentMode}${refundReference ? ' (Ref: ' + refundReference + ')' : ''} for Return #${returnNumber}`,
+          date: effectiveRefundDate,
+        };
+
+        await SupplierLedger.create([refundLedgerData], session ? { session } : {});
+        logger.info(`✅ Created Supplier Ledger REFUND Entry for ${initialRefundNumber} (Refund: ₹${refundAmount})`);
+      }
+
+      // (E) Recalculate Supplier Balance accurately
+      const { supplierService } = await import('../../suppliers/services/supplier.service.js');
+      const newSupplierOutstanding = await supplierService.calculateSupplierBalance(supplierId, userId);
+
+      // (F) Create Inventory Stock Ledger Entry (RETURN audit)
       const stockLedgerData = {
         userId,
         transactionType: 'PURCHASE_RETURN',
         referenceId: returnDoc._id,
         referenceNumber: returnNumber,
         productId,
+        supplierId: supplier._id,
         batchId: purchaseItem?.batchId || null,
+        batchNumber: purchaseItem?.batchNumber || '',
         quantity: -returnQtyNum,
         purchaseRate: purchasePrice,
         previousStock: prevStock,
         currentStock: newStock,
+        reason: reason || 'Supplier return',
+        notes: notes || '',
         createdBy,
         timestamp: new Date(),
       };
@@ -385,9 +478,14 @@ export const purchaseReturnService = {
         returnRecord: returnDoc,
         returnNumber,
         returnValue,
+        refundAmount,
+        refundedAmount,
+        refundStatus,
+        creditAmount,
+        settlementType,
+        paymentMode,
         previousStock: prevStock,
         currentStock: newStock,
-        previousOutstanding: currentSupplierOutstanding,
         newOutstanding: newSupplierOutstanding,
         supplierName: supplier.name,
         productName: product.name,
@@ -405,17 +503,280 @@ export const purchaseReturnService = {
       } catch (txnErr) {
         await session.abortTransaction();
         session.endSession();
-        if (txnErr.message?.includes('replica set member')) {
+        if (txnErr.message?.includes('replica set member') || txnErr.message?.includes('Transactions are not supported')) {
           return await executeSave(null);
         }
         throw txnErr;
       }
     } catch (err) {
-      if (err.message?.includes('replica set member')) {
+      if (err.message?.includes('replica set member') || err.message?.includes('Transactions are not supported')) {
         return await executeSave(null);
       }
       throw err;
     }
+  },
+
+  /**
+   * Record a Supplier Refund for an existing Return record (full or partial).
+   */
+  async recordSupplierRefund(returnId, refundData, userId) {
+    if (!userId) throw new Error('userId is required');
+    if (!returnId || !mongoose.Types.ObjectId.isValid(returnId)) {
+      throw new AppError('Invalid Return ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const returnDoc = await PurchaseReturn.findOne({ _id: returnId, userId }).populate('supplierId').populate('productId');
+    if (!returnDoc) {
+      throw new AppError('Purchase Return record not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const amount = Number(refundData.amount) || 0;
+    if (amount <= 0) {
+      throw new AppError('Refund amount must be greater than zero', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check if supplier credit from this return was already utilized in subsequent purchases
+    const supplierId = returnDoc.supplierId?._id || returnDoc.supplierId;
+    const [allSupplierReturns, allSupplierPurchases] = await Promise.all([
+      PurchaseReturn.find({ supplierId, userId }).sort({ returnDate: 1, createdAt: 1 }).lean(),
+      Purchase.find({ supplierId, userId, advanceUsed: { $gt: 0 } }).sort({ purchaseDate: 1, createdAt: 1 }).lean(),
+    ]);
+
+    let totalAdvanceConsumed = allSupplierPurchases.reduce((acc, p) => acc + (Number(p.advanceUsed) || 0), 0);
+
+    let creditUsedForThisReturn = 0;
+    for (const ret of allSupplierReturns) {
+      const unrefundedOnRet = Math.max(0, (Number(ret.returnValue) || 0) - (Number(ret.refundedAmount) || 0));
+      const used = Math.min(unrefundedOnRet, totalAdvanceConsumed);
+      totalAdvanceConsumed = Math.max(0, totalAdvanceConsumed - used);
+
+      if (ret._id.toString() === returnDoc._id.toString()) {
+        creditUsedForThisReturn = used;
+        break;
+      }
+    }
+
+    const unrefundedCredit = normalizeMoney(Math.max(0, returnDoc.returnValue - Number(returnDoc.refundedAmount || 0) - creditUsedForThisReturn));
+
+    if (unrefundedCredit <= 0) {
+      if (creditUsedForThisReturn > 0) {
+        throw new AppError('Supplier credit already used — refund not available', HTTP_STATUS.BAD_REQUEST);
+      }
+      throw new AppError('This return has already been fully refunded', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    if (amount > unrefundedCredit) {
+      throw new AppError(
+        `Refund amount (₹${amount}) exceeds remaining available return credit (₹${unrefundedCredit})`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const refundCount = (returnDoc.refunds || []).length + 1;
+    const refundNumber = `REF-${dateStr}-${returnDoc.returnNumber.slice(-5)}-${refundCount}`;
+
+    const newRefundedTotal = normalizeMoney(Number(returnDoc.refundedAmount || 0) + amount);
+    const newRefundStatus = newRefundedTotal >= returnDoc.returnValue ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+
+    const effectiveRefundDate = parseTransactionTimestamp(refundData.date);
+
+    returnDoc.refundedAmount = newRefundedTotal;
+    returnDoc.refundAmount = newRefundedTotal;
+    returnDoc.refundStatus = newRefundStatus;
+    if (!returnDoc.refunds) returnDoc.refunds = [];
+    returnDoc.refunds.push({
+      refundNumber,
+      amount,
+      paymentMode: refundData.paymentMode || 'Cash',
+      referenceNumber: refundData.referenceNumber || '',
+      notes: refundData.notes || '',
+      date: effectiveRefundDate,
+      createdAt: new Date(),
+    });
+    await returnDoc.save();
+
+    // Create separate REFUND entry in SupplierLedger
+    const refundLedgerData = {
+      userId,
+      supplierId: returnDoc.supplierId?._id || returnDoc.supplierId,
+      purchaseId: returnDoc.purchaseId || null,
+      returnId: returnDoc._id,
+      transactionType: 'REFUND',
+      purchaseAmount: 0,
+      paidAmount: 0,
+      dueAmount: 0,
+      returnAmount: 0,
+      refundAmount: amount,
+      settlementType: returnDoc.settlementType,
+      paymentMode: refundData.paymentMode || 'Cash',
+      runningBalance: 0,
+      referenceNumber: refundNumber,
+      notes: `Supplier Refund of ₹${amount.toLocaleString('en-IN')} received via ${refundData.paymentMode || 'Cash'}${refundData.referenceNumber ? ' (Ref: ' + refundData.referenceNumber + ')' : ''} for Return #${returnDoc.returnNumber}`,
+      date: effectiveRefundDate,
+    };
+
+    await SupplierLedger.create(refundLedgerData);
+    logger.info(`✅ Recorded Supplier Refund #${refundNumber} for Return #${returnDoc.returnNumber}: ₹${amount}`);
+
+    // Recalculate Supplier Balance
+    const { supplierService } = await import('../../suppliers/services/supplier.service.js');
+    const updatedBalance = await supplierService.calculateSupplierBalance(returnDoc.supplierId?._id || returnDoc.supplierId, userId);
+
+    return {
+      success: true,
+      message: `Supplier refund of ₹${amount.toLocaleString('en-IN')} recorded successfully`,
+      refundNumber,
+      refundedAmount: newRefundedTotal,
+      unrefundedCredit: normalizeMoney(returnDoc.returnValue - newRefundedTotal),
+      refundStatus: newRefundStatus,
+      updatedSupplierBalance: updatedBalance,
+      returnDoc,
+    };
+  },
+
+  /**
+   * Update / Edit a Supplier Return record safely and recalculate stock and ledger.
+   */
+  async updateSupplierReturn(returnId, updateData, userId) {
+    if (!userId) throw new Error('userId is required');
+    if (!returnId || !mongoose.Types.ObjectId.isValid(returnId)) {
+      throw new AppError('Invalid Return ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const returnDoc = await PurchaseReturn.findOne({ _id: returnId, userId }).populate('productId');
+    if (!returnDoc) {
+      throw new AppError('Purchase Return record not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const oldQty = Number(returnDoc.quantity) || 0;
+    const newQty = updateData.quantity !== undefined ? Number(updateData.quantity) : oldQty;
+    const oldPrice = Number(returnDoc.purchasePrice) || 0;
+    const newPrice = updateData.purchasePrice !== undefined ? Number(updateData.purchasePrice) : oldPrice;
+
+    if (newQty <= 0) {
+      throw new AppError('Return quantity must be greater than zero', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const newReturnValue = normalizeMoney(newQty * newPrice);
+    const refundedAlready = Number(returnDoc.refundedAmount || 0);
+
+    if (newReturnValue < refundedAlready) {
+      throw new AppError(
+        `Cannot reduce return value to ₹${newReturnValue} because ₹${refundedAlready} has already been refunded to bank/cash. Reverse refunds first.`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    // Check credit usage in purchases
+    const supplierId = returnDoc.supplierId?._id || returnDoc.supplierId;
+    const [allSupplierReturns, allSupplierPurchases] = await Promise.all([
+      PurchaseReturn.find({ supplierId, userId }).sort({ returnDate: 1, createdAt: 1 }).lean(),
+      Purchase.find({ supplierId, userId, advanceUsed: { $gt: 0 } }).sort({ purchaseDate: 1, createdAt: 1 }).lean(),
+    ]);
+
+    let totalAdvanceConsumed = allSupplierPurchases.reduce((acc, p) => acc + (Number(p.advanceUsed) || 0), 0);
+    let creditUsedForThisReturn = 0;
+    for (const ret of allSupplierReturns) {
+      const unrefundedOnRet = Math.max(0, (Number(ret.returnValue) || 0) - (Number(ret.refundedAmount) || 0));
+      const used = Math.min(unrefundedOnRet, totalAdvanceConsumed);
+      totalAdvanceConsumed = Math.max(0, totalAdvanceConsumed - used);
+
+      if (ret._id.toString() === returnDoc._id.toString()) {
+        creditUsedForThisReturn = used;
+        break;
+      }
+    }
+
+    if (newReturnValue < creditUsedForThisReturn) {
+      throw new AppError(
+        `Cannot reduce return value to ₹${newReturnValue} because ₹${creditUsedForThisReturn} has already been utilized as advance in subsequent purchases.`,
+        HTTP_STATUS.BAD_REQUEST
+      );
+    }
+
+    // Adjust physical stock difference if quantity changed
+    const deltaQty = newQty - oldQty;
+    if (deltaQty !== 0 && returnDoc.productId) {
+      const product = await Product.findOne({ _id: returnDoc.productId._id || returnDoc.productId, userId });
+      if (product) {
+        const currentStock = Number(product.totalStock || 0);
+        if (deltaQty > 0 && deltaQty > currentStock) {
+          throw new AppError(`Cannot return additional ${deltaQty} units because only ${currentStock} are available in stock`, HTTP_STATUS.BAD_REQUEST);
+        }
+        product.totalStock = Math.max(0, currentStock - deltaQty);
+        await product.save();
+      }
+    }
+
+    returnDoc.quantity = newQty;
+    returnDoc.purchasePrice = newPrice;
+    returnDoc.returnValue = newReturnValue;
+    if (updateData.reason) returnDoc.reason = updateData.reason;
+    if (updateData.notes !== undefined) returnDoc.notes = updateData.notes;
+    returnDoc.refundStatus = refundedAlready === 0
+      ? 'PENDING_REFUND'
+      : (refundedAlready >= newReturnValue ? 'REFUNDED' : 'PARTIALLY_REFUNDED');
+
+    await returnDoc.save();
+
+    // Update corresponding RETURN ledger entry
+    await SupplierLedger.findOneAndUpdate(
+      { userId, returnId: returnDoc._id, transactionType: 'RETURN' },
+      {
+        returnAmount: newReturnValue,
+        notes: `Supplier Return (${returnDoc.returnNumber}) for '${returnDoc.productId?.name || 'Product'}' [Qty: ${newQty} @ ₹${newPrice}]${returnDoc.notes ? ' | ' + returnDoc.notes : ''}`,
+      }
+    );
+
+    // If linked to a purchase, update purchase.returnAmount
+    if (returnDoc.purchaseId) {
+      const allReturnsForPurchase = await PurchaseReturn.find({ userId, purchaseId: returnDoc.purchaseId });
+      const totalPurchaseReturns = allReturnsForPurchase.reduce((sum, r) => sum + Number(r.returnValue || 0), 0);
+      const { Purchase } = await import('../models/purchase.model.js');
+      const purchase = await Purchase.findOne({ _id: returnDoc.purchaseId, userId });
+      if (purchase) {
+        purchase.returnAmount = normalizeMoney(totalPurchaseReturns);
+        purchase.dueAmount = Math.max(
+          0,
+          normalizeMoney(Number(purchase.totalInvoiceAmount || 0) - Number(purchase.advanceUsed || 0) - Number(purchase.paidAmount || 0) - totalPurchaseReturns)
+        );
+        await purchase.save();
+      }
+    }
+
+    // Recalculate Supplier Balance
+    const { supplierService } = await import('../../suppliers/services/supplier.service.js');
+    const updatedBalance = await supplierService.calculateSupplierBalance(returnDoc.supplierId, userId);
+
+    return {
+      success: true,
+      message: 'Supplier return updated successfully',
+      returnDoc,
+      updatedBalance,
+    };
+  },
+
+  /**
+   * Get single Return details by ID
+   */
+  async getReturnById(id, userId) {
+    if (!userId) throw new Error('userId is required');
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError('Invalid Return ID format', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const returnDoc = await PurchaseReturn.findOne({ _id: id, userId })
+      .populate('productId', 'name brandId categoryId defaultPurchaseRate totalStock')
+      .populate('supplierId', 'name companyName mobile outstandingBalance address gstin')
+      .populate('purchaseId', 'purchaseNumber supplierInvoiceNumber purchaseDate totalInvoiceAmount paidAmount dueAmount')
+      .lean();
+
+    if (!returnDoc) {
+      throw new AppError('Purchase Return record not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    return returnDoc;
   },
 
   /**
@@ -427,9 +788,10 @@ export const purchaseReturnService = {
       .populate('productId', 'name brandId categoryId')
       .populate('supplierId', 'name companyName mobile outstandingBalance')
       .populate('purchaseId', 'purchaseNumber supplierInvoiceNumber purchaseDate')
-      .sort({ returnDate: -1 })
+      .sort({ returnDate: -1, createdAt: -1 })
       .lean();
 
     return returns;
   },
 };
+

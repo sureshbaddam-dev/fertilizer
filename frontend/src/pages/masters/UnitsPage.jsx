@@ -9,6 +9,7 @@ import DataTable from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import FormDrawer from '../../components/ui/FormDrawer';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { toast } from '../../contexts/ToastContext';
 
 const unitSchema = z.object({
   name: z.string().min(1, 'Unit name is required'),
@@ -46,6 +47,7 @@ export default function UnitsPage() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(unitSchema),
@@ -60,6 +62,10 @@ export default function UnitsPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setIsDrawerOpen(false);
       reset();
+      toast.success('Unit created successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to create unit');
     },
   });
 
@@ -71,6 +77,10 @@ export default function UnitsPage() {
       setIsDrawerOpen(false);
       setEditingUnit(null);
       reset();
+      toast.success('Unit updated successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update unit');
     },
   });
 
@@ -80,6 +90,10 @@ export default function UnitsPage() {
       queryClient.invalidateQueries({ queryKey: ['units'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, unit: null, type: 'archive' });
+      toast.success('Unit archived successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to archive unit');
     },
   });
 
@@ -89,6 +103,10 @@ export default function UnitsPage() {
       queryClient.invalidateQueries({ queryKey: ['units'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, unit: null, type: 'restore' });
+      toast.success('Unit restored successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to restore unit');
     },
   });
 

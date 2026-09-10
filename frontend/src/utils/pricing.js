@@ -40,12 +40,3 @@ export const getItemUnitPrice = (item) => {
   return 0;
 };
 
-/**
- * Utility to compute line item total based on quantity and unitPrice.
- */
-export const calculateLineTotal = (quantity, unitPrice, discountAmount = 0) => {
-  const qty = Math.max(0, Number(quantity) || 0);
-  const price = Math.max(0, Number(unitPrice) || 0);
-  const disc = Math.max(0, Number(discountAmount) || 0);
-  return Math.max(0, qty * price - disc);
-};

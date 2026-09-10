@@ -22,5 +22,23 @@ export const purchaseReturnController = {
     const returns = await purchaseReturnService.getAllReturns(userId);
     return sendSuccess(res, 'Supplier returns retrieved successfully', returns, HTTP_STATUS.OK);
   }),
+
+  getReturnById: asyncHandler(async (req, res) => {
+    const userId = req.user?._id;
+    const returnDoc = await purchaseReturnService.getReturnById(req.params.id, userId);
+    return sendSuccess(res, 'Purchase return details retrieved successfully', returnDoc, HTTP_STATUS.OK);
+  }),
+
+  updateSupplierReturn: asyncHandler(async (req, res) => {
+    const userId = req.user?._id;
+    const result = await purchaseReturnService.updateSupplierReturn(req.params.id, req.body, userId);
+    return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+  }),
+
+  recordSupplierRefund: asyncHandler(async (req, res) => {
+    const userId = req.user?._id;
+    const result = await purchaseReturnService.recordSupplierRefund(req.params.id, req.body, userId);
+    return sendSuccess(res, result.message, result, HTTP_STATUS.OK);
+  }),
 };
 

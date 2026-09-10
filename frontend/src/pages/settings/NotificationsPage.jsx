@@ -4,6 +4,7 @@ import { Bell, Save, MessageSquare, CheckCircle2, AlertCircle, Volume2, VolumeX,
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useWebPush } from '../../hooks/useWebPush';
+import { toast } from '../../contexts/ToastContext';
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
@@ -53,6 +54,7 @@ export default function NotificationsPage() {
     try {
       localStorage.setItem(soundStorageKey, mode);
     } catch (e) {}
+    toast.info(`Notification sound preference set to ${mode}`);
     setSuccessMsg(`Notification sound preference set to ${mode}!`);
     setTimeout(() => setSuccessMsg(''), 3000);
   };
@@ -61,12 +63,15 @@ export default function NotificationsPage() {
     mutationFn: (data) => settingService.updateSettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['shop-settings-profile']);
+      toast.success('Notification settings updated successfully');
       setSuccessMsg('Settings updated successfully!');
       setErrorMsg('');
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err) => {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to save settings');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to save settings';
+      toast.error(msg);
+      setErrorMsg(msg);
     },
   });
 

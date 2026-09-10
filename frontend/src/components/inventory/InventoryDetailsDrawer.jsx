@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { productService } from '../../services/productService';
 
 export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
-  const [activeTab, setActiveTab] = useState('purchaseHistory'); // 'purchaseHistory' | 'salesHistory'
+  const [activeTab, setActiveTab] = useState('stockMovements'); // 'stockMovements' | 'purchaseHistory' | 'salesHistory'
 
   const pId = product?._id || product?.id;
 
@@ -15,7 +15,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
     queryKey: ['product-history', pId],
     queryFn: () => productService.getProductHistory(pId),
     enabled: isOpen && !!pId,
-    staleTime: 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   if (!isOpen || !product) return null;
@@ -29,8 +29,10 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
 
   const stockValue = Number(historyData?.stockValue ?? (currentStock * purchaseRate));
 
-  const totalPurchased = Number(historyData?.totalInward ?? historyData?.totalPurchasedQty ?? product.totalPurchasedQty ?? 0);
-  const totalSold = Number(historyData?.totalOutward ?? historyData?.totalSoldQty ?? product.totalSoldQty ?? 0);
+  const totalPurchased = Number(historyData?.totalPurchasedQty ?? historyData?.totalInward ?? product.totalPurchasedQty ?? 0);
+  const totalReturned = Number(historyData?.totalSupplierReturnedQty ?? historyData?.totalReturnedQty ?? 0);
+  const totalDamaged = Number(historyData?.totalDamagedQty ?? 0);
+  const totalSold = Number(historyData?.totalSoldQty ?? historyData?.totalOutward ?? product.totalSoldQty ?? 0);
 
   const lastPurchaseDate = historyData?.lastPurchase?.date
     ? historyData.lastPurchase.date
@@ -50,6 +52,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
 
   const purchaseHistory = Array.isArray(historyData?.purchaseHistory) ? historyData.purchaseHistory : [];
   const salesHistory = Array.isArray(historyData?.salesHistory) ? historyData.salesHistory : [];
+  const stockHistory = Array.isArray(historyData?.stockHistory) ? historyData.stockHistory : [];
 
   const monthlySalesQty = Number(historyData?.monthlySales?.quantity ?? historyData?.monthlySalesQty ?? 0);
   const yearlySalesQty = Number(historyData?.yearlySales?.quantity ?? historyData?.yearlySalesQty ?? 0);
@@ -96,82 +99,63 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
           
-          {/* Key Inventory Metrics Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-            <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
-                <span>Current Stock</span>
-                <Layers className="w-3.5 h-3.5 text-[#047857]" />
-              </div>
-              <p className="text-base font-extrabold font-mono text-[#047857]">
-                {currentStock} <span className="text-xs font-semibold text-emerald-700">{unitName}</span>
+          {/* Key Inventory Metrics Grid: 5-Metric Breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-2.5">
+            <div className="p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-emerald-800 uppercase block">Current Stock</span>
+              <p className="text-sm font-extrabold font-mono text-[#047857]">
+                {currentStock} <span className="text-[10px] font-medium">{unitName}</span>
               </p>
-              <p className="text-[10px] text-emerald-700 font-medium truncate">Min Alert: {minStock} {unitName}</p>
+              <p className="text-[9px] text-emerald-600 truncate">Alert: {minStock} {unitName}</p>
             </div>
 
-            <div className="p-3 bg-gray-50 border border-gray-200/80 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-gray-600">
-                <span>Stock Value</span>
-                <TrendingUp className="w-3.5 h-3.5 text-gray-500" />
-              </div>
-              <p className="text-base font-extrabold font-mono text-gray-900">
-                ₹ {stockValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-gray-600 uppercase block">Stock Value</span>
+              <p className="text-sm font-extrabold font-mono text-gray-900">
+                ₹ {Math.round(stockValue).toLocaleString('en-IN')}
               </p>
-              <p className="text-[10px] text-gray-500 font-medium truncate">Rate: ₹{purchaseRate}/{unitName}</p>
+              <p className="text-[9px] text-gray-500 truncate">@ ₹{purchaseRate}/{unitName}</p>
             </div>
 
-            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-blue-800">
-                <span>Total Inward</span>
-                <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-              </div>
-              <p className="text-base font-extrabold font-mono text-blue-900">{totalPurchased} {unitName}</p>
-              <p className="text-[10px] text-blue-700 font-medium truncate">Last: {lastPurchaseDate}</p>
+            <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-blue-800 uppercase block">Purchased</span>
+              <p className="text-sm font-extrabold font-mono text-blue-900">{totalPurchased} {unitName}</p>
+              <p className="text-[9px] text-blue-600 truncate">{lastPurchaseDate}</p>
             </div>
 
-            <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-purple-800">
-                <span>Total Outward</span>
-                <ShoppingCart className="w-3.5 h-3.5 text-purple-600" />
-              </div>
-              <p className="text-base font-extrabold font-mono text-purple-900">{totalSold} {unitName}</p>
-              <p className="text-[10px] text-purple-700 font-medium truncate">Last: {lastSaleDate}</p>
+            <div className="p-2.5 bg-rose-50/60 border border-rose-100 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-rose-800 uppercase block">Returned</span>
+              <p className="text-sm font-extrabold font-mono text-rose-900">{totalReturned} {unitName}</p>
+              <p className="text-[9px] text-rose-600 truncate">To Supplier</p>
             </div>
-          </div>
 
-          {/* Monthly & Yearly Performance Overview Box */}
-          <div className="p-3.5 bg-gradient-to-r from-emerald-50/80 to-teal-50/60 border border-emerald-200/80 rounded-2xl space-y-2">
-            <h3 className="font-extrabold text-gray-900 text-xs flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#047857]" />
-              <span>Sales & Turnover Performance</span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <div className="flex justify-between text-[11px] font-semibold text-gray-700 mb-1">
-                  <span>Monthly Sales</span>
-                  <span className="font-mono text-emerald-800 font-bold">{monthlySalesQty} {unitName}</span>
-                </div>
-                <div className="w-full bg-emerald-200/60 rounded-full h-1.5 overflow-hidden">
-                  <div className="bg-[#047857] h-1.5 rounded-full" style={{ width: `${Math.min(100, monthlySalesQty > 0 ? 65 : 0)}%` }}></div>
-                </div>
-                <p className="text-[10px] text-gray-500 font-mono pt-1">Revenue: ₹ {monthlyRevenue.toLocaleString('en-IN')}</p>
-              </div>
+            <div className="p-2.5 bg-amber-50/60 border border-amber-100 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-amber-800 uppercase block">Damaged</span>
+              <p className="text-sm font-extrabold font-mono text-amber-900">{totalDamaged} {unitName}</p>
+              <p className="text-[9px] text-amber-600 truncate">Write-off Loss</p>
+            </div>
 
-              <div>
-                <div className="flex justify-between text-[11px] font-semibold text-gray-700 mb-1">
-                  <span>Yearly Sales</span>
-                  <span className="font-mono text-emerald-800 font-bold">{yearlySalesQty} {unitName}</span>
-                </div>
-                <div className="w-full bg-emerald-200/60 rounded-full h-1.5 overflow-hidden">
-                  <div className="bg-emerald-600 h-1.5 rounded-full" style={{ width: `${Math.min(100, yearlySalesQty > 0 ? 85 : 0)}%` }}></div>
-                </div>
-                <p className="text-[10px] text-gray-500 font-mono pt-1">Revenue: ₹ {yearlyRevenue.toLocaleString('en-IN')}</p>
-              </div>
+            <div className="p-2.5 bg-purple-50/60 border border-purple-100 rounded-xl space-y-0.5">
+              <span className="text-[9px] font-bold text-purple-800 uppercase block">Sold</span>
+              <p className="text-sm font-extrabold font-mono text-purple-900">{totalSold} {unitName}</p>
+              <p className="text-[9px] text-purple-600 truncate">{lastSaleDate}</p>
             </div>
           </div>
 
           {/* History Section Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-gray-200 pt-2">
+          <div className="flex items-center gap-2 border-b border-gray-200 pt-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('stockMovements')}
+              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all ${
+                activeTab === 'stockMovements'
+                  ? 'border-[#047857] text-[#047857]'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Stock Movements ({stockHistory.length})
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('purchaseHistory')}
@@ -181,7 +165,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                   : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
             >
-              Purchase History ({purchaseHistory.length})
+              Purchases ({purchaseHistory.length})
             </button>
 
             <button
@@ -193,9 +177,83 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                   : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
             >
-              Sales History ({salesHistory.length})
+              Sales ({salesHistory.length})
             </button>
           </div>
+
+          {/* Tab 0: Stock Movements Table */}
+          {activeTab === 'stockMovements' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-gray-500 font-medium">
+                <span>Chronological Stock Ledger Log for <strong>{product.name}</strong></span>
+              </div>
+
+              {isHistoryLoading ? (
+                <div className="p-6 text-center text-xs text-gray-400 animate-pulse">Loading stock movements...</div>
+              ) : stockHistory.length > 0 ? (
+                <div className="w-full">
+                  <div className="border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
+                    <table className="w-full min-w-[500px] text-left text-[11px] border-collapse">
+                      <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold text-[10px] uppercase">
+                        <tr>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Type</th>
+                          <th className="py-2 px-3">Reference / Batch</th>
+                          <th className="py-2 px-3 text-right">Qty Change</th>
+                          <th className="py-2 px-3 text-right">Stock After</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
+                        {stockHistory.map((sh) => {
+                          const isPlus = Number(sh.quantity) > 0;
+                          const isDmg = sh.type === 'DAMAGE';
+                          const isRet = sh.type === 'PURCHASE_RETURN' || sh.type === 'RETURN';
+                          const isSale = sh.type === 'SALE';
+                          return (
+                            <tr key={sh.id} className="hover:bg-slate-50">
+                              <td className="py-2 px-3 font-mono text-gray-600 whitespace-nowrap">{sh.date}</td>
+                              <td className="py-2 px-3">
+                                {isPlus ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Purchase
+                                  </span>
+                                ) : isRet ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    Supplier Return
+                                  </span>
+                                ) : isDmg ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    Damaged
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                    Sale
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-gray-700">
+                                {sh.reference} {sh.batchNumber && sh.batchNumber !== 'N/A' ? `(${sh.batchNumber})` : ''}
+                              </td>
+                              <td className={`py-2 px-3 text-right font-mono font-bold ${isPlus ? 'text-emerald-700' : isRet ? 'text-rose-700' : isDmg ? 'text-amber-700' : 'text-purple-700'}`}>
+                                {isPlus ? `+${sh.quantity}` : `${sh.quantity}`} {unitName}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-gray-900">
+                                {sh.stockAfter} {unitName}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 bg-gray-50/50 border border-gray-200 rounded-xl text-center text-xs text-gray-400 font-medium">
+                  No Stock Movement Records Found
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tab 1: Purchase History Table */}
           {activeTab === 'purchaseHistory' && (

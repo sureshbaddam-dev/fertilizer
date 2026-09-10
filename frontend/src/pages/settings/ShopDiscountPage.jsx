@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag, Save, CheckCircle2, Percent, IndianRupee } from 'lucide-react';
 import { settingService } from '../../services/settingService';
+import { toast } from '../../contexts/ToastContext';
 
 export default function ShopDiscountPage() {
   const queryClient = useQueryClient();
@@ -17,7 +18,6 @@ export default function ShopDiscountPage() {
   const [discountType, setDiscountType] = useState('percentage');
   const [discountValue, setDiscountValue] = useState(0);
   const [notes, setNotes] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     if (discountData) {
@@ -33,11 +33,10 @@ export default function ShopDiscountPage() {
     onSuccess: () => {
       queryClient.invalidateQueries(['shop-discount']);
       queryClient.invalidateQueries(['dashboard-summary']);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      toast.success('Shop discount settings updated successfully');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update shop discount settings');
+      toast.error('Failed to update shop discount settings', { description: err?.response?.data?.message || err?.message });
     },
   });
 

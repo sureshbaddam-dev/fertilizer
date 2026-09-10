@@ -10,36 +10,13 @@ export const purchaseService = {
   },
 
   async createPurchase(data) {
-    console.log('----------------------------------------');
-    console.log('🚀 DISPATCHING PURCHASE SAVE REQUEST');
-    console.log('URL: POST /api/v1/purchases');
-    console.log('Payload:', JSON.stringify(data, null, 2));
-    console.log('----------------------------------------');
-    try {
-      const res = await apiClient.post('/purchases', data);
-      console.log('✅ PURCHASE SAVED SUCCESSFULLY:', res);
-      return res;
-    } catch (err) {
-      console.error('❌ PURCHASE SAVE ERROR:', err);
-      throw err;
-    }
+    return await apiClient.post('/purchases', data);
   },
 
   async deletePurchase(id, confirmation = 'DELETE') {
-    console.log('----------------------------------------');
-    console.log('🚀 DISPATCHING PURCHASE DELETE REQUEST');
-    console.log(`URL: DELETE /api/v1/purchases/${id}?confirmation=${encodeURIComponent(confirmation)}`);
-    console.log('----------------------------------------');
-    try {
-      const res = await apiClient.delete(`/purchases/${id}?confirmation=${encodeURIComponent(confirmation)}`, {
-        data: { confirmation },
-      });
-      console.log('✅ PURCHASE DELETED SUCCESSFULLY:', res);
-      return res;
-    } catch (err) {
-      console.error('❌ PURCHASE DELETE ERROR:', err);
-      throw err;
-    }
+    return await apiClient.delete(`/purchases/${id}?confirmation=${encodeURIComponent(confirmation)}`, {
+      data: { confirmation },
+    });
   },
 
   async restorePurchase(id) {
@@ -49,4 +26,33 @@ export const purchaseService = {
   async getDeletedPurchases(params = {}) {
     return await apiClient.get('/purchases/deleted', { params });
   },
+
+  async getReturnById(id) {
+    return await apiClient.get(`/purchases/supplier-return/${id}`);
+  },
+
+  async updateSupplierReturn(id, data) {
+    return await apiClient.put(`/purchases/supplier-return/${id}`, data);
+  },
+
+  async recordSupplierRefund(id, data) {
+    return await apiClient.post(`/purchases/supplier-return/${id}/refund`, data);
+  },
+
+  async getPurchaseHistory(productId) {
+    return await apiClient.get('/purchases/supplier-return/purchase-history', {
+      params: { productId },
+    });
+  },
+
+  async processReturn(returnData) {
+    return await apiClient.post('/purchases/supplier-return', returnData);
+  },
+
+  async getAllReturns() {
+    return await apiClient.get('/purchases/supplier-return');
+  },
 };
+
+export const purchaseReturnService = purchaseService;
+

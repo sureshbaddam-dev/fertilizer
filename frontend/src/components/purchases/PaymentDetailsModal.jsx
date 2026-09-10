@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, CheckCircle2, DollarSign, Calendar, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { supplierService } from '../../services/supplierService';
+import { toast } from '../../contexts/ToastContext';
 
 export default function PaymentDetailsModal({
   isOpen,
@@ -40,11 +41,12 @@ export default function PaymentDetailsModal({
       setIsDeleting(false);
       setIsDeleteConfirmOpen(false);
       setDeleteInput('');
+      toast.success('Payment deleted successfully');
       onClose();
     } catch (err) {
       console.error('Failed to soft-delete payment:', err);
       setIsDeleting(false);
-      alert(err.response?.data?.message || err.message || 'Failed to delete payment');
+      toast.error('Failed to delete payment', { description: err.response?.data?.message || err.message });
     }
   };
 

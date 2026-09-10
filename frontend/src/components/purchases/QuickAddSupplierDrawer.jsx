@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { AlertCircle } from 'lucide-react';
 import FormDrawer from '../ui/FormDrawer';
 import { supplierService } from '../../services/supplierService';
+import { toast } from '../../contexts/ToastContext';
 
 const supplierSchema = z.object({
   name: z.string().min(2, 'Supplier name is required'),
@@ -31,6 +32,7 @@ export default function QuickAddSupplierDrawer({ isOpen, initialName = '', onClo
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       reset();
       setDuplicateConfirm({ isOpen: false, data: null });
+      toast.success('Supplier created successfully');
       onClose();
       const created = res.data?.supplier || res.data?.data || res.data;
       if (onSuccess && created) {
@@ -43,7 +45,7 @@ export default function QuickAddSupplierDrawer({ isOpen, initialName = '', onClo
       if (status === 409 || errMsg.toLowerCase().includes('mobile')) {
         setDuplicateConfirm({ isOpen: true, data: variables });
       } else {
-        alert(errMsg || 'Failed to create supplier');
+        toast.error('Failed to create supplier', { description: errMsg });
       }
     },
   });

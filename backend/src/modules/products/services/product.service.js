@@ -10,11 +10,14 @@ import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
 import { normalizeMoney } from '../../../utils/pricingUtils.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
+import { Purchase } from '../../purchases/models/purchase.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { StockLedger } from '../../purchases/models/stockLedger.model.js';
 import { Category } from '../../masters/models/category.model.js';
 import { Brand } from '../../masters/models/brand.model.js';
 import { Unit } from '../../masters/models/unit.model.js';
+import { Supplier } from '../../suppliers/models/supplier.model.js';
+import { PurchaseReturn } from '../../purchases/models/purchaseReturn.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { cloudinaryProductImageService } from './cloudinaryProductImage.service.js';
 import { deleteFromCloudinary } from '../../../utils/cloudinary.utils.js';
@@ -73,6 +76,44 @@ export async function generateNextBatchNumber(userId, session = null) {
   }
 
   return candidate;
+}
+
+/**
+ * Private helper: Resolves the supplier for a product/batch from PurchaseItem history
+ */
+async function resolveSupplierFromBatch({ batchId = null, batchNumber = '', productId = null, session = null } = {}) {
+  const opts = session ? { session } : {};
+  let resolvedSupplier = null;
+
+  if (batchId) {
+    const pItem = await PurchaseItem.findOne({ batchId }, null, opts)
+      .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
+      .lean();
+    if (pItem?.purchaseId?.supplierId) {
+      resolvedSupplier = pItem.purchaseId.supplierId;
+    }
+  }
+
+  if (!resolvedSupplier && batchNumber && productId) {
+    const pItem = await PurchaseItem.findOne({ batchNumber, productId }, null, opts)
+      .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
+      .lean();
+    if (pItem?.purchaseId?.supplierId) {
+      resolvedSupplier = pItem.purchaseId.supplierId;
+    }
+  }
+
+  if (!resolvedSupplier && productId) {
+    const pItem = await PurchaseItem.findOne({ productId }, null, opts)
+      .sort({ createdAt: -1 })
+      .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
+      .lean();
+    if (pItem?.purchaseId?.supplierId) {
+      resolvedSupplier = pItem.purchaseId.supplierId;
+    }
+  }
+
+  return resolvedSupplier;
 }
 
 export const productService = {
@@ -623,6 +664,15 @@ export const productService = {
 
       const damageValue = damageQtyNum * effectivePurchasePrice;
 
+      // Resolve supplier from batch or purchase history for audit traceability
+      const supplierDoc = await resolveSupplierFromBatch({
+        batchId: deductedBatchId,
+        batchNumber: deductedBatchNumber,
+        productId,
+        session,
+      });
+      const resolvedSupplierId = supplierDoc?._id || supplierDoc || null;
+
       // 3. Create StockLedger entry with transactionType: 'DAMAGE'
       await StockLedger.create(
         [
@@ -630,12 +680,16 @@ export const productService = {
             userId,
             transactionType: 'DAMAGE',
             productId,
+            supplierId: resolvedSupplierId || null,
             batchId: deductedBatchId || null,
             batchNumber: deductedBatchNumber || '',
             quantity: -damageQtyNum,
             purchaseRate: effectivePurchasePrice,
             previousStock: currentStock,
             currentStock: newStock,
+            reason: reason || 'Defective / Damaged stock write-off',
+            notes: notes || '',
+            referenceNumber: `DAM-${Date.now().toString().slice(-6)}`,
             createdBy,
             timestamp: date ? new Date(date) : new Date(),
             isDeleted: false,
@@ -1325,8 +1379,20 @@ export const productService = {
       .exec();
 
     let stockHistory = [];
+    let totalSupplierReturnedQty = 0;
+    let totalDamagedQty = 0;
 
     if (ledgerEntries.length > 0) {
+      ledgerEntries.forEach((l) => {
+        const type = (l.transactionType || '').toUpperCase();
+        const qty = Math.abs(Number(l.quantity || 0));
+        if (type === 'PURCHASE_RETURN' || type === 'RETURN') {
+          totalSupplierReturnedQty += qty;
+        } else if (type === 'DAMAGE') {
+          totalDamagedQty += qty;
+        }
+      });
+
       stockHistory = ledgerEntries.map((l) => ({
         id: l._id.toString(),
         date: l.timestamp
@@ -1397,10 +1463,18 @@ export const productService = {
       stockHistory = historyWithStock.reverse();
     }
 
+    const currentStock = Number(productDoc.totalStock || 0);
+
     return {
       productId: id,
       totalPurchasedQty,
+      totalInward: totalPurchasedQty,
+      totalSupplierReturnedQty,
+      totalReturnedQty: totalSupplierReturnedQty,
+      totalDamagedQty,
       totalSoldQty,
+      totalOutward: totalSoldQty,
+      currentStock,
       lastPurchaseDate,
       lastSaleDate,
       monthlySalesQty,
@@ -1413,152 +1487,232 @@ export const productService = {
     };
   },
 
-  async getProductInventoryDetails(productId) {
-    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
-      throw new AppError('Invalid Product ID', HTTP_STATUS.BAD_REQUEST);
+  /**
+   * Get all stock adjustments (DAMAGE & PURCHASE_RETURN) for unified inventory audit table
+   */
+  async getStockAdjustments(query = {}, userId = null) {
+    const filter = {
+      isDeleted: { $ne: true },
+      transactionType: { $in: ['DAMAGE', 'PURCHASE_RETURN', 'RETURN', 'ADJUSTMENT'] },
+    };
+
+    if (userId) {
+      filter.userId = userId;
     }
 
-    const id = productId.toString();
-    const product = await productRepository.findById(productId);
-    if (!product) {
-      throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
+    if (query.type) {
+      if (query.type === 'DAMAGE') {
+        filter.transactionType = 'DAMAGE';
+      } else if (query.type === 'PURCHASE_RETURN' || query.type === 'SUPPLIER_RETURN' || query.type === 'RETURN') {
+        filter.transactionType = { $in: ['PURCHASE_RETURN', 'RETURN'] };
+      }
     }
 
-    // 1. Fetch Purchase Items for this product from DB (handling both ObjectId & String IDs)
-    const rawPurchaseItems = await PurchaseItem.find({
-      $or: [{ productId: productId }, { productId: id }],
-    })
+    if (query.productId) {
+      filter.productId = query.productId;
+    }
+
+    if (query.supplierId) {
+      filter.supplierId = query.supplierId;
+    }
+
+    if (query.startDate || query.endDate) {
+      filter.timestamp = {};
+      if (query.startDate) {
+        filter.timestamp.$gte = new Date(query.startDate);
+      }
+      if (query.endDate) {
+        const end = new Date(query.endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.timestamp.$lte = end;
+      }
+    }
+
+    // 1. Fetch all matching ledger entries
+    const ledgerEntries = await StockLedger.find(filter)
       .populate({
-        path: 'purchaseId',
-        select: 'purchaseNumber supplierInvoiceNumber purchaseDate supplierId',
-        populate: { path: 'supplierId', select: 'name' },
+        path: 'productId',
+        select: 'name brandId categoryId unit defaultUnitId image',
+        populate: [
+          { path: 'brandId', select: 'name' },
+          { path: 'categoryId', select: 'name' },
+          { path: 'defaultUnitId', select: 'shortName name' },
+        ],
       })
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec();
+      .populate('batchId', 'batchNumber expiryDate mfgDate purchaseRate')
+      .populate('supplierId', 'name companyName mobile')
+      .sort({ timestamp: -1, createdAt: -1 })
+      .lean();
 
-    const purchaseHistory = rawPurchaseItems.map((item) => {
-      const pQty = Number(item.quantity || 0);
-      const pRate = Number(item.purchaseRate || 0);
+    // 2. Fetch purchase return references for return records that lack supplier info
+    const returnRefIds = ledgerEntries
+      .filter((e) => (e.transactionType === 'PURCHASE_RETURN' || e.transactionType === 'RETURN') && e.referenceId && !e.supplierId)
+      .map((e) => e.referenceId);
+
+    let returnDocsMap = new Map();
+    if (returnRefIds.length > 0) {
+      const { PurchaseReturn } = await import('../../purchases/models/purchaseReturn.model.js');
+      const returnDocs = await PurchaseReturn.find({ _id: { $in: returnRefIds } })
+        .populate('supplierId', 'name companyName mobile')
+        .lean();
+      returnDocs.forEach((doc) => {
+        returnDocsMap.set(doc._id.toString(), doc);
+      });
+    }
+
+    // 3. For damage/adjustment records that lack supplier info, resolve from PurchaseItem relations
+    const missingSupplierEntries = ledgerEntries.filter(
+      (e) => !e.supplierId && e.transactionType !== 'PURCHASE_RETURN' && e.transactionType !== 'RETURN'
+    );
+
+    let batchSupplierMap = new Map();
+    let batchNumSupplierMap = new Map();
+    let prodSupplierMap = new Map();
+
+    if (missingSupplierEntries.length > 0) {
+      const batchIds = missingSupplierEntries.filter((e) => e.batchId).map((e) => e.batchId?._id || e.batchId);
+      const batchNumbers = missingSupplierEntries.filter((e) => e.batchNumber).map((e) => e.batchNumber);
+      const productIds = missingSupplierEntries.map((e) => e.productId?._id || e.productId);
+
+      const purchaseItems = await PurchaseItem.find({
+        $or: [
+          { batchId: { $in: batchIds } },
+          { batchNumber: { $in: batchNumbers } },
+          { productId: { $in: productIds } },
+        ],
+      })
+        .populate({
+          path: 'purchaseId',
+          populate: { path: 'supplierId', select: 'name companyName mobile' },
+        })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      for (const item of purchaseItems) {
+        const supp = item.purchaseId?.supplierId;
+        if (supp) {
+          if (item.batchId && !batchSupplierMap.has(item.batchId.toString())) {
+            batchSupplierMap.set(item.batchId.toString(), supp);
+          }
+          if (
+            item.batchNumber &&
+            item.productId &&
+            !batchNumSupplierMap.has(`${item.productId.toString()}_${item.batchNumber}`)
+          ) {
+            batchNumSupplierMap.set(`${item.productId.toString()}_${item.batchNumber}`, supp);
+          }
+          if (item.productId && !prodSupplierMap.has(item.productId.toString())) {
+            prodSupplierMap.set(item.productId.toString(), supp);
+          }
+        }
+      }
+    }
+
+    // 4. Transform entries and compute summary
+    let totalDamagedQty = 0;
+    let totalDamagedValue = 0;
+    let damagedCount = 0;
+
+    let totalReturnedQty = 0;
+    let totalReturnValue = 0;
+    let returnCount = 0;
+
+    const adjustments = ledgerEntries.map((entry) => {
+      const isDamage = entry.transactionType === 'DAMAGE';
+      const isReturn = entry.transactionType === 'PURCHASE_RETURN' || entry.transactionType === 'RETURN';
+      const qty = Math.abs(Number(entry.quantity) || 0);
+      const rate = Number(entry.purchaseRate || 0);
+      const val = normalizeMoney(qty * rate);
+
+      // Resolve supplier name reliably without guessing
+      let resolvedSupplierId = entry.supplierId?._id || entry.supplierId || null;
+      let resolvedSupplierName = entry.supplierId?.name || entry.supplierId?.companyName || '';
+
+      if (isReturn && (!resolvedSupplierName || !resolvedSupplierId) && entry.referenceId) {
+        const linkedReturn = returnDocsMap.get(entry.referenceId.toString());
+        if (linkedReturn?.supplierId) {
+          resolvedSupplierId = linkedReturn.supplierId._id || linkedReturn.supplierId;
+          resolvedSupplierName = linkedReturn.supplierId.name || linkedReturn.supplierId.companyName || '';
+        }
+      }
+
+      if (isDamage && (!resolvedSupplierName || !resolvedSupplierId)) {
+        const bId = entry.batchId?._id || entry.batchId;
+        const pId = entry.productId?._id || entry.productId;
+        const bNum = entry.batchNumber || entry.batchId?.batchNumber;
+
+        let resolvedSupp = null;
+        if (bId && batchSupplierMap.has(bId.toString())) {
+          resolvedSupp = batchSupplierMap.get(bId.toString());
+        } else if (pId && bNum && batchNumSupplierMap.has(`${pId.toString()}_${bNum}`)) {
+          resolvedSupp = batchNumSupplierMap.get(`${pId.toString()}_${bNum}`);
+        } else if (pId && prodSupplierMap.has(pId.toString())) {
+          resolvedSupp = prodSupplierMap.get(pId.toString());
+        }
+
+        if (resolvedSupp) {
+          resolvedSupplierId = resolvedSupp._id || resolvedSupp;
+          resolvedSupplierName = resolvedSupp.name || resolvedSupp.companyName || '';
+        }
+      }
+
+      if (isDamage) {
+        damagedCount++;
+        totalDamagedQty += qty;
+        totalDamagedValue = normalizeMoney(totalDamagedValue + val);
+      } else if (isReturn) {
+        returnCount++;
+        totalReturnedQty += qty;
+        totalReturnValue = normalizeMoney(totalReturnValue + val);
+      }
+
+      const prod = entry.productId || {};
+      const batchNum = entry.batchNumber || entry.batchId?.batchNumber || (entry.batchId ? 'Assigned' : 'N/A');
+      const refNum = entry.referenceNumber || (isDamage ? `DAM-${entry._id.toString().slice(-6).toUpperCase()}` : `RET-${entry._id.toString().slice(-6).toUpperCase()}`);
+      const reasonText = entry.reason || (isDamage ? 'Damaged / defective write-off' : 'Supplier return');
+
       return {
-        id: item._id.toString(),
-        date: item.purchaseId?.purchaseDate
-          ? new Date(item.purchaseId.purchaseDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-          : new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        rawDate: item.purchaseId?.purchaseDate || item.createdAt,
-        invoiceNumber: item.purchaseId?.supplierInvoiceNumber || item.purchaseId?.purchaseNumber || 'PUR-REF',
-        supplierId: item.purchaseId?.supplierId?._id ? item.purchaseId.supplierId._id.toString() : null,
-        supplierName: item.purchaseId?.supplierId?.name || 'General Supplier',
-        quantity: pQty,
-        rate: pRate,
-        amount: Number(item.totalAmount || pQty * pRate),
-        batchNumber: item.batchNumber || null,
+        _id: entry._id,
+        date: entry.timestamp || entry.createdAt,
+        type: isDamage ? 'DAMAGE' : 'PURCHASE_RETURN',
+        productId: prod._id || null,
+        productName: prod.name || 'Unknown Product',
+        category: prod.categoryId?.name || prod.category || '',
+        brand: prod.brandId?.name || prod.company || '',
+        unit: prod.defaultUnitId?.shortName || prod.unit || 'Bag',
+        image: prod.image || '',
+        supplierId: resolvedSupplierId,
+        supplierName: resolvedSupplierName || (isReturn ? 'Supplier' : 'N/A'),
+        quantity: qty,
+        batchId: entry.batchId?._id || entry.batchId || null,
+        batchNumber: batchNum,
+        purchaseRate: rate,
+        totalValue: val,
+        reason: reasonText,
+        notes: entry.notes || '',
+        referenceNumber: refNum,
+        previousStock: entry.previousStock ?? null,
+        currentStock: entry.currentStock ?? null,
+        createdBy: entry.createdBy || 'System',
+        createdAt: entry.createdAt,
       };
     });
 
-    const totalInward = purchaseHistory.reduce((sum, p) => sum + p.quantity, 0);
-    const lastPurchase = purchaseHistory.length > 0 ? purchaseHistory[0] : null;
-
-    const latestPurchasePrice = lastPurchase && lastPurchase.rate > 0
-      ? lastPurchase.rate
-      : Number(product.defaultPurchaseRate || product.purchasePrice || 0);
-
-    // 2. Fetch Sales Invoices containing this product from DB
-    const rawSalesInvoices = await SalesInvoice.find({
-      $or: [
-        { 'items.productId': productId },
-        { 'items.productId': id },
-        { 'items.id': id },
-        { 'items._id': productId },
-      ],
-    })
-      .sort({ date: -1, createdAt: -1 })
-      .lean()
-      .exec();
-
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    let totalOutward = 0;
-    let monthlySalesQty = 0;
-    let yearlySalesQty = 0;
-    let monthlyRevenue = 0;
-    let yearlyRevenue = 0;
-    const salesHistory = [];
-
-    rawSalesInvoices.forEach((inv) => {
-      const invDate = inv.date ? new Date(inv.date) : new Date(inv.createdAt);
-      const isThisMonth = invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
-      const isThisYear = invDate.getFullYear() === currentYear;
-
-      (inv.items || []).forEach((item) => {
-        const itemProdId = item.productId || item.id || item._id;
-        if (itemProdId && itemProdId.toString() === id) {
-          const qty = Number(item.quantity || item.qty || 0);
-          const price = Number(item.unitPrice || item.price || 0);
-          const totalAmt = Number(item.totalAmount || qty * price);
-
-          totalOutward += qty;
-          if (isThisMonth) {
-            monthlySalesQty += qty;
-            monthlyRevenue += totalAmt;
-          }
-          if (isThisYear) {
-            yearlySalesQty += qty;
-            yearlyRevenue += totalAmt;
-          }
-
-          salesHistory.push({
-            id: `${inv._id}_${item._id || itemProdId}`,
-            date: invDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-            rawDate: invDate,
-            invoiceNumber: inv.invoiceNumber,
-            customerName: inv.customerName || 'Retail Customer',
-            quantity: qty,
-            price: price,
-            amount: totalAmt,
-          });
-        }
-      });
-    });
-
-    const lastSale = salesHistory.length > 0 ? salesHistory[0] : null;
-    const currentStock = Math.max(0, Number(product.totalStock ?? product.currentStock ?? (totalInward - totalOutward)));
-    const stockValue = currentStock * latestPurchasePrice;
+    const summary = {
+      totalDamagedQty,
+      totalDamagedValue,
+      damagedCount,
+      totalReturnedQty,
+      totalReturnValue,
+      returnCount,
+      totalAdjustedQty: totalDamagedQty + totalReturnedQty,
+      totalAdjustedValue: normalizeMoney(totalDamagedValue + totalReturnValue),
+      totalCount: adjustments.length,
+    };
 
     return {
-      product: {
-        _id: product._id,
-        name: product.name,
-        code: product.code,
-        image: product.image,
-        brandName: product.brandId?.name || 'N/A',
-        categoryName: product.categoryId?.name || 'Uncategorized',
-        unitName: product.defaultUnitId?.shortName || product.unit || 'Bag',
-        minimumStockAlert: product.minimumStockAlert || 10,
-        defaultSellingPrice: product.defaultSellingPrice || 0,
-        defaultPurchaseRate: product.defaultPurchaseRate || 0,
-      },
-      currentStock,
-      stockValue,
-      latestPurchasePrice,
-      totalInward,
-      totalOutward,
-      lastPurchase,
-      lastSale,
-      monthlySales: {
-        quantity: monthlySalesQty,
-        revenue: monthlyRevenue,
-      },
-      yearlySales: {
-        quantity: yearlySalesQty,
-        revenue: yearlyRevenue,
-      },
-      purchaseHistory,
-      salesHistory,
-      purchaseHistoryCount: purchaseHistory.length,
-      salesHistoryCount: salesHistory.length,
+      adjustments,
+      summary,
     };
   },
 };

@@ -9,6 +9,7 @@ import DataTable from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import FormDrawer from '../../components/ui/FormDrawer';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { toast } from '../../contexts/ToastContext';
 
 const categorySchema = z.object({
   name: z.string().min(2, 'Category name is required'),
@@ -62,6 +63,10 @@ export default function CategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setIsDrawerOpen(false);
       reset();
+      toast.success('Category created successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to create category');
     },
   });
 
@@ -74,6 +79,10 @@ export default function CategoriesPage() {
       setIsDrawerOpen(false);
       setEditingCategory(null);
       reset();
+      toast.success('Category updated successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update category');
     },
   });
 
@@ -84,6 +93,10 @@ export default function CategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setConfirmDialog({ isOpen: false, category: null, type: 'archive' });
+      toast.success('Category archived successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to archive category');
     },
   });
 
@@ -94,6 +107,10 @@ export default function CategoriesPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       queryClient.invalidateQueries({ queryKey: ['master-categories-filter'] });
       setConfirmDialog({ isOpen: false, category: null, type: 'restore' });
+      toast.success('Category restored successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to restore category');
     },
   });
 

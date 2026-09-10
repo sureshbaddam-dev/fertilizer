@@ -10,6 +10,7 @@ import ImageUpload from '../ui/ImageUpload';
 import { productService } from '../../services/productService';
 import { masterService } from '../../services/masterService';
 import { authService } from '../../services/authService';
+import { toast } from '../../contexts/ToastContext';
 
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
 import { toInputValue } from '../../utils/imageUtils';
@@ -168,10 +169,14 @@ export default function QuickAddProductDrawer({
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       reset();
+      toast.success('Product created successfully');
       onClose();
       if (onSuccess && res.data?.product) {
         onSuccess(res.data.product);
       }
+    },
+    onError: (err) => {
+      toast.error('Failed to create product', { description: err.response?.data?.message || err.message });
     },
   });
 
@@ -186,10 +191,14 @@ export default function QuickAddProductDrawer({
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       reset();
+      toast.success('Product updated successfully');
       onClose();
       if (onSuccess && res.data?.product) {
         onSuccess(res.data.product);
       }
+    },
+    onError: (err) => {
+      toast.error('Failed to update product', { description: err.response?.data?.message || err.message });
     },
   });
 

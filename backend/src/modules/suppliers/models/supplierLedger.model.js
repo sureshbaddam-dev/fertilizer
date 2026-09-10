@@ -19,13 +19,22 @@ const supplierLedgerSchema = new mongoose.Schema(
       ref: 'Purchase',
       index: true,
     },
+    returnId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PurchaseReturn',
+      index: true,
+    },
     transactionType: {
       type: String,
-      enum: ['PURCHASE', 'PAYMENT', 'ADJUSTMENT', 'RETURN'],
+      enum: ['PURCHASE', 'PAYMENT', 'ADJUSTMENT', 'RETURN', 'REFUND'],
       default: 'PURCHASE',
       required: true,
     },
     purchaseAmount: {
+      type: Number,
+      default: 0,
+    },
+    advanceUsed: {
       type: Number,
       default: 0,
     },
@@ -36,6 +45,23 @@ const supplierLedgerSchema = new mongoose.Schema(
     dueAmount: {
       type: Number,
       default: 0,
+    },
+    returnAmount: {
+      type: Number,
+      default: 0,
+    },
+    refundAmount: {
+      type: Number,
+      default: 0,
+    },
+    settlementType: {
+      type: String,
+      enum: ['CREDIT', 'REFUND', 'PARTIAL_REFUND'],
+      default: 'CREDIT',
+    },
+    paymentMode: {
+      type: String,
+      default: 'Cash',
     },
     runningBalance: {
       type: Number,

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { RotateCcw, X, Check, Search, Truck, AlertCircle, ChevronDown, FileText, Calendar } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
-import { purchaseReturnService } from '../../services/purchaseReturnService';
+import { purchaseReturnService } from '../../services/purchaseService';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from '../../contexts/ToastContext';
 
 export default function SupplierReturnModal({ isOpen, onClose, products = [], onSaveReturn }) {
   const queryClient = useQueryClient();
@@ -23,6 +24,12 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
   const [reason, setReason] = useState('Defective batch packaging');
   const [notes, setNotes] = useState('');
 
+  // Settlement Method State
+  const [settlementMethod, setSettlementMethod] = useState('CREDIT'); // 'CREDIT' | 'REFUND'
+  const [refundAmount, setRefundAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('Cash');
+  const [refundReference, setRefundReference] = useState('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -36,6 +43,10 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
       setReturnQty('');
       setReason('Defective batch packaging');
       setNotes('');
+      setSettlementMethod('CREDIT');
+      setRefundAmount('');
+      setPaymentMode('Cash');
+      setRefundReference('');
       setErrorMessage('');
     }
   }, [isOpen]);
@@ -110,7 +121,13 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
   // Return Value calculation locked to Original Purchase Price
   const numericQty = Number(returnQty) || 0;
   const returnValue = numericQty * originalPurchasePrice;
-  const outstandingAfterReturn = Math.max(0, currentOutstanding - returnValue);
+
+  // Effective refund and credit values
+  const effectiveRefund = settlementMethod === 'REFUND'
+    ? Math.min(returnValue, refundAmount !== '' ? Number(refundAmount) || 0 : returnValue)
+    : 0;
+  const effectiveCredit = Math.max(0, returnValue - effectiveRefund);
+  const outstandingAfterReturn = Math.round((currentOutstanding - effectiveCredit) * 100) / 100;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -133,6 +150,17 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
       return;
     }
 
+    if (settlementMethod === 'REFUND') {
+      if (effectiveRefund < 0) {
+        setErrorMessage('Refund amount cannot be negative');
+        return;
+      }
+      if (effectiveRefund > returnValue) {
+        setErrorMessage(`Refund amount cannot exceed total return value (₹${returnValue.toLocaleString('en-IN')})`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -147,17 +175,32 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
         reason,
         notes,
         createdBy: creatorName,
+        settlementType: settlementMethod === 'REFUND' ? (effectiveRefund === returnValue ? 'REFUND' : 'PARTIAL_REFUND') : 'CREDIT',
+        refundAmount: effectiveRefund,
+        paymentMode: settlementMethod === 'REFUND' ? paymentMode : 'Cash',
+        refundReference: settlementMethod === 'REFUND' ? refundReference : '',
       };
 
       const response = await purchaseReturnService.processReturn(payload);
 
       // Invalidate queries across the application
-      queryClient.invalidateQueries(['products-inventory']);
-      queryClient.invalidateQueries(['products-reports']);
-      queryClient.invalidateQueries(['dashboard-summary']);
-      queryClient.invalidateQueries(['reports-bi']);
-      queryClient.invalidateQueries(['supplier-ledger']);
-      queryClient.invalidateQueries(['purchases']);
+      await Promise.all([
+        queryClient.invalidateQueries(['products-inventory']),
+        queryClient.invalidateQueries(['products-reports']),
+        queryClient.invalidateQueries(['dashboard-summary']),
+        queryClient.invalidateQueries(['reports-bi']),
+        queryClient.invalidateQueries(['supplier-ledger']),
+        queryClient.invalidateQueries(['suppliers']),
+        queryClient.invalidateQueries(['purchases']),
+      ]);
+
+      toast.success('Supplier return recorded successfully');
+      if (effectiveRefund > 0) {
+        toast.success(`Supplier refund of ₹${effectiveRefund.toLocaleString('en-IN')} recorded successfully`);
+      }
+      if (effectiveCredit > 0) {
+        toast.success(`₹${effectiveCredit.toLocaleString('en-IN')} added as supplier credit`);
+      }
 
       if (onSaveReturn) {
         onSaveReturn(response.data || payload);
@@ -166,8 +209,9 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
       onClose();
     } catch (err) {
       console.error('Error recording supplier return:', err);
-      const msg = err.response?.data?.message || err.message || 'Failed to record supplier return';
+      const msg = err.response?.data?.message || err.message || 'Failed to record supplier return. Please try again.';
       setErrorMessage(msg);
+      toast.error('Failed to record supplier return. Please try again.', { description: msg });
     } finally {
       setIsSubmitting(false);
     }
@@ -189,8 +233,8 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
               <RotateCcw className="w-4 h-4" />
             </div>
             <div>
-              <span>Supplier Return Improvement</span>
-              <p className="text-[10px] text-gray-500 font-medium">Automatic Supplier & Original Invoice Determination</p>
+              <span>Supplier Return &amp; Settlement</span>
+              <p className="text-[10px] text-gray-500 font-medium">Auto-deduct stock &amp; choose credit vs refund settlement</p>
             </div>
           </div>
           <button
@@ -366,7 +410,14 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
                 min="1"
                 max={availableReturnQty || currentStock || 9999}
                 value={returnQty}
-                onChange={(e) => setReturnQty(e.target.value)}
+                onChange={(e) => {
+                  setReturnQty(e.target.value);
+                  const q = Number(e.target.value) || 0;
+                  const val = q * originalPurchasePrice;
+                  if (settlementMethod === 'REFUND') {
+                    setRefundAmount(String(val));
+                  }
+                }}
                 placeholder="e.g. 10"
                 className="w-full h-9 px-3 bg-gray-50 border border-gray-200 rounded-xl font-mono font-bold text-gray-900 focus:outline-none focus:border-[#047857] focus:ring-2 focus:ring-emerald-500/20 text-xs"
               />
@@ -388,7 +439,116 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
             </div>
           </div>
 
-          {/* 4. Live Synchronized Financial Calculation Card */}
+          {/* 4. Settlement Method Selection Section */}
+          {selectedProduct && numericQty > 0 && (
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-800 block">Settlement Method *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      settlementMethod === 'CREDIT'
+                        ? 'bg-purple-50 border-purple-300 text-purple-950 font-bold shadow-2xs'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 font-medium'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="settlementMethod"
+                      value="CREDIT"
+                      checked={settlementMethod === 'CREDIT'}
+                      onChange={() => {
+                        setSettlementMethod('CREDIT');
+                        setRefundAmount('');
+                      }}
+                      className="accent-purple-700 cursor-pointer"
+                    />
+                    <span className="text-xs">Keep as Supplier Credit</span>
+                  </label>
+
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      settlementMethod === 'REFUND'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-2xs'
+                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100 font-medium'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="settlementMethod"
+                      value="REFUND"
+                      checked={settlementMethod === 'REFUND'}
+                      onChange={() => {
+                        setSettlementMethod('REFUND');
+                        setRefundAmount(String(returnValue));
+                      }}
+                      className="accent-[#047857] cursor-pointer"
+                    />
+                    <span className="text-xs">Refund Received</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* If Refund Received: Show amount, mode, reference */}
+              {settlementMethod === 'REFUND' && (
+                <div className="pt-2 border-t border-slate-200 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-gray-700">Refund Amount (₹) *</label>
+                        <span className="text-[9px] text-gray-400">Max ₹{returnValue.toLocaleString('en-IN')}</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max={returnValue}
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        placeholder={`e.g. ${returnValue}`}
+                        className="w-full h-8 px-2.5 bg-white border border-gray-200 rounded-lg text-xs font-mono font-bold text-[#047857] focus:outline-none focus:border-[#047857]"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-700 block">Payment Mode *</label>
+                      <select
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value)}
+                        className="w-full h-8 px-2 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#047857] cursor-pointer"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="Bank">Bank Transfer</option>
+                        <option value="UPI">UPI / GPay / PhonePe</option>
+                        <option value="Cheque">Cheque</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-700 block">Reference / Transaction Number (Optional)</label>
+                    <input
+                      type="text"
+                      value={refundReference}
+                      onChange={(e) => setRefundReference(e.target.value)}
+                      placeholder="e.g. UPI-99201948 or Cheque #4421"
+                      className="w-full h-8 px-2.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:border-[#047857]"
+                    />
+                  </div>
+
+                  {effectiveRefund < returnValue && (
+                    <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex justify-between items-center font-medium">
+                      <span>Remaining Supplier Credit:</span>
+                      <strong className="font-mono font-bold text-purple-900">
+                        ₹ {effectiveCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 5. Live Synchronized Financial Calculation Card */}
           {selectedProduct && (
             <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl space-y-2">
               <div className="flex items-center justify-between text-xs">
@@ -398,10 +558,28 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
                 </span>
               </div>
 
+              {settlementMethod === 'REFUND' && effectiveRefund > 0 && (
+                <div className="flex items-center justify-between text-xs text-emerald-800">
+                  <span className="font-medium">Refund Received via {paymentMode}</span>
+                  <span className="font-mono font-bold">
+                    + ₹ {effectiveRefund.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-xs text-purple-900">
+                <span className="font-medium">Supplier Credit Created</span>
+                <span className="font-mono font-bold">
+                  ₹ {effectiveCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
               <div className="flex items-center justify-between border-t border-purple-200/60 pt-1.5 text-xs">
-                <span className="font-medium text-gray-700">Outstanding After Return</span>
-                <span className="font-mono font-bold text-[#047857]">
-                  ₹ {outstandingAfterReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                <span className="font-medium text-gray-700">Outstanding Balance After Return</span>
+                <span className={`font-mono font-bold ${outstandingAfterReturn < 0 ? 'text-purple-700' : 'text-[#047857]'}`}>
+                  {outstandingAfterReturn < 0
+                    ? `-₹ ${Math.abs(outstandingAfterReturn).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (Credit)`
+                    : `₹ ${outstandingAfterReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
                 </span>
               </div>
             </div>
@@ -431,7 +609,7 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
 
             <button
               type="submit"
-              disabled={isSubmitting || !selectedProduct}
+              disabled={isSubmitting || !selectedProduct || numericQty <= 0}
               className="px-5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
             >
               {isSubmitting ? (
@@ -442,7 +620,7 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
               ) : (
                 <>
                   <Check className="w-4 h-4 stroke-[2.5]" />
-                  <span>Confirm & Synchronize Ledgers</span>
+                  <span>Confirm &amp; Synchronize Ledgers</span>
                 </>
               )}
             </button>

@@ -18,6 +18,7 @@ import DataTable from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import FormDrawer from '../../components/ui/FormDrawer';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { toast } from '../../contexts/ToastContext';
 
 const supplierSchema = z.object({
   name: z.string().min(2, 'Supplier name is required'),
@@ -85,13 +86,10 @@ export default function SuppliersPage() {
   const handleApiError = (err) => {
     console.error('API Error Received:', err);
     setApiError(err.message || 'An error occurred');
-    if (Array.isArray(err.errors)) {
-      err.errors.forEach((e) => {
-        if (e.field) {
-          setError(e.field, { type: 'server', message: e.message });
-        }
-      });
-    }
+    const status = err?.response?.status;
+    const msg = err?.response?.data?.message || err?.message || 'Something went wrong';
+    setApiError(msg);
+    toast.error('Supplier operation failed', { description: msg });
   };
 
   // Mutations
@@ -103,6 +101,7 @@ export default function SuppliersPage() {
       setIsDrawerOpen(false);
       setApiError(null);
       reset();
+      toast.success('Supplier created successfully');
     },
     onError: handleApiError,
   });
@@ -116,6 +115,7 @@ export default function SuppliersPage() {
       setEditingSupplier(null);
       setApiError(null);
       reset();
+      toast.success('Supplier updated successfully');
     },
     onError: handleApiError,
   });
@@ -127,9 +127,10 @@ export default function SuppliersPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, supplier: null, type: 'archive' });
       setDeleteConfirmInput('');
+      toast.success('Supplier deleted successfully');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to delete supplier.');
+      toast.error('Failed to delete supplier', { description: err?.response?.data?.message || err?.message });
     },
   });
 
@@ -139,6 +140,10 @@ export default function SuppliersPage() {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       setConfirmDialog({ isOpen: false, supplier: null, type: 'restore' });
+      toast.success('Supplier restored successfully');
+    },
+    onError: (err) => {
+      toast.error('Failed to restore supplier', { description: err?.response?.data?.message || err?.message });
     },
   });
 
@@ -332,26 +337,33 @@ export default function SuppliersPage() {
       </div>
 
       {/* 6 Dynamic Summary Metrics Cards */}
+      {/* Dynamic Summary Metrics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <div className="p-3 bg-white border border-gray-200/80 rounded-2xl shadow-2xs space-y-1">
           <span className="text-[11px] text-gray-500 font-medium block">Total Suppliers</span>
-          <span className="text-base font-bold text-gray-900 font-mono block">{summaryStats.totalSuppliers}</span>
-        </div>
-
-        <div className="p-3 bg-emerald-50/40 border border-emerald-100 rounded-2xl shadow-2xs space-y-1">
-          <span className="text-[11px] text-[#047857] font-medium block">Active Suppliers</span>
-          <span className="text-base font-bold text-[#047857] font-mono block">{summaryStats.activeSuppliers}</span>
-        </div>
-
-        <div className="p-3 bg-gray-50 border border-gray-200 rounded-2xl shadow-2xs space-y-1">
-          <span className="text-[11px] text-gray-500 font-medium block">Inactive Suppliers</span>
-          <span className="text-base font-bold text-gray-700 font-mono block">{summaryStats.inactiveSuppliers}</span>
+          <span className="text-base font-bold text-gray-900 font-mono block">
+            {summaryStats.totalSuppliers} <span className="text-[10px] text-gray-400 font-normal">({summaryStats.activeSuppliers} Active)</span>
+          </span>
         </div>
 
         <div className="p-3 bg-amber-50/40 border border-amber-100/80 rounded-2xl shadow-2xs space-y-1">
-          <span className="text-[11px] text-amber-800 font-medium block">Total Purchases</span>
+          <span className="text-[11px] text-amber-800 font-medium block">Gross Purchases</span>
           <span className="text-base font-bold text-amber-900 font-mono block">
-            ₹ {Math.round(summaryStats.totalPurchasesAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            ₹ {Math.round(summaryStats.grossPurchasesAmount ?? summaryStats.totalPurchasesAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </span>
+        </div>
+
+        <div className="p-3 bg-rose-50/50 border border-rose-100 rounded-2xl shadow-2xs space-y-1">
+          <span className="text-[11px] text-rose-800 font-medium block">Purchase Returns</span>
+          <span className="text-base font-bold text-rose-900 font-mono block">
+            ₹ {Math.round(summaryStats.purchaseReturnsAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </span>
+        </div>
+
+        <div className="p-3 bg-emerald-50/40 border border-emerald-100 rounded-2xl shadow-2xs space-y-1">
+          <span className="text-[11px] text-[#047857] font-medium block">Net Purchases</span>
+          <span className="text-base font-bold text-[#047857] font-mono block">
+            ₹ {Math.round(summaryStats.netPurchasesAmount ?? ((summaryStats.grossPurchasesAmount ?? summaryStats.totalPurchasesAmount ?? 0) - (summaryStats.purchaseReturnsAmount || 0))).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>
         </div>
 
@@ -363,7 +375,7 @@ export default function SuppliersPage() {
         </div>
 
         <div className="p-3 bg-red-50/40 border border-red-100 rounded-2xl shadow-2xs space-y-1">
-          <span className="text-[11px] text-red-600 font-medium block">Total Outstanding</span>
+          <span className="text-[11px] text-red-600 font-medium block">Current Outstanding</span>
           <span className="text-base font-bold text-red-600 font-mono block">
             ₹ {Math.round(summaryStats.totalOutstandingDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </span>

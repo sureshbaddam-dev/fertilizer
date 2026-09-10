@@ -14,9 +14,9 @@ import { settingService } from '../../services/settingService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import { apiClient } from '../../services/apiClient';
+import { toast } from '../../contexts/ToastContext';
 
 export default function ShopProfilePage() {
   const navigate = useNavigate();
@@ -99,12 +99,14 @@ export default function ShopProfilePage() {
 
     if (file.size > 5 * 1024 * 1024) {
       setSaveErrorMsg('Logo file size must be less than 5 MB');
+      toast.error('Logo file size must be less than 5 MB');
       return;
     }
 
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
       setSaveErrorMsg('Only PNG, JPG, JPEG, and WEBP formats are supported');
+      toast.error('Only PNG, JPG, JPEG, and WEBP formats are supported');
       return;
     }
 
@@ -118,9 +120,11 @@ export default function ShopProfilePage() {
       const uploadedUrl = res.data?.imageUrl;
       if (uploadedUrl) {
         setFormData((prev) => ({ ...prev, logoUrl: uploadedUrl }));
+        toast.success('Logo updated successfully');
       }
     } catch (err) {
       setSaveErrorMsg(err.message || 'Logo upload failed');
+      toast.error(err.message || 'Logo upload failed');
     }
   };
 
@@ -130,12 +134,14 @@ export default function ShopProfilePage() {
 
     if (file.size > 5 * 1024 * 1024) {
       setSaveErrorMsg('Owner photo size must be less than 5 MB');
+      toast.error('Owner photo size must be less than 5 MB');
       return;
     }
 
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
       setSaveErrorMsg('Only PNG, JPG, JPEG, and WEBP formats are supported');
+      toast.error('Only PNG, JPG, JPEG, and WEBP formats are supported');
       return;
     }
 
@@ -149,9 +155,11 @@ export default function ShopProfilePage() {
       const uploadedUrl = res.data?.imageUrl;
       if (uploadedUrl) {
         setFormData((prev) => ({ ...prev, ownerPhotoUrl: uploadedUrl }));
+        toast.success('Owner photo updated successfully');
       }
     } catch (err) {
       setSaveErrorMsg(err.message || 'Owner photo upload failed');
+      toast.error(err.message || 'Owner photo upload failed');
     }
   };
 
@@ -162,12 +170,15 @@ export default function ShopProfilePage() {
       queryClient.invalidateQueries(['shop-settings-global']);
       queryClient.invalidateQueries(['shop-settings-profile']);
       queryClient.invalidateQueries(['dashboard-summary']);
+      toast.success('Shop Profile & Logo updated successfully!');
       setSaveSuccessMsg('Shop Profile & Logo updated and saved permanently to database!');
       setSaveErrorMsg('');
       setTimeout(() => setSaveSuccessMsg(''), 4000);
     },
     onError: (err) => {
-      setSaveErrorMsg(err?.response?.data?.message || err?.message || 'Failed to save settings');
+      const msg = err?.response?.data?.message || err?.message || 'Failed to save settings';
+      toast.error(msg);
+      setSaveErrorMsg(msg);
       setSaveSuccessMsg('');
     },
   });

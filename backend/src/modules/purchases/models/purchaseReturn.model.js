@@ -24,7 +24,7 @@ const purchaseReturnSchema = new mongoose.Schema(
     purchaseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Purchase',
-      required: [true, 'Purchase Invoice is required'],
+      default: null,
       index: true,
     },
     purchaseItemId: {
@@ -54,6 +54,45 @@ const purchaseReturnSchema = new mongoose.Schema(
     returnValue: {
       type: Number,
       required: true,
+    },
+    settlementType: {
+      type: String,
+      enum: ['CREDIT', 'REFUND', 'PARTIAL_REFUND'],
+      default: 'CREDIT',
+    },
+    refundAmount: {
+      type: Number,
+      default: 0,
+    },
+    refundedAmount: {
+      type: Number,
+      default: 0,
+    },
+    refundStatus: {
+      type: String,
+      enum: ['PENDING_REFUND', 'SUPPLIER_CREDIT', 'PARTIALLY_REFUNDED', 'REFUNDED'],
+      default: 'PENDING_REFUND',
+      index: true,
+    },
+    refunds: [
+      {
+        refundNumber: { type: String, required: true },
+        amount: { type: Number, required: true },
+        paymentMode: { type: String, default: 'Cash' },
+        referenceNumber: { type: String, default: '' },
+        notes: { type: String, default: '' },
+        date: { type: Date, default: Date.now },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    paymentMode: {
+      type: String,
+      default: 'Cash',
+    },
+    refundReference: {
+      type: String,
+      trim: true,
+      default: '',
     },
     reason: {
       type: String,

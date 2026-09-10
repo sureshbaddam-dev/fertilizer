@@ -9,6 +9,7 @@ import Input from '../../components/ui/Input';
 import PageLayout from '../../components/ui/PageHeaderContainer';
 import UserAvatar from '../../components/ui/UserAvatar';
 import { useAuth } from '../../contexts/AuthContext';
+import { toast } from '../../contexts/ToastContext';
 
 export default function UserProfilePage() {
   const navigate = useNavigate();
@@ -24,24 +25,22 @@ export default function UserProfilePage() {
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [saveErrorMsg, setSaveErrorMsg] = useState('');
 
-  // Fetch User Account Profile (Shared cache with TopNavbar)
-  const { data: userRes, isLoading: isUserLoading } = useQuery({
-    queryKey: ['user-profile'],
-    queryFn: authService.getProfile,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  // Fetch Current Subscription Status
-  const { data: subRes } = useQuery({
+  // 1. Fetch Subscription Details
+  const { data: subRes, isLoading: isLoadingSub } = useQuery({
     queryKey: ['my-subscription'],
-    queryFn: subscriptionService.getMySubscription,
+    queryFn: () => subscriptionService.getMySubscription(),
   });
 
-  const currentUser = userRes?.data || userRes || authUser || authService.getCurrentUser() || {};
-  const currentSub = subRes?.data?.subscription || subRes?.subscription || null;
+  const currentSub = subRes?.data || subRes;
+
+  // 2. Fetch User Profile
+  const { data: userRes, isLoading: isLoadingUser } = useQuery({
+    queryKey: ['user-profile'],
+    queryFn: () => authService.getProfile(),
+  });
 
   useEffect(() => {
+    const currentUser = userRes?.data || userRes || authUser;
     if (currentUser) {
       setFormData({
         ownerName: currentUser.ownerName || '',
@@ -59,12 +58,15 @@ export default function UserProfilePage() {
         updateUser(updatedUser);
       }
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      toast.success('User account profile updated successfully');
       setSaveSuccessMsg('User account profile updated successfully.');
       setSaveErrorMsg('');
       setTimeout(() => setSaveSuccessMsg(''), 4000);
     },
     onError: (err) => {
-      setSaveErrorMsg(err?.message || 'Failed to update user profile.');
+      const msg = err?.message || 'Failed to update user profile.';
+      toast.error(msg);
+      setSaveErrorMsg(msg);
       setSaveSuccessMsg('');
     },
   });

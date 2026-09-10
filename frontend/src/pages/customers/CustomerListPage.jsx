@@ -25,6 +25,7 @@ import { customerService } from '../../services/customerService';
 import { useSettings } from '../../contexts/SettingsContext';
 import Button from '../../components/ui/Button';
 import PageLayout from '../../components/ui/PageHeaderContainer';
+import { toast } from '../../contexts/ToastContext';
 
 // Edit Customer Modal Component
 function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
@@ -63,10 +64,13 @@ function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
     setErrorMsg('');
     try {
       await customerService.updateCustomer(customer._id, formData);
+      toast.success('Customer updated successfully');
       onSaveSuccess();
       onClose();
     } catch (err) {
-      setErrorMsg(err?.response?.data?.message || 'Failed to update customer');
+      const msg = err?.response?.data?.message || 'Failed to update customer';
+      toast.error(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }
@@ -202,7 +206,9 @@ function DeleteCustomerModal({ isOpen, onClose, customer, onDeleteSuccess }) {
 
   const handleDelete = async () => {
     if (dueVal > 0) {
-      setErrorMsg(`Cannot delete customer "${customer.name}" because they have an active outstanding balance of ₹ ${dueVal.toLocaleString('en-IN')}. Please settle all dues first.`);
+      const warningText = `Cannot delete customer "${customer.name}" because they have an active outstanding balance of ₹ ${dueVal.toLocaleString('en-IN')}. Please settle all dues first.`;
+      toast.warning(warningText);
+      setErrorMsg(warningText);
       return;
     }
 
@@ -210,10 +216,13 @@ function DeleteCustomerModal({ isOpen, onClose, customer, onDeleteSuccess }) {
     setErrorMsg('');
     try {
       await customerService.deleteCustomer(customer._id);
+      toast.success('Customer deleted successfully');
       onDeleteSuccess();
       onClose();
     } catch (err) {
-      setErrorMsg(err?.response?.data?.message || 'Failed to delete customer');
+      const msg = err?.response?.data?.message || 'Failed to delete customer';
+      toast.error(msg);
+      setErrorMsg(msg);
     } finally {
       setDeleting(false);
     }

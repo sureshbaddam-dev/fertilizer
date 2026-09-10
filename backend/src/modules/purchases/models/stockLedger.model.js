@@ -63,6 +63,23 @@ const stockLedgerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    reason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    notes: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    supplierId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Supplier',
+      required: false,
+      default: null,
+      index: true,
+    },
     createdBy: {
       type: String,
       default: 'Ramesh Kumar',

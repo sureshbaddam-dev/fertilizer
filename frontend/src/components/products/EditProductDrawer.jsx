@@ -3,6 +3,7 @@ import { ArrowLeft, Check, X, ChevronDown } from 'lucide-react';
 import ImageUpload from '../ui/ImageUpload';
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
 import { toInputValue } from '../../utils/imageUtils';
+import { toast } from '../../contexts/ToastContext';
 
 export default function EditProductDrawer({
   isOpen,
@@ -198,7 +199,7 @@ export default function EditProductDrawer({
     const targetId = product._id || product.id || product.productId;
 
     if (!targetId) {
-      alert('Error: Product ID is missing. Cannot update product.');
+      toast.error('Error: Product ID is missing. Cannot update product.');
       return;
     }
 

@@ -10,6 +10,7 @@ import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
 import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { parseTransactionTimestamp } from '../../../utils/dateUtils.js';
 import { generateNextBatchNumber } from '../../products/services/product.service.js';
 
 export const purchaseService = {
@@ -95,7 +96,7 @@ export const purchaseService = {
 
       items.forEach((item) => {
         const itemQty = Number(item.quantity) || 1;
-        const itemRate = normalizeMoney(item.purchaseRate || 0);
+        const itemRate = normalizeMoney(item.purchaseRate !== undefined ? item.purchaseRate : (item.unitPrice || 0));
         const lineTotal = itemQty * itemRate;
         subtotal += lineTotal;
 
@@ -104,19 +105,35 @@ export const purchaseService = {
       });
 
       const totalInvoiceAmount = normalizeMoney(subtotal + totalTaxAmount);
+
+      const { Supplier } = await import('../../suppliers/models/supplier.model.js');
+      const supplierDocBefore = await Supplier.findOne({ _id: supplierId, userId }).exec();
+      const prevSupplierBalance = supplierDocBefore ? normalizeMoney(supplierDocBefore.outstandingBalance || 0) : 0;
+
+      // Dynamic advance available check: negative balance = advance credit with supplier
+      const advanceAvailable = prevSupplierBalance < 0 ? Math.abs(prevSupplierBalance) : 0;
+      const advanceUsed = normalizeMoney(Math.min(advanceAvailable, totalInvoiceAmount));
+      const previousDue = prevSupplierBalance > 0 ? prevSupplierBalance : 0;
+
       const actualPaidAmount = normalizeMoney(paidAmount || 0);
-      const dueAmount = normalizeMoney(totalInvoiceAmount - actualPaidAmount);
+      const paidTowardPurchase = previousDue > 0
+        ? Math.min(totalInvoiceAmount - advanceUsed, Math.max(0, actualPaidAmount - previousDue))
+        : actualPaidAmount;
+
+      const dueAmount = Math.max(0, normalizeMoney(totalInvoiceAmount - advanceUsed - paidTowardPurchase));
+      const newSupplierBalance = normalizeMoney(prevSupplierBalance + totalInvoiceAmount - actualPaidAmount);
 
       const purchaseData = {
         userId,
         purchaseNumber,
         supplierId,
         supplierInvoiceNumber: effectiveInvoiceNumber,
-        purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
+        purchaseDate: parseTransactionTimestamp(purchaseDate),
         dueDate: dueDate ? new Date(dueDate) : undefined,
         subtotal: normalizeMoney(subtotal),
         taxAmount: normalizeMoney(totalTaxAmount),
         totalInvoiceAmount,
+        advanceUsed,
         paidAmount: actualPaidAmount,
         dueAmount,
         notes,
@@ -241,23 +258,23 @@ export const purchaseService = {
         await purchaseRepository.createStockLedger(stockLedgerData, session);
       }
 
-      const { Supplier } = await import('../../suppliers/models/supplier.model.js');
-      const supplier = await Supplier.findOne({ _id: supplierId, userId }).exec();
-      const prevSupplierBalance = supplier ? normalizeMoney(supplier.outstandingBalance || 0) : 0;
-      const newSupplierBalance = normalizeMoney(prevSupplierBalance + dueAmount);
-
       const ledgerEntries = [];
+      const notesDetails = advanceUsed > 0
+        ? `Purchase Invoice #${effectiveInvoiceNumber} (Advance Adjusted: ₹${advanceUsed.toLocaleString('en-IN')})`
+        : `Purchase Invoice #${effectiveInvoiceNumber}`;
+
       const purchaseLedgerData = {
         userId,
         supplierId,
         purchaseId: newPurchase._id,
         transactionType: 'PURCHASE',
         purchaseAmount: totalInvoiceAmount,
+        advanceUsed,
         paidAmount: actualPaidAmount,
         dueAmount,
         runningBalance: newSupplierBalance,
         referenceNumber: newPurchase.purchaseNumber,
-        notes: `Purchase Invoice #${effectiveInvoiceNumber}`,
+        notes: notesDetails,
         date: newPurchase.purchaseDate,
         isDeleted: false,
       };
@@ -267,7 +284,7 @@ export const purchaseService = {
         : await SupplierLedger.create(purchaseLedgerData);
       ledgerEntries.push(purchaseLedgerEntry);
 
-      if (supplier) {
+      if (supplierDocBefore) {
         if (session) {
           await Supplier.findOneAndUpdate({ _id: supplierId, userId }, { outstandingBalance: newSupplierBalance }, { session });
         } else {
@@ -282,21 +299,34 @@ export const purchaseService = {
       };
     };
 
+    let session = null;
     try {
-      const session = await mongoose.startSession();
+      session = await mongoose.startSession();
       session.startTransaction();
+    } catch (sessionErr) {
+      logger.warn({ err: sessionErr }, 'MongoDB Transactions not available: Running without session');
+      session = null;
+    }
+
+    if (session) {
       try {
         const result = await executeSave(session);
         await session.commitTransaction();
-        session.endSession();
         return result;
       } catch (txnError) {
         await session.abortTransaction();
-        session.endSession();
+        const isTxnUnsupported =
+          txnError?.message?.includes('Transactions are not supported') ||
+          txnError?.message?.includes('Transaction numbers are only allowed');
+        if (isTxnUnsupported) {
+          logger.warn({ err: txnError }, 'Standalone MongoDB detected during transaction: Retrying without session');
+          return await executeSave(null);
+        }
         throw txnError;
+      } finally {
+        session.endSession();
       }
-    } catch (err) {
-      logger.warn({ err }, 'MongoDB Standalone Mode detected: Fallback execution without Session Transaction');
+    } else {
       return await executeSave(null);
     }
   },

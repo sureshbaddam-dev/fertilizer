@@ -10,6 +10,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import FormDrawer from '../../components/ui/FormDrawer';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ImageUpload from '../../components/ui/ImageUpload';
+import { toast } from '../../contexts/ToastContext';
 
 const brandSchema = z.object({
   name: z.string().min(2, 'Brand name is required'),
@@ -60,7 +61,9 @@ export default function BrandsPage() {
   });
 
   const handleApiError = (err) => {
-    setApiError(err.message || 'An error occurred');
+    const errorMsg = err?.message || 'An error occurred';
+    setApiError(errorMsg);
+    toast.error(errorMsg);
     if (Array.isArray(err.errors)) {
       err.errors.forEach((e) => {
         if (e.field) {
@@ -80,6 +83,7 @@ export default function BrandsPage() {
       setIsDrawerOpen(false);
       setApiError(null);
       reset();
+      toast.success('Brand created successfully');
     },
     onError: handleApiError,
   });
@@ -94,6 +98,7 @@ export default function BrandsPage() {
       setEditingBrand(null);
       setApiError(null);
       reset();
+      toast.success('Brand updated successfully');
     },
     onError: handleApiError,
   });
@@ -105,6 +110,10 @@ export default function BrandsPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setConfirmDialog({ isOpen: false, brand: null, type: 'archive' });
+      toast.success('Brand archived successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to archive brand');
     },
   });
 
@@ -115,6 +124,10 @@ export default function BrandsPage() {
       queryClient.invalidateQueries({ queryKey: ['masters-all'] });
       queryClient.invalidateQueries({ queryKey: ['master-brands-filter'] });
       setConfirmDialog({ isOpen: false, brand: null, type: 'restore' });
+      toast.success('Brand restored successfully');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to restore brand');
     },
   });
 

@@ -7,6 +7,7 @@ import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
 import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { parseTransactionTimestamp, getEffectiveTransactionTimestamp } from '../../../utils/dateUtils.js';
 
 export const supplierService = {
   async getAllSuppliers(query = {}, userId) {
@@ -38,15 +39,19 @@ export const supplierService = {
     }
 
     let overallOutstanding = 0;
-    let overallPurchases = 0;
+    let overallGrossPurchases = 0;
+    let overallReturns = 0;
     let overallPayments = 0;
+    let overallRefunds = 0;
 
     const enrichedSuppliers = suppliersDocs.map((supObj) => {
       const sId = supObj._id.toString();
       const ledger = ledgerMap.get(sId) || [];
 
-      let supTotalPurchases = 0;
+      let supGrossPurchases = 0;
+      let supReturns = 0;
       let supTotalPayments = 0;
+      let supTotalRefunds = 0;
       let lastPurchaseDate = null;
       let lastPaymentDate = null;
       let lastPaymentAmount = 0;
@@ -54,10 +59,16 @@ export const supplierService = {
       ledger.forEach((item) => {
         const pAmt = Number(item.purchaseAmount) || 0;
         const pdAmt = Number(item.paidAmount) || 0;
+        const retAmt = Number(item.returnAmount) || 0;
+        const refAmt = Number(item.refundAmount) || 0;
 
         if (item.transactionType === 'PURCHASE') {
-          supTotalPurchases += pAmt;
+          supGrossPurchases += pAmt;
           if (!lastPurchaseDate) lastPurchaseDate = item.date;
+        } else if (item.transactionType === 'RETURN') {
+          supReturns += retAmt;
+        } else if (item.transactionType === 'REFUND') {
+          supTotalRefunds += refAmt;
         }
 
         if (pdAmt > 0) {
@@ -73,13 +84,19 @@ export const supplierService = {
 
       const due = Number(supObj.outstandingBalance) || 0;
       overallOutstanding += due;
-      overallPurchases += supTotalPurchases;
+      overallGrossPurchases += supGrossPurchases;
+      overallReturns += supReturns;
       overallPayments += supTotalPayments;
+      overallRefunds += supTotalRefunds;
 
       return {
         ...supObj,
-        totalPurchases: supTotalPurchases,
-        totalPayments: supTotalPayments,
+        grossPurchases: normalizeMoney(supGrossPurchases),
+        totalPurchases: normalizeMoney(supGrossPurchases),
+        purchaseReturns: normalizeMoney(supReturns),
+        netPurchases: normalizeMoney(supGrossPurchases - supReturns),
+        totalPayments: normalizeMoney(supTotalPayments),
+        totalRefunds: normalizeMoney(supTotalRefunds),
         lastPurchaseDate,
         lastPaymentDate,
         lastPaymentAmount,
@@ -103,9 +120,13 @@ export const supplierService = {
         totalSuppliers: enrichedSuppliers.length,
         activeSuppliers: activeCount,
         inactiveSuppliers: inactiveCount,
-        totalOutstandingDue: overallOutstanding,
-        totalPurchasesAmount: overallPurchases,
-        totalPaymentsAmount: overallPayments,
+        totalOutstandingDue: normalizeMoney(overallOutstanding),
+        grossPurchasesAmount: normalizeMoney(overallGrossPurchases),
+        totalPurchasesAmount: normalizeMoney(overallGrossPurchases),
+        purchaseReturnsAmount: normalizeMoney(overallReturns),
+        netPurchasesAmount: normalizeMoney(overallGrossPurchases - overallReturns),
+        totalPaymentsAmount: normalizeMoney(overallPayments),
+        totalRefundsAmount: normalizeMoney(overallRefunds),
       },
     };
   },
@@ -225,23 +246,35 @@ export const supplierService = {
     }
 
     const filter = { userId, supplierId, isDeleted: { $ne: true } };
-    if (query.transactionType && query.transactionType !== 'ALL') {
-      filter.transactionType = query.transactionType;
-    }
 
-    let ledgerEntries = [];
+    let allLedgerDocs = [];
     try {
-      ledgerEntries = await SupplierLedger.find(filter)
+      allLedgerDocs = await SupplierLedger.find(filter)
         .populate('purchaseId')
-        .sort({ date: -1, createdAt: -1 })
+        .populate({
+          path: 'returnId',
+          populate: { path: 'productId', select: 'name brandId categoryId' },
+        })
+        .sort({ date: 1, createdAt: 1, _id: 1 })
         .lean()
         .exec();
+
+      // Ensure 100% deterministic ascending chronological sorting in memory using effective timestamp
+      allLedgerDocs.sort((a, b) => {
+        const timeA = getEffectiveTransactionTimestamp(a).getTime();
+        const timeB = getEffectiveTransactionTimestamp(b).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        const createdA = new Date(a.createdAt || 0).getTime();
+        const createdB = new Date(b.createdAt || 0).getTime();
+        if (createdA !== createdB) return createdA - createdB;
+        return (a._id?.toString() || '').localeCompare(b._id?.toString() || '');
+      });
     } catch (err) {
       logger.error({ err }, 'Error fetching supplier ledger entries');
-      ledgerEntries = [];
+      allLedgerDocs = [];
     }
 
-    const purchaseIds = ledgerEntries.map((e) => e.purchaseId?._id).filter(Boolean);
+    const purchaseIds = allLedgerDocs.map((e) => e.purchaseId?._id).filter(Boolean);
 
     let allPurchaseItems = [];
     let allLinkedPayments = [];
@@ -275,7 +308,33 @@ export const supplierService = {
       }
     });
 
-    const enrichedEntries = ledgerEntries.map((entry) => {
+    // Track FIFO credit usage from subsequent purchases
+    let totalAdvanceUsedPool = allLedgerDocs
+      .filter((e) => e.transactionType === 'PURCHASE')
+      .reduce((acc, p) => acc + (Number(p.advanceUsed || p.purchaseId?.advanceUsed) || 0), 0);
+
+    const returnCreditUsageMap = new Map();
+    allLedgerDocs
+      .filter((e) => e.transactionType === 'RETURN')
+      .forEach((r) => {
+        const retAmt = Number(r.returnAmount || r.returnValue) || 0;
+        const refAmt = Number(r.refundAmount || r.returnId?.refundedAmount) || 0;
+        const unrefunded = Math.max(0, retAmt - refAmt);
+        const used = Math.min(unrefunded, totalAdvanceUsedPool);
+        totalAdvanceUsedPool = Math.max(0, totalAdvanceUsedPool - used);
+        const rKey = r._id?.toString();
+        if (rKey) {
+          returnCreditUsageMap.set(rKey, {
+            creditUsed: used,
+            availableCredit: Math.max(0, unrefunded - used),
+            isCreditUsed: unrefunded > 0 && used >= unrefunded,
+          });
+        }
+      });
+
+    let running = 0;
+    const enrichedEntries = allLedgerDocs.map((entry) => {
+      let itemCount = 1;
       if (entry.purchaseId && entry.purchaseId._id) {
         const pKey = entry.purchaseId._id.toString();
         const purchaseItems = itemsMap.get(pKey) || [];
@@ -283,19 +342,72 @@ export const supplierService = {
         entry.purchaseId.items = purchaseItems;
         entry.purchaseId.payments = linkedPayments;
         entry.payments = linkedPayments;
+        itemCount = purchaseItems.length || 1;
+      } else if (entry.returnId) {
+        itemCount = Number(entry.returnId.quantity) || 1;
       }
+
+      entry.itemCount = itemCount;
+
+      const pAmt = Number(entry.purchaseAmount) || 0;
+      const pdAmt = Number(entry.paidAmount) || 0;
+      const retAmt = Number(entry.returnAmount) || 0;
+      const refAmt = Number(entry.refundAmount || entry.returnId?.refundedAmount || entry.returnId?.refundAmount) || 0;
+
+      if (entry.transactionType === 'PURCHASE') {
+        running = normalizeMoney(running + pAmt - pdAmt);
+      } else if (entry.transactionType === 'PAYMENT') {
+        if (!entry.referenceNumber?.startsWith('PAY-PUR-')) {
+          running = normalizeMoney(running - pdAmt);
+        }
+      } else if (entry.transactionType === 'ADJUSTMENT') {
+        running = normalizeMoney(running + pAmt - pdAmt);
+      } else if (entry.transactionType === 'RETURN') {
+        // Return creates supplier credit for returnAmount (reducing balance)
+        running = normalizeMoney(running - retAmt);
+
+        const rKey = entry._id?.toString();
+        const usage = returnCreditUsageMap.get(rKey) || { creditUsed: 0, availableCredit: 0, isCreditUsed: false };
+        entry.creditUsed = usage.creditUsed;
+        entry.availableCredit = usage.availableCredit;
+        entry.isCreditUsed = usage.isCreditUsed;
+
+        if (refAmt >= retAmt && retAmt > 0) {
+          entry.creditStatus = 'REFUNDED';
+        } else if (usage.isCreditUsed) {
+          entry.creditStatus = 'CREDIT_USED';
+        } else {
+          entry.creditStatus = 'CREDIT_AVAILABLE';
+        }
+      } else if (entry.transactionType === 'REFUND') {
+        // Refund pays back credit to our bank/cash, reducing our supplier credit
+        running = normalizeMoney(running + (Number(entry.refundAmount) || 0));
+      }
+
+      entry.date = getEffectiveTransactionTimestamp(entry);
+      entry.runningBalance = running;
       return entry;
     });
 
-    const activeEntries = enrichedEntries.filter((entry) => {
+    let activeEntries = enrichedEntries.filter((entry) => {
       if (entry.transactionType === 'PAYMENT' && entry.referenceNumber?.startsWith('PAY-PUR-')) {
         return false;
       }
       return true;
     });
 
-    let totalPurchases = 0;
+    if (query.transactionType && query.transactionType !== 'ALL') {
+      if (query.transactionType === 'RETURNS') {
+        activeEntries = activeEntries.filter((e) => e.transactionType === 'RETURN' || e.transactionType === 'REFUND');
+      } else {
+        activeEntries = activeEntries.filter((e) => e.transactionType === query.transactionType);
+      }
+    }
+
+    let grossPurchases = 0;
     let totalPayments = 0;
+    let totalReturns = 0;
+    let totalRefunds = 0;
     let purchaseCount = 0;
     let totalItemsPurchased = 0;
     let overdueAmount = 0;
@@ -309,14 +421,17 @@ export const supplierService = {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    activeEntries.forEach((item) => {
+    // Summary calculation over ALL active entries (not filtered by subtab)
+    enrichedEntries.forEach((item) => {
       const pAmt = Number(item.purchaseAmount) || 0;
       const pdAmt = Number(item.paidAmount) || 0;
+      const retAmt = Number(item.returnAmount) || 0;
+      const refAmt = Number(item.refundAmount) || 0;
 
       if (item.transactionType === 'PURCHASE') {
-        totalPurchases += pAmt;
+        grossPurchases += pAmt;
         purchaseCount += 1;
-        if (!lastPurchaseDate) lastPurchaseDate = item.date;
+        lastPurchaseDate = item.date;
 
         if (item.purchaseId) {
           const pItems = item.purchaseId.items || [];
@@ -334,14 +449,16 @@ export const supplierService = {
             }
           }
         }
+      } else if (item.transactionType === 'RETURN') {
+        totalReturns += retAmt;
+      } else if (item.transactionType === 'REFUND') {
+        totalRefunds += refAmt;
       }
 
-      if (pdAmt > 0) {
+      if (pdAmt > 0 && item.transactionType !== 'RETURN') {
         totalPayments += pdAmt;
-        if (!lastPaymentDate) {
-          lastPaymentDate = item.date;
-          lastPaymentAmount = pdAmt;
-        }
+        lastPaymentDate = item.date;
+        lastPaymentAmount = pdAmt;
         if (item.transactionType === 'PAYMENT') {
           paymentsList.push({
             _id: item._id,
@@ -354,19 +471,23 @@ export const supplierService = {
       }
     });
 
-    const closingBalance = Number(supplier.outstandingBalance) || 0;
-    const avgPurchaseValue = purchaseCount > 0 ? Math.round(totalPurchases / purchaseCount) : 0;
+    const closingBalance = normalizeMoney(supplier.outstandingBalance !== undefined ? supplier.outstandingBalance : running);
+    const avgPurchaseValue = purchaseCount > 0 ? Math.round(grossPurchases / purchaseCount) : 0;
 
     return {
       supplier,
       ledgerEntries: activeEntries,
-      paymentsList: paymentsList.slice(0, 5),
+      paymentsList: paymentsList.reverse().slice(0, 5),
       summary: {
-        totalPurchases,
-        totalPayments,
+        grossPurchases: normalizeMoney(grossPurchases),
+        totalPurchases: normalizeMoney(grossPurchases),
+        purchaseReturns: normalizeMoney(totalReturns),
+        netPurchases: normalizeMoney(grossPurchases - totalReturns),
+        totalPayments: normalizeMoney(totalPayments),
+        totalRefunds: normalizeMoney(totalRefunds),
         closingBalance,
-        overdueAmount,
-        dueIn30Days,
+        overdueAmount: normalizeMoney(overdueAmount),
+        dueIn30Days: normalizeMoney(dueIn30Days),
         totalItemsPurchased,
         lastPurchaseDate,
         lastPaymentDate,
@@ -391,8 +512,8 @@ export const supplierService = {
       throw new AppError('Payment amount must be greater than zero', HTTP_STATUS.BAD_REQUEST);
     }
 
-    const prevBalance = Number(supplier.outstandingBalance) || 0;
-    const newBalance = prevBalance - amount;
+    const prevBalance = normalizeMoney(supplier.outstandingBalance || 0);
+    const newBalance = normalizeMoney(prevBalance - amount);
 
     const targetPurchaseId = data.purchaseId && mongoose.Types.ObjectId.isValid(data.purchaseId) ? data.purchaseId : null;
 
@@ -404,10 +525,11 @@ export const supplierService = {
       purchaseAmount: 0,
       paidAmount: amount,
       dueAmount: 0,
+      returnAmount: 0,
       runningBalance: newBalance,
       referenceNumber: data.referenceNumber || `PAY-${Date.now().toString().slice(-6)}`,
       notes: `${data.paymentMode || 'Cash'} Payment${data.notes ? ': ' + data.notes : ''}`,
-      date: data.date ? new Date(data.date) : new Date(),
+      date: parseTransactionTimestamp(data.date || data.paymentDate),
     };
 
     const entry = await SupplierLedger.create(paymentLedgerData);
@@ -425,8 +547,11 @@ export const supplierService = {
         }).lean().exec();
 
         const totalPaid = activePayments.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
-        purchase.paidAmount = totalPaid;
-        purchase.dueAmount = Math.max(0, Number(purchase.totalInvoiceAmount || 0) - totalPaid);
+        purchase.paidAmount = normalizeMoney(totalPaid);
+        purchase.dueAmount = Math.max(
+          0,
+          normalizeMoney(Number(purchase.totalInvoiceAmount || 0) - Number(purchase.advanceUsed || 0) - totalPaid - Number(purchase.returnAmount || 0))
+        );
         await purchase.save();
       }
     }
@@ -438,7 +563,17 @@ export const supplierService = {
   async calculateSupplierBalance(supplierId, userId) {
     if (!userId) throw new Error('userId is required');
     if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) return 0;
-    const ledger = await SupplierLedger.find({ userId, supplierId, isDeleted: { $ne: true } }).sort({ date: 1, createdAt: 1 }).exec();
+    const ledger = await SupplierLedger.find({ userId, supplierId, isDeleted: { $ne: true } }).sort({ date: 1, createdAt: 1, _id: 1 }).exec();
+
+    ledger.sort((a, b) => {
+      const timeA = getEffectiveTransactionTimestamp(a).getTime();
+      const timeB = getEffectiveTransactionTimestamp(b).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      const createdA = new Date(a.createdAt || 0).getTime();
+      const createdB = new Date(b.createdAt || 0).getTime();
+      if (createdA !== createdB) return createdA - createdB;
+      return (a._id?.toString() || '').localeCompare(b._id?.toString() || '');
+    });
 
     let balance = 0;
     const bulkOps = [];
@@ -453,6 +588,12 @@ export const supplierService = {
         }
       } else if (entry.transactionType === 'ADJUSTMENT') {
         balance += normalizeMoney(entry.purchaseAmount || 0) - normalizeMoney(entry.paidAmount || 0);
+      } else if (entry.transactionType === 'RETURN') {
+        const retAmt = normalizeMoney(entry.returnAmount || 0);
+        balance -= retAmt;
+      } else if (entry.transactionType === 'REFUND') {
+        const refAmt = normalizeMoney(entry.refundAmount || 0);
+        balance += refAmt;
       }
       balance = normalizeMoney(balance);
       if (entry.runningBalance !== balance) {
@@ -505,8 +646,11 @@ export const supplierService = {
         }).lean().exec();
 
         const totalPaid = remainingPayments.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
-        purchase.paidAmount = totalPaid;
-        purchase.dueAmount = Math.max(0, Number(purchase.totalInvoiceAmount || 0) - totalPaid);
+        purchase.paidAmount = normalizeMoney(totalPaid);
+        purchase.dueAmount = Math.max(
+          0,
+          normalizeMoney(Number(purchase.totalInvoiceAmount || 0) - Number(purchase.advanceUsed || 0) - totalPaid - Number(purchase.returnAmount || 0))
+        );
         await purchase.save();
       }
     }
@@ -548,8 +692,11 @@ export const supplierService = {
         }).lean().exec();
 
         const totalPaid = activePayments.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
-        purchase.paidAmount = totalPaid;
-        purchase.dueAmount = Math.max(0, Number(purchase.totalInvoiceAmount || 0) - totalPaid);
+        purchase.paidAmount = normalizeMoney(totalPaid);
+        purchase.dueAmount = Math.max(
+          0,
+          normalizeMoney(Number(purchase.totalInvoiceAmount || 0) - Number(purchase.advanceUsed || 0) - totalPaid - Number(purchase.returnAmount || 0))
+        );
         await purchase.save();
       }
     }

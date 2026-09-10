@@ -611,6 +611,7 @@
   .app-sidebar,
   .app-modal-backdrop,
   .customer-ledger-screen-ui,
+  .supplier-ledger-screen-ui,
   [class*="Sidebar"],
   [class*="BillingDrawer"] {
     display: none !important;
@@ -619,7 +620,8 @@
   /* Printable Document Container (Fixed A4 Desktop Width 194mm regardless of mobile viewport) */
   .printable-invoice-paper,
   .printable-ledger-document,
-  .customer-ledger-print {
+  .customer-ledger-print,
+  .supplier-ledger-print {
     display: block !important;
     position: relative !important;
     left: 0 !important;
@@ -634,12 +636,11 @@
     box-shadow: none !important;
     border: none !important;
     box-sizing: border-box !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
   }
 
   /* Printable Customer Ledger Table Layout (Fixed A4 width 194mm) */
-  .print-ledger-table {
+  .print-ledger-table,
+  .print-supplier-ledger-table {
     width: 194mm !important;
     max-width: 194mm !important;
     min-width: 194mm !important;
@@ -648,6 +649,68 @@
     margin: 8px 0 !important;
     box-sizing: border-box !important;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+  }
+
+  .print-supplier-ledger-table th,
+  .print-supplier-ledger-table td {
+    box-sizing: border-box !important;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    font-stretch: normal !important;
+    font-variant-numeric: tabular-nums !important;
+    transform: none !important;
+    text-transform: none !important;
+    padding: 4px 6px !important;
+    font-size: 9.5px !important;
+    line-height: 1.3 !important;
+    vertical-align: middle !important;
+  }
+
+  .print-supplier-ledger-table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(1),
+  .print-supplier-ledger-table td:nth-child(1) {
+    width: 25mm !important;
+    text-align: center !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(2),
+  .print-supplier-ledger-table td:nth-child(2) {
+    width: 20mm !important;
+    text-align: center !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(3),
+  .print-supplier-ledger-table td:nth-child(3) {
+    width: 35mm !important;
+    text-align: left !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(4),
+  .print-supplier-ledger-table td:nth-child(4) {
+    width: 32mm !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(5),
+  .print-supplier-ledger-table td:nth-child(5) {
+    width: 50mm !important;
+    text-align: right !important;
+    white-space: nowrap !important;
+  }
+
+  .print-supplier-ledger-table th:nth-child(6),
+  .print-supplier-ledger-table td:nth-child(6) {
+    width: 32mm !important;
+    text-align: right !important;
+    white-space: nowrap !important;
   }
 
   .print-ledger-table th,

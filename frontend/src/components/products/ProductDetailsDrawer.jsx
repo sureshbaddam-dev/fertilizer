@@ -4,6 +4,7 @@ import { X, Edit, Trash2, Tag, Layers, ArrowUpRight, ArrowDownLeft, Clock, Histo
 import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
 import { authService } from '../../services/authService';
+import { toast } from '../../contexts/ToastContext';
 
 export default function ProductDetailsDrawer({
   isOpen,
@@ -53,9 +54,10 @@ export default function ProductDetailsDrawer({
       queryClient.invalidateQueries({ queryKey: ['product-history-drawer', currentUserId, productId] });
       setEditModal({ isOpen: false, mode: 'selling', batch: null });
       setEditPriceInput('');
+      toast.success('Batch pricing updated successfully');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update batch price');
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update batch price');
     },
   });
 
@@ -162,7 +164,7 @@ export default function ProductDetailsDrawer({
   const handleSaveModalPrice = () => {
     const val = parseFloat(editPriceInput);
     if (isNaN(val) || val <= 0) {
-      alert('Please enter a valid price greater than 0');
+      toast.warning('Please enter a valid price greater than 0');
       return;
     }
     if (!editModal.batch) return;

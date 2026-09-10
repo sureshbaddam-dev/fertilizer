@@ -12,7 +12,7 @@ import { subscriptionService } from '../../services/subscriptionService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
-import { playNotificationChime } from '../../utils/soundUtils';
+import { playNotificationChime } from '../../utils/soundEffects';
 import { formatRelativeTimeIST, formatISTDate, calculateRemainingDays } from '../../utils/dateUtils';
 
 const NOTIF_CATEGORIES = ['All', 'Support Tickets', 'Admin Announcements'];

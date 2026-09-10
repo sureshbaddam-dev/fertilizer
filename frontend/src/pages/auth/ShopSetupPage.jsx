@@ -162,9 +162,6 @@ export default function ShopSetupPage() {
 
     setIsLoading(true);
     try {
-      const activeToken = authService.getAccessToken();
-      console.log(`[ShopSetupPage] Submitting completeOnboarding. Active token present: ${Boolean(activeToken)}, Len: ${activeToken ? activeToken.length : 0}`);
-
       const res = await authService.completeOnboarding({
         ownerName: ownerName.trim(),
         mobile: mobile.trim(),

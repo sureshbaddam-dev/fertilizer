@@ -24,17 +24,11 @@ export const salesInvoiceController = {
   },
 
   async createInvoice(req, res, next) {
-    const startTime = Date.now();
-    console.log(`[BILL TIMING] Request received: ${new Date().toISOString()}`);
     try {
       const userId = req.user._id;
-      const data = await salesInvoiceService.createInvoice(req.body, userId, startTime);
-      const totalDuration = Date.now() - startTime;
-      console.log(`[BILL TIMING] Total: ${totalDuration}ms`);
-      console.log(`[BILL TIMING] Response sent: ${totalDuration}ms`);
+      const data = await salesInvoiceService.createInvoice(req.body, userId);
       return sendSuccess(res, 'Invoice created successfully', data, HTTP_STATUS.CREATED);
     } catch (err) {
-      console.log(`[BILL TIMING] Failed after ${Date.now() - startTime}ms: ${err.message}`);
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ success: false, message: err.message });
     }
   },

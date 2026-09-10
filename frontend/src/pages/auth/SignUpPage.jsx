@@ -325,9 +325,6 @@ export default function SignUpPage() {
     setIsSubmitting(true);
 
     try {
-      const activeToken = authService.getAccessToken();
-      console.log(`[SignUpPage] Submitting completeOnboarding. Active token present: ${Boolean(activeToken)}, Len: ${activeToken ? activeToken.length : 0}`);
-
       const response = await authService.completeOnboarding({
         ownerName: ownerName.trim(),
         mobile: mobile.trim(),

@@ -66,7 +66,15 @@ const purchaseSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    advanceUsed: {
+      type: Number,
+      default: 0,
+    },
     dueAmount: {
+      type: Number,
+      default: 0,
+    },
+    returnAmount: {
       type: Number,
       default: 0,
     },

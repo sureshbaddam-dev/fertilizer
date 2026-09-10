@@ -5,6 +5,7 @@ import { productService } from '../../services/productService';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from '../../contexts/ToastContext';
 
 export default function DamageStockModal({ isOpen, onClose, products = [], onSaveDamage }) {
   const queryClient = useQueryClient();
@@ -101,6 +102,8 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
       queryClient.invalidateQueries(['dashboard-summary']);
       queryClient.invalidateQueries(['reports-bi']);
 
+      toast.success('Damaged stock recorded successfully');
+
       if (onSaveDamage) {
         onSaveDamage(response?.data?.data || payload);
       }
@@ -109,6 +112,7 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
       console.error('Error recording damaged stock:', err);
       const msg = err.response?.data?.message || err.message || 'Failed to record damaged stock';
       setErrorMessage(msg);
+      toast.error('Failed to record damaged stock', { description: msg });
     } finally {
       setIsSubmitting(false);
     }

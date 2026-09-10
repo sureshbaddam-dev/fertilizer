@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Receipt, Save, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { toast } from '../../contexts/ToastContext';
 
 export default function TaxesGstPage() {
   const queryClient = useQueryClient();
@@ -14,7 +15,6 @@ export default function TaxesGstPage() {
   const [defaultGst, setDefaultGst] = useState(18);
   const [gstNumber, setGstNumber] = useState('');
   const [taxInclusive, setTaxInclusive] = useState(true);
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     if (shopSettings) {
@@ -30,11 +30,10 @@ export default function TaxesGstPage() {
     mutationFn: (data) => settingService.updateSettings(data),
     onSuccess: () => {
       queryClient.invalidateQueries(['shop-settings']);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      toast.success('GST & Tax settings saved successfully');
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update GST settings');
+      toast.error('Failed to update GST settings', { description: err?.response?.data?.message || err?.message });
     },
   });
 
