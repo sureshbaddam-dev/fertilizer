@@ -41,6 +41,7 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
     const trimmedMandal = (formData.mandal || '').trim();
     const trimmedDistrict = (formData.district || '').trim();
 
+
     if (!trimmedMobile) {
       toast.warning('Mobile Number is required');
       setErrorMsg('Mobile Number is required');
@@ -52,6 +53,8 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
       setErrorMsg('Mobile Number must be exactly 10 digits');
       return;
     }
+
+
 
     setSaving(true);
 
@@ -80,7 +83,13 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
         onCustomerCreated(newCustomer);
       }
 
-      setFormData({ name: '', mobile: '', village: '', mandal: '', district: '' });
+      setFormData({
+        name: '',
+        mobile: '',
+        village: '',
+        mandal: '',
+        district: '',
+      });
       onClose();
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Failed to create customer';
@@ -205,6 +214,8 @@ export default function AddCustomerModal({ isOpen, onClose, onCustomerCreated })
               />
             </div>
           </div>
+
+
 
           {/* Action Buttons */}
           <div className="pt-3 flex items-center justify-end gap-2 border-t border-gray-100">

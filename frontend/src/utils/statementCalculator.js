@@ -1,28 +1,95 @@
 function parseTxDate(tx) {
   if (!tx) return new Date();
-  const raw = tx.rawDate || tx.date || tx.createdAt || tx.updatedAt;
+  const raw = tx.rawDate || tx.createdAt || tx.date || tx.updatedAt;
   if (!raw) return new Date();
-  const d = new Date(raw);
-  if (!isNaN(d.getTime())) return d;
+
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    return raw;
+  }
+
   if (typeof raw === 'string') {
-    const parts = raw.trim().split(/[-/ ]/);
+    const trimmed = raw.trim();
+    // If it's a full ISO timestamp with time (e.g. 2026-09-09T23:03:00.000Z), parse directly
+    if (trimmed.includes('T')) {
+      const d = new Date(trimmed);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // Otherwise, parse date parts (DD/MM/YYYY or YYYY-MM-DD)
+    const parts = trimmed.split(/[-/ ]/);
     if (parts.length === 3) {
       const p1 = parseInt(parts[0], 10);
       const p2 = parseInt(parts[1], 10) - 1;
       const p3 = parseInt(parts[2], 10);
-      if (p3 > 1000) {
-        const customD = new Date(p3, p2, p1);
-        if (!isNaN(customD.getTime())) return customD;
+      const year = p3 > 1000 ? p3 : p1;
+      const month = p3 > 1000 ? p2 : parseInt(parts[1], 10) - 1;
+      const day = p3 > 1000 ? p1 : parseInt(parts[2], 10);
+      const customD = new Date(year, month, day);
+
+      if (tx.time && typeof tx.time === 'string') {
+        const timeMatch = tx.time.trim().match(/(\d+):(\d+)(?::(\d+))?\s*(AM|PM)?/i);
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1], 10);
+          const minutes = parseInt(timeMatch[2], 10) || 0;
+          const seconds = parseInt(timeMatch[3], 10) || 0;
+          const ampm = timeMatch[4] ? timeMatch[4].toUpperCase() : null;
+          if (ampm === 'PM' && hours < 12) hours += 12;
+          if (ampm === 'AM' && hours === 12) hours = 0;
+          customD.setHours(hours, minutes, seconds, 0);
+        }
       }
+      if (!isNaN(customD.getTime())) return customD;
     }
+
+    const fallback = new Date(trimmed);
+    if (!isNaN(fallback.getTime())) return fallback;
   }
+
   return new Date();
+}
+
+function getTxTimestamp(tx) {
+  const d = tx.rawDateObj || parseTxDate(tx);
+  return d instanceof Date && !isNaN(d.getTime()) ? d.getTime() : 0;
+}
+
+/**
+ * Chronological Ascending comparator (Oldest first) for accurate running balance computation
+ */
+function compareTxChronologicalAsc(a, b) {
+  const timeA = getTxTimestamp(a);
+  const timeB = getTxTimestamp(b);
+  if (timeA !== timeB) return timeA - timeB;
+
+  if (a.type === 'Invoice' && b.type === 'Payment') return -1;
+  if (a.type === 'Payment' && b.type === 'Invoice') return 1;
+
+  const idA = String(a.id || a._id || a.refNo || '');
+  const idB = String(b.id || b._id || b.refNo || '');
+  return idA.localeCompare(idB);
+}
+
+/**
+ * Display Descending comparator (Newest / Latest first at TOP) for Customer Ledger UI display
+ */
+function compareTxDisplayDesc(a, b) {
+  const timeA = getTxTimestamp(a);
+  const timeB = getTxTimestamp(b);
+  if (timeA !== timeB) return timeB - timeA;
+
+  if (a.type === 'Payment' && b.type === 'Invoice') return -1;
+  if (a.type === 'Invoice' && b.type === 'Payment') return 1;
+
+  const idA = String(a.id || a._id || a.refNo || '');
+  const idB = String(b.id || b._id || b.refNo || '');
+  return idB.localeCompare(idA);
 }
 
 /**
  * Centralized Authoritative Customer Statement Calculator.
- * Computes exact Opening Balance, New Purchases, Payments, Closing Due, and Running Balance Transactions
+ * Computes New Purchases, Payments, Closing Due, and Running Balance Transactions
  * for Monthly, Custom Date, and Full History statement periods.
+ * Always returns transactions with LATEST at TOP (descending order) for display.
  */
 export function calculateCustomerStatement({
   transactions = [],
@@ -32,21 +99,22 @@ export function calculateCustomerStatement({
   fromDate = '', // 'YYYY-MM-DD'
   toDate = '', // 'YYYY-MM-DD'
 }) {
-  const rawList = Array.isArray(transactions) ? transactions : [];
+  const rawList = Array.isArray(transactions)
+    ? transactions.filter((tx) => tx && tx.type !== 'Opening Balance' && tx.type !== 'OPENING_BALANCE')
+    : [];
 
   if (statementType === 'FULL') {
-    let runningBal = Number(customer?.previousDue || 0);
-    let totalDebits = 0;
+    let runningBal = 0;
+    let totalPurchasesDebits = 0;
     let totalCredits = 0;
 
     const fullTxs = rawList
-      .filter(Boolean)
       .map((tx) => {
         const txDate = parseTxDate(tx);
         const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
         const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
 
-        totalDebits += debit;
+        totalPurchasesDebits += debit;
         totalCredits += credit;
 
         return {
@@ -56,31 +124,32 @@ export function calculateCustomerStatement({
           credit,
         };
       })
-      .sort((a, b) => (a.rawDateObj || 0) - (b.rawDateObj || 0));
+      .sort(compareTxChronologicalAsc);
 
     const finalTxs = fullTxs.map((tx) => {
       runningBal = runningBal + tx.debit - tx.credit;
       return {
         ...tx,
         balance: runningBal,
+        runningBalance: runningBal,
       };
     });
 
-    const openBal = Number(customer?.previousDue || 0);
-    const newPurchases = totalDebits;
+    const newPurchases = totalPurchasesDebits;
     const payments = totalCredits;
-    const closingDue = openBal + newPurchases - payments;
+    const closingDue = newPurchases - payments;
+    const displayList = [...finalTxs].sort(compareTxDisplayDesc);
 
     return {
       statementType: 'FULL',
       periodLabel: 'Full Historical Ledger',
       monthLabel: 'Full Ledger Statement',
-      openingBalance: openBal,
+      openingBalance: 0,
       newPurchases,
       payments,
       closingDue,
-      monthlyTransactions: finalTxs,
-      transactions: finalTxs,
+      monthlyTransactions: displayList,
+      transactions: displayList,
     };
   }
 
@@ -90,13 +159,14 @@ export function calculateCustomerStatement({
 
     let priorDebits = 0;
     let priorCredits = 0;
-    let periodDebits = 0;
+    let periodPurchases = 0;
     let periodCredits = 0;
 
     const periodList = [];
 
     rawList.filter(Boolean).forEach((tx) => {
       const txDate = parseTxDate(tx);
+      const isOp = tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE';
       const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
       const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
 
@@ -105,7 +175,9 @@ export function calculateCustomerStatement({
           priorDebits += debit;
           priorCredits += credit;
         } else if (txDate >= start && txDate <= end) {
-          periodDebits += debit;
+          if (!isOp) {
+            periodPurchases += debit;
+          }
           periodCredits += credit;
           periodList.push({
             ...tx,
@@ -117,9 +189,9 @@ export function calculateCustomerStatement({
       }
     });
 
-    periodList.sort((a, b) => (a.rawDateObj || 0) - (b.rawDateObj || 0));
+    periodList.sort(compareTxChronologicalAsc);
 
-    const openBal = Number(customer?.previousDue || 0) + priorDebits - priorCredits;
+    const openBal = priorDebits - priorCredits;
     let runningBal = openBal;
 
     const finalTxs = periodList.map((tx) => {
@@ -127,23 +199,25 @@ export function calculateCustomerStatement({
       return {
         ...tx,
         balance: runningBal,
+        runningBalance: runningBal,
       };
     });
 
-    const closingDue = openBal + periodDebits - periodCredits;
+    const closingDue = runningBal;
     const fromLabel = fromDate ? new Date(fromDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Beginning';
     const toLabel = toDate ? new Date(toDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Today';
+    const displayList = [...finalTxs].sort(compareTxDisplayDesc);
 
     return {
       statementType: 'CUSTOM',
       periodLabel: `${fromLabel} to ${toLabel}`,
       monthLabel: `${fromLabel} to ${toLabel}`,
       openingBalance: openBal,
-      newPurchases: periodDebits,
+      newPurchases: periodPurchases,
       payments: periodCredits,
       closingDue,
-      monthlyTransactions: finalTxs,
-      transactions: finalTxs,
+      monthlyTransactions: displayList,
+      transactions: displayList,
     };
   }
 
@@ -160,7 +234,7 @@ export function calculateCustomerStatement({
 
   let priorDebits = 0;
   let priorCredits = 0;
-  let monthDebits = 0;
+  let monthPurchases = 0;
   let monthCredits = 0;
 
   const monthList = [];
@@ -175,7 +249,7 @@ export function calculateCustomerStatement({
         priorDebits += debit;
         priorCredits += credit;
       } else if (txDate >= startOfMonth && txDate <= endOfMonth) {
-        monthDebits += debit;
+        monthPurchases += debit;
         monthCredits += credit;
         monthList.push({
           ...tx,
@@ -187,9 +261,9 @@ export function calculateCustomerStatement({
     }
   });
 
-  monthList.sort((a, b) => (a.rawDateObj || 0) - (b.rawDateObj || 0));
+  monthList.sort(compareTxChronologicalAsc);
 
-  const openBal = Number(customer?.previousDue || 0) + priorDebits - priorCredits;
+  const openBal = priorDebits - priorCredits;
   let runningBal = openBal;
 
   const finalTxs = monthList.map((tx) => {
@@ -197,21 +271,23 @@ export function calculateCustomerStatement({
     return {
       ...tx,
       balance: runningBal,
+      runningBalance: runningBal,
     };
   });
 
-  const closingDue = openBal + monthDebits - monthCredits;
+  const closingDue = runningBal;
+  const displayList = [...finalTxs].sort(compareTxDisplayDesc);
 
   return {
     statementType: 'MONTHLY',
     periodLabel: monthLabel,
     monthLabel,
     openingBalance: openBal,
-    newPurchases: monthDebits,
+    newPurchases: monthPurchases,
     payments: monthCredits,
     closingDue,
-    monthlyTransactions: finalTxs,
-    transactions: finalTxs,
+    monthlyTransactions: displayList,
+    transactions: displayList,
   };
 }
 
@@ -220,7 +296,6 @@ export function calculateCustomerStatement({
  */
 export function buildWhatsAppStatementMessage({
   monthLabel = '',
-  openingBalance = 0,
   newPurchases = 0,
   totalPurchases = 0,
   payments = 0,
@@ -235,7 +310,6 @@ export function buildWhatsAppStatementMessage({
   const fmt = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 
   let msg = `CUSTOMER ACCOUNT STATEMENT – ${monthUpper}\n\n`;
-  msg += `Opening Balance: ${fmt(openingBalance)}\n`;
 
   if (isFromBillDrawer && newPurchases > 0 && totalPurchases > newPurchases) {
     msg += `New Purchases: ${fmt(newPurchases)}\n`;

@@ -11,8 +11,17 @@ export default function FormDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden bg-slate-900/30 backdrop-blur-[3px] transition-opacity animate-in fade-in duration-200">
-      <div className="flex h-full w-full flex-col justify-between overflow-y-auto border-l border-slate-200 bg-white shadow-2xl animate-in slide-in-from-right duration-300 sm:w-[30rem]">
+    <div
+      className="fixed inset-0 z-50 flex justify-end overflow-hidden bg-slate-900/30 backdrop-blur-[3px] transition-opacity animate-in fade-in duration-200"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onClose) onClose();
+      }}
+    >
+      <div
+        className="flex h-full w-full flex-col justify-between overflow-y-auto border-l border-slate-200 bg-white shadow-2xl animate-in slide-in-from-right duration-300 sm:w-[30rem]"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Drawer Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 shadow-2xs">
@@ -22,7 +31,11 @@ export default function FormDrawer({
           </div>
 
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onClose) onClose();
+            }}
             className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
             title="Close Drawer"
           >
@@ -31,7 +44,7 @@ export default function FormDrawer({
         </div>
 
         {/* Drawer Body Form */}
-        <div className="flex-1 space-y-4 p-5">
+        <div className="flex-1 space-y-4 p-5" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
 

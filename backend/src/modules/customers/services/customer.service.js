@@ -2,8 +2,70 @@ import mongoose from 'mongoose';
 import { Customer } from '../models/customer.model.js';
 import { CustomerPayment } from '../models/customerPayment.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
+import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { logger } from '../../../config/logger.config.js';
 import { calculateInvoicePaymentStatus, normalizeMoney } from '../../../utils/pricingUtils.js';
+
+export async function generateNextPaymentReference(userId) {
+  if (!userId) throw new Error('userId is required');
+
+  // 1. Dynamic Shop Name & First Alphabet Extraction (Priority: Shop Name -> Fallback 'V')
+  let shopName = '';
+  try {
+    const settings = await ShopSettings.findOne({ userId }).lean().exec();
+    shopName = (settings?.shopName || settings?.name || '').trim();
+  } catch (err) {
+    logger.warn(`Could not fetch ShopSettings for payment prefix for user ${userId}:`, err);
+  }
+
+  let shopLetter = 'V';
+  if (shopName) {
+    const match = shopName.match(/[a-zA-Z]/);
+    if (match && match[0]) {
+      shopLetter = match[0].toUpperCase();
+    }
+  }
+
+  // 2. Year & Month (P + SHOP_INITIAL + YY + MM)
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0'); // '09' for Sept, '10' for Oct
+  const prefix = `P${shopLetter}${yy}${mm}`;
+
+  // 3. Find highest existing sequence number for this payment prefix
+  const prefixRegex = new RegExp(`^${prefix}(\\d+)$`, 'i');
+  const legacyPrefix = `P${shopLetter}${yy}${now.getMonth() + 1}`;
+  const legacyRegex = new RegExp(`^${legacyPrefix}(\\d+)$`, 'i');
+
+  const payments = await CustomerPayment.find({
+    userId,
+    $or: [
+      { refNo: { $regex: prefixRegex } },
+      { refNo: { $regex: legacyRegex } },
+    ],
+  })
+    .select('refNo')
+    .lean()
+    .exec();
+
+  let maxSeq = 0;
+  if (Array.isArray(payments) && payments.length > 0) {
+    for (const p of payments) {
+      if (p?.refNo) {
+        const match = p.refNo.match(prefixRegex) || p.refNo.match(legacyRegex);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+    }
+  }
+
+  const nextSeqStr = String(maxSeq + 1).padStart(2, '0');
+  return `${prefix}${nextSeqStr}`;
+}
 
 export const customerService = {
   async getAllCustomers(query = {}, userId) {
@@ -30,7 +92,7 @@ export const customerService = {
     const [customers, countsAgg] = await Promise.all([
       Customer.find(filter)
         .select(
-          '_id name mobile village mandal district address customerType type status totalPurchases totalPaid outstandingBalance advanceBalance creditLimit gstin createdAt updatedAt'
+          '_id name mobile village mandal district address customerType type status openingBalance openingBalanceType openingBalanceDate openingBalanceNotes totalPurchases totalPaid outstandingBalance advanceBalance creditLimit gstin createdAt updatedAt'
         )
         .sort({ name: 1 })
         .lean()
@@ -61,8 +123,38 @@ export const customerService = {
       else activeCustomers += cnt;
     });
 
+    const outOfSyncCustomerIds = [];
+    customers.forEach((c) => {
+      const totalDebits = Number(c.totalPurchases) || 0;
+      const totalCredits = Number(c.totalPaid) || 0;
+      const expectedDue = Math.round(Math.max(0, totalDebits - totalCredits));
+      const expectedAdv = Math.round(Math.max(0, totalCredits - totalDebits));
+
+      if (c.outstandingBalance !== expectedDue || c.advanceBalance !== expectedAdv) {
+        c.outstandingBalance = expectedDue;
+        c.advanceBalance = expectedAdv;
+        outOfSyncCustomerIds.push({
+          id: c._id,
+          outstandingBalance: expectedDue,
+          advanceBalance: expectedAdv,
+        });
+      }
+    });
+
+    if (outOfSyncCustomerIds.length > 0) {
+      Customer.bulkWrite(
+        outOfSyncCustomerIds.map((item) => ({
+          updateOne: {
+            filter: { _id: item.id },
+            update: { $set: { outstandingBalance: item.outstandingBalance, advanceBalance: item.advanceBalance } },
+          },
+        }))
+      ).catch((err) => logger.warn(`Error syncing customer balances in getAllCustomers: ${err.message}`));
+    }
+
     const totalOutstanding = customers.reduce((acc, c) => acc + (c.outstandingBalance || 0), 0);
     const customersWithDue = customers.filter((c) => (c.outstandingBalance || 0) > 0).length;
+    const totalAdvance = customers.reduce((acc, c) => acc + (c.advanceBalance || 0), 0);
 
     return {
       customers,
@@ -73,7 +165,7 @@ export const customerService = {
         blockedCustomers,
         totalOutstanding,
         customersWithDue,
-        advanceAmount: 0,
+        advanceAmount: totalAdvance,
       },
     };
   },
@@ -272,37 +364,73 @@ export const customerService = {
         _id: 1,
         amount: 1,
         invoiceId: 1,
+        invoiceNumber: 1,
+        paymentType: 1,
+        paymentMode: 1,
         date: 1,
         createdAt: 1,
         refNo: 1,
-        paymentMode: 1,
         notes: 1,
       }
     ).sort({ date: 1, createdAt: 1 }).lean().exec();
 
-    // Linked invoice IDs that already have a CustomerPayment record
-    const linkedInvoiceIds = new Set(
-      payments
-        .filter((p) => p.invoiceId)
-        .map((p) => p.invoiceId.toString())
-    );
+    let legacyPaidTotal = 0;
+    const directInvoicePaymentMap = new Map();
+    let advancePaymentSum = 0;
 
-    const totalPurchases = Math.round(invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0));
+    payments.forEach((p) => {
+      const amt = Number(p.amount) || 0;
+      if (amt <= 0) return;
 
-    // Sum canonical payments from CustomerPayment documents
-    let totalPaidRaw = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+      let linkedInvId = p.invoiceId ? p.invoiceId.toString() : null;
+      if (!linkedInvId && p.invoiceNumber) {
+        const matched = invoices.find((i) => (i.invoiceNumber || '').trim() === p.invoiceNumber.trim());
+        if (matched) linkedInvId = matched._id.toString();
+      }
+      if (!linkedInvId && p.refNo?.startsWith('PAY-BILL-')) {
+        const invNum = p.refNo.replace('PAY-BILL-', '').trim();
+        const matched = invoices.find((i) => (i.invoiceNumber || '').trim() === invNum);
+        if (matched) linkedInvId = matched._id.toString();
+      }
 
-    // Add paidAmount for legacy invoices that do NOT have a linked CustomerPayment
-    invoices.forEach((inv) => {
-      if (inv.paidAmount > 0 && !linkedInvoiceIds.has(inv._id.toString())) {
-        totalPaidRaw += Number(inv.paidAmount) || 0;
+      const pType = p.paymentType || (linkedInvId ? 'INVOICE_PAYMENT' : 'GENERAL_PAYMENT');
+
+      if (pType === 'ADVANCE') {
+        advancePaymentSum += amt;
+      } else if (linkedInvId) {
+        const curr = directInvoicePaymentMap.get(linkedInvId) || 0;
+        directInvoicePaymentMap.set(linkedInvId, curr + amt);
+      } else {
+        advancePaymentSum += amt;
       }
     });
 
-    const totalPaid = Math.round(totalPaidRaw);
+    let totalInvoiceDueSum = 0;
+    let totalInvoicePaidSum = 0;
+
+    invoices.forEach((inv) => {
+      const invIdStr = inv._id.toString();
+      const invTotal = Math.max(0, Number(inv.totalAmount || 0));
+      let invPaid = 0;
+      if (directInvoicePaymentMap.has(invIdStr)) {
+        invPaid = directInvoicePaymentMap.get(invIdStr);
+      } else {
+        invPaid = Math.max(0, Number(inv.paidAmount || 0));
+        legacyPaidTotal += invPaid;
+      }
+      const invDue = Math.max(0, invTotal - invPaid);
+      totalInvoicePaidSum += invPaid;
+      totalInvoiceDueSum += invDue;
+    });
+
+    const totalPurchases = Math.round(invoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0));
+    const totalPaymentsSum = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    const totalPaid = Math.round(totalPaymentsSum + legacyPaidTotal);
+
     const netBalance = totalPurchases - totalPaid;
-    const outstandingBalance = Math.max(0, netBalance);
-    const advanceBalance = Math.max(0, -netBalance);
+    const outstandingBalance = Math.round(Math.max(0, netBalance));
+    const advanceBalance = Math.round(Math.max(0, -netBalance));
+
     const creditLimit = Number(customer.creditLimit || 50000);
     const availableLimit = Math.max(0, creditLimit - outstandingBalance + advanceBalance);
 
@@ -323,40 +451,14 @@ export const customerService = {
       }
     );
 
-    const invoiceBulkOps = [];
-    for (const inv of invoices) {
-      const invTotal = Number(inv.totalAmount) || 0;
-      const effectiveDue = Math.max(0, invTotal - (inv.paidAmount || 0));
-      const newStatus = calculateInvoicePaymentStatus(invTotal, inv.paidAmount, effectiveDue, inv.status);
-      const newDueStatus = effectiveDue <= 0.01 ? 'No Due' : 'Due In 30 Days';
-
-      if (
-        inv.dueAmount !== effectiveDue ||
-        inv.status !== newStatus ||
-        inv.dueStatus !== newDueStatus
-      ) {
-        inv.dueAmount = effectiveDue;
-        inv.status = newStatus;
-        inv.dueStatus = newDueStatus;
-        invoiceBulkOps.push({
-          updateOne: {
-            filter: { _id: inv._id },
-            update: { $set: { dueAmount: effectiveDue, status: newStatus, dueStatus: newDueStatus } },
-          },
-        });
-      }
-    }
-
-    if (invoiceBulkOps.length > 0) {
-      await SalesInvoice.bulkWrite(invoiceBulkOps);
-    }
-
     return {
       customer,
       invoices,
       payments,
       totalPurchases,
       totalPaid,
+      totalInvoicePaid: totalInvoicePaidSum,
+      totalInvoiceDue: totalInvoiceDueSum,
       outstandingBalance,
       advanceBalance,
       creditLimit,
@@ -369,41 +471,82 @@ export const customerService = {
     const calcData = await this.calculateCustomerBalance(id, userId);
     if (!calcData) return null;
 
-    const { customer, invoices, payments, totalPurchases, totalPaid, outstandingBalance, advanceBalance, creditLimit, availableLimit } = calcData;
+    const {
+      customer,
+      invoices,
+      payments,
+      totalPurchases,
+      totalPaid,
+      totalInvoicePaid,
+      totalInvoiceDue,
+      outstandingBalance,
+      advanceBalance,
+      creditLimit,
+      availableLimit,
+    } = calcData;
 
-    // Track payment IDs that are allocated/linked to invoices
-    const allocatedPaymentIds = new Set();
-    const invoicePaymentMap = new Map(); // invoiceId -> sumOfPayments
+    // Map payments to linked invoices (by invoiceId, invoiceNumber, or PAY-BILL- refNo)
+    const invoicePaymentMap = new Map();
+    const otherPayments = [];
 
     payments.forEach((p) => {
-      let invId = p.invoiceId ? p.invoiceId.toString() : null;
-      if (!invId && p.refNo?.startsWith('PAY-BILL-')) {
+      const amt = Number(p.amount) || 0;
+      if (amt <= 0) return;
+
+      let matchedInv = null;
+      if (p.invoiceId) {
+        matchedInv = invoices.find((i) => i._id.toString() === p.invoiceId.toString());
+      }
+      if (!matchedInv && p.invoiceNumber) {
+        matchedInv = invoices.find((i) => (i.invoiceNumber || '').trim() === p.invoiceNumber.trim());
+      }
+      if (!matchedInv && p.refNo?.startsWith('PAY-BILL-')) {
         const invNum = p.refNo.replace('PAY-BILL-', '').trim();
-        const matchedInv = invoices.find((i) => i.invoiceNumber === invNum);
-        if (matchedInv) invId = matchedInv._id.toString();
+        matchedInv = invoices.find((i) => (i.invoiceNumber || '').trim() === invNum);
       }
 
-      if (invId) {
-        allocatedPaymentIds.add((p._id || p.id).toString());
-        const currentSum = invoicePaymentMap.get(invId) || 0;
-        invoicePaymentMap.set(invId, currentSum + (Number(p.amount) || 0));
+      if (matchedInv) {
+        const invIdStr = matchedInv._id.toString();
+        const existing = invoicePaymentMap.get(invIdStr) || { totalPayment: 0, paymentRecords: [] };
+        existing.totalPayment += amt;
+        existing.paymentRecords.push(p);
+        invoicePaymentMap.set(invIdStr, existing);
+      } else {
+        otherPayments.push(p);
       }
     });
 
-    const invoiceTransactions = invoices.map((inv) => {
+    const invoiceTransactions = [];
+    const paymentTransactions = [];
+
+    invoices.forEach((inv) => {
       const invTotal = Number(inv.totalAmount) || 0;
       const invIdStr = inv._id.toString();
+      const paymentInfo = invoicePaymentMap.get(invIdStr);
 
-      // Sum of explicit payments linked to this invoice
-      const explicitAllocated = invoicePaymentMap.get(invIdStr) || 0;
+      let allocatedCredit = 0;
+      let paymentModeVal = inv.paymentMode || 'Cash';
 
-      // Fallback for legacy invoices without CustomerPayment doc
-      const invPaid = Number(inv.paidAmount) || 0;
-      const totalCredit = explicitAllocated > 0 ? explicitAllocated : invPaid;
+      if (paymentInfo) {
+        allocatedCredit = paymentInfo.totalPayment;
+        if (paymentInfo.paymentRecords.length > 0 && paymentInfo.paymentRecords[0].paymentMode) {
+          paymentModeVal = paymentInfo.paymentRecords[0].paymentMode;
+        }
+      } else {
+        allocatedCredit = Math.min(invTotal, Number(inv.paidAmount || 0));
+      }
 
-      const invoiceDue = Math.max(0, invTotal - totalCredit);
+      const invPaid = allocatedCredit;
+      const invDue = Math.max(0, invTotal - invPaid);
+      const currentStatus = calculateInvoicePaymentStatus(invTotal, invPaid, invDue, inv.status);
 
-      return {
+      inv.currentPaid = invPaid;
+      inv.currentDue = invDue;
+      inv.currentStatus = currentStatus;
+
+      const hasSeparatePaymentRecords = paymentInfo && paymentInfo.paymentRecords.length > 0;
+
+      invoiceTransactions.push({
         id: invIdStr,
         date: new Date(inv.date || inv.createdAt).toLocaleDateString('en-IN', {
           day: '2-digit',
@@ -420,44 +563,89 @@ export const customerService = {
         type: 'Invoice',
         particulars: `Purchase - ${inv.items?.length || 1} Items`,
         debit: invTotal,
-        credit: totalCredit,
-        dueAmount: invoiceDue,
-        paymentMode: inv.paymentMode || 'Cash',
-        status: calculateInvoicePaymentStatus(invTotal, totalCredit, invoiceDue, inv.status),
+        credit: hasSeparatePaymentRecords ? 0 : invPaid,
+        dueAmount: invDue,
+        paymentMode: paymentModeVal,
+        status: currentStatus,
         items: inv.items || [],
         subtotal: inv.subtotal || invTotal,
         discountAmount: inv.discountAmount || 0,
         taxAmount: inv.taxAmount || 0,
-        paidAmount: totalCredit,
-      };
+        paidAmount: invPaid,
+      });
+
+      if (hasSeparatePaymentRecords) {
+        paymentInfo.paymentRecords.forEach((p) => {
+          const pIdStr = (p._id || p.id).toString();
+          paymentTransactions.push({
+            id: pIdStr,
+            date: new Date(p.date || p.createdAt).toLocaleDateString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            }),
+            time: new Date(p.date || p.createdAt).toLocaleTimeString('en-IN', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            }),
+            rawDate: p.date || p.createdAt,
+            refNo: p.refNo || `PAY-${pIdStr.slice(-6)}`,
+            type: 'Payment',
+            paymentType: p.paymentType || 'INVOICE_PAYMENT',
+            particulars: p.notes || `Payment on Bill #${inv.invoiceNumber}`,
+            debit: 0,
+            credit: Number(p.amount) || 0,
+            paymentMode: p.paymentMode || 'Cash',
+            notes: p.notes || '',
+            invoiceId: invIdStr,
+            invoiceNumber: inv.invoiceNumber,
+          });
+        });
+      }
     });
 
-    // Standalone / unlinked payments (e.g. general advance payments not tied to an invoice)
-    const unlinkedPayments = payments.filter((p) => !allocatedPaymentIds.has((p._id || p.id).toString()));
+    otherPayments.forEach((p) => {
+      const pIdStr = (p._id || p.id).toString();
+      const amt = Number(p.amount) || 0;
+      if (amt > 0) {
+        const pType = p.paymentType || 'GENERAL_PAYMENT';
+        let particularsText = p.notes || '';
+        if (!particularsText) {
+          if (pType === 'ADVANCE') {
+            particularsText = `Received Advance (${p.paymentMode || 'Cash'})`;
+          } else {
+            particularsText = `Received Payment (${p.paymentMode || 'Cash'})`;
+          }
+        }
 
-    const standalonePaymentTransactions = unlinkedPayments.map((p) => ({
-      id: (p._id || p.id).toString(),
-      date: new Date(p.date || p.createdAt).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }),
-      time: new Date(p.date || p.createdAt).toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-      }),
-      rawDate: p.date || p.createdAt,
-      refNo: p.refNo || `PAY-${(p._id || p.id).toString().slice(-6)}`,
-      type: 'Payment',
-      particulars: p.notes || `Received Payment (${p.paymentMode || 'Cash'})`,
-      debit: 0,
-      credit: Number(p.amount) || 0,
-      paymentMode: p.paymentMode || 'Cash',
-      notes: p.notes || '',
-    }));
+        paymentTransactions.push({
+          id: pIdStr,
+          date: new Date(p.date || p.createdAt).toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          }),
+          time: new Date(p.date || p.createdAt).toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          }),
+          rawDate: p.date || p.createdAt,
+          refNo: p.refNo || `PAY-${pIdStr.slice(-6)}`,
+          type: pType === 'ADVANCE' ? 'Advance' : 'Payment',
+          paymentType: pType,
+          particulars: particularsText,
+          debit: 0,
+          credit: amt,
+          paymentMode: p.paymentMode || 'Cash',
+          notes: p.notes || '',
+        });
+      }
+    });
 
-    const allTx = [...invoiceTransactions, ...standalonePaymentTransactions];
+    // Ledger transactions contain ONLY Invoices, Payments, and Advances (Starts at balance = 0)
+    const allTx = [...invoiceTransactions, ...paymentTransactions];
     allTx.sort((a, b) => {
       const diff = new Date(a.rawDate) - new Date(b.rawDate);
       if (diff !== 0) return diff;
@@ -500,6 +688,8 @@ export const customerService = {
         createdAt: customer.createdAt,
         totalPurchases,
         totalPaid,
+        totalInvoicePaid,
+        totalInvoiceDue,
         outstandingBalance,
         advanceBalance,
         creditLimit,
@@ -518,7 +708,7 @@ export const customerService = {
           year: 'numeric',
         }),
         amount: inv.totalAmount,
-        status: inv.status,
+        status: inv.currentStatus || inv.status,
       })),
     };
   },
@@ -535,11 +725,18 @@ export const customerService = {
       throw new Error('Payment amount must be greater than 0');
     }
 
-    const refNo = (paymentData.refNo || '').trim() || `PAY-${Date.now().toString().slice(-6)}`;
+    const refNo = (paymentData.refNo || '').trim() || (await generateNextPaymentReference(userId));
     const paymentMode = paymentData.paymentMode || 'Cash';
-    const notes = (paymentData.notes || '').trim();
     const invoiceId = paymentData.invoiceId || null;
     const invoiceNumber = (paymentData.invoiceNumber || '').trim();
+    let paymentType = paymentData.paymentType || (invoiceId || invoiceNumber ? 'INVOICE_PAYMENT' : 'GENERAL_PAYMENT');
+    let notes = (paymentData.notes || '').trim();
+
+    if (paymentType === 'INVOICE_PAYMENT' && !notes && invoiceNumber) {
+      notes = `Payment on Sales Bill #${invoiceNumber}`;
+    } else if (!notes) {
+      notes = 'Payment Received';
+    }
 
     if (refNo) {
       const existingPay = await CustomerPayment.findOne({ userId, customer: customer._id, refNo }).exec();
@@ -556,6 +753,7 @@ export const customerService = {
       customerMobile: customer.mobile,
       invoiceId,
       invoiceNumber,
+      paymentType,
       amount,
       paymentMode,
       refNo,
@@ -565,7 +763,7 @@ export const customerService = {
 
     await this.calculateCustomerBalance(customer._id, userId);
 
-    logger.info(`💰 Payment recorded: ₹${amount} for Customer ${customer.name} (Ref: ${refNo})`);
+    logger.info(`💰 Payment recorded: ₹${amount} (${paymentType}) for Customer ${customer.name} (Ref: ${refNo})`);
     return payment;
   },
 
@@ -637,7 +835,7 @@ export const customerService = {
 
     const nameTrimmed = (data.name || '').trim();
 
-    return await Customer.create({
+    const customer = await Customer.create({
       ...data,
       userId,
       name: nameTrimmed || `Customer ${mobileTrimmed.slice(-4)}`,
@@ -647,8 +845,13 @@ export const customerService = {
       totalPurchases: 0,
       totalPaid: 0,
       outstandingBalance: 0,
+      advanceBalance: 0,
       creditLimit: data.creditLimit || 50000,
     });
+
+    await this.calculateCustomerBalance(customer._id, userId);
+
+    return await Customer.findById(customer._id).lean().exec();
   },
 
   async updateCustomer(id, data, userId) {
@@ -657,7 +860,12 @@ export const customerService = {
     delete cleanData.userId;
     delete cleanData._id;
 
-    return await Customer.findOneAndUpdate({ _id: id, userId }, { $set: cleanData }, { new: true, runValidators: true }).lean().exec();
+    const updated = await Customer.findOneAndUpdate({ _id: id, userId }, { $set: cleanData }, { new: true, runValidators: true }).exec();
+    if (updated) {
+      await this.calculateCustomerBalance(updated._id, userId);
+    }
+
+    return await Customer.findById(id).lean().exec();
   },
 
   async deleteCustomer(id, userId) {

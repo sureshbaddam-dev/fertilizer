@@ -22,16 +22,14 @@ import {
   Trash2,
   Eye,
   Edit3,
-  Search,
   Calendar,
   Upload,
 } from 'lucide-react';
 import { customerService } from '../../services/customerService';
-import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
-import { generateLedgerPdf, printLedgerPdf, buildLedgerPdfDoc, generatePaymentReceiptPdf, generateMonthlyStatementPdf, printMonthlyStatementPdf, buildMonthlyStatementPdfDoc } from '../../utils/pdfGenerator';
+import { generateLedgerPdf, generatePaymentReceiptPdf, generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage, formatCustomerLedgerAddress } from '../../utils/statementCalculator';
-import PdfCanvasViewer from '../../components/PdfCanvasViewer';
+import EditCustomerModal from '../../components/customers/EditCustomerModal';
 import vedixaLogoImg from '../../assets/vedixa_logo.png';
 import { toast } from '../../contexts/ToastContext';
 
@@ -43,13 +41,44 @@ const MONTH_NAMES = [
 const YEAR_OPTIONS = ['2026', '2025', '2024', '2023', '2022'];
 
 // Record Payment Modal Dialog Component
-function RecordPaymentModal({ isOpen, onClose, customer }) {
+function RecordPaymentModal({ isOpen, onClose, customer, initialPaymentType = 'OPENING_BALANCE_PAYMENT', rawInvoices = [] }) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
+  const [paymentType, setPaymentType] = useState(initialPaymentType);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [refNo, setRefNo] = useState('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const unpaidInvoices = useMemo(() => {
+    return (rawInvoices || []).filter((inv) => {
+      const tot = Number(inv.totalAmount || 0);
+      const paid = Number(inv.currentPaid !== undefined ? inv.currentPaid : inv.paidAmount || 0);
+      const due = Number(inv.currentDue !== undefined ? inv.currentDue : Math.max(0, tot - paid));
+      return due > 0;
+    });
+  }, [rawInvoices]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPaymentType(initialPaymentType);
+      setAmount('');
+      setNotes('');
+      setRefNo('');
+      setErrorMsg('');
+      if (initialPaymentType === 'INVOICE_PAYMENT' && unpaidInvoices.length > 0) {
+        setSelectedInvoiceId(unpaidInvoices[0]._id || unpaidInvoices[0].id || '');
+      } else {
+        setSelectedInvoiceId('');
+      }
+    }
+  }, [isOpen, initialPaymentType, unpaidInvoices]);
+
+  const selectedInvoice = useMemo(() => {
+    if (!selectedInvoiceId) return null;
+    return (rawInvoices || []).find((inv) => (inv._id || inv.id)?.toString() === selectedInvoiceId.toString());
+  }, [selectedInvoiceId, rawInvoices]);
 
   const paymentMutation = useMutation({
     mutationFn: (data) => customerService.recordPayment(customer?._id || customer?.id, data),
@@ -87,9 +116,24 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
       return;
     }
 
+    if (paymentType === 'INVOICE_PAYMENT') {
+      if (!selectedInvoice) {
+        setErrorMsg('Please select the invoice for this payment');
+        return;
+      }
+      const invDue = Number(selectedInvoice.currentDue !== undefined ? selectedInvoice.currentDue : (selectedInvoice.totalAmount - (selectedInvoice.paidAmount || 0)));
+      if (numAmount > invDue) {
+        setErrorMsg(`Payment amount (₹${numAmount.toLocaleString('en-IN')}) cannot exceed the invoice remaining due of ₹${invDue.toLocaleString('en-IN')}. Please record extra payments in Opening Balance or Customer Ledger.`);
+        return;
+      }
+    }
+
     setErrorMsg('');
     paymentMutation.mutate({
       amount: numAmount,
+      paymentType,
+      invoiceId: paymentType === 'INVOICE_PAYMENT' ? (selectedInvoice?._id || selectedInvoice?.id) : null,
+      invoiceNumber: paymentType === 'INVOICE_PAYMENT' ? (selectedInvoice?.invoiceNumber || '') : '',
       paymentMode,
       refNo: refNo.trim(),
       notes: notes.trim(),
@@ -108,7 +152,7 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
         <div className="flex items-center justify-between border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 font-bold text-gray-900">
             <Plus className="w-4 h-4 text-[#047857]" />
-            <span>Record Payment (F3)</span>
+            <span>Record Payment</span>
           </div>
           <button
             type="button"
@@ -131,6 +175,54 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
             <span className="font-bold text-gray-900 block">{customer?.name}</span>
             <span className="text-[11px] text-gray-500 font-mono">{customer?.mobile}</span>
           </div>
+
+          {/* Payment Type Selection */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-gray-700 block">Payment Purpose / Type *</label>
+            <select
+              value={paymentType}
+              onChange={(e) => {
+                setPaymentType(e.target.value);
+                setErrorMsg('');
+                if (e.target.value === 'INVOICE_PAYMENT' && unpaidInvoices.length > 0 && !selectedInvoiceId) {
+                  setSelectedInvoiceId(unpaidInvoices[0]._id || unpaidInvoices[0].id || '');
+                }
+              }}
+              className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:border-[#047857]"
+            >
+              <option value="GENERAL_PAYMENT">General Customer Payment</option>
+              <option value="INVOICE_PAYMENT">Bill / Invoice Payment</option>
+              <option value="ADVANCE">Advance / Credit Deposit</option>
+            </select>
+          </div>
+
+          {/* Invoice Selection Dropdown */}
+          {paymentType === 'INVOICE_PAYMENT' && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-gray-700 block">Select Invoice *</label>
+              {unpaidInvoices.length > 0 ? (
+                <select
+                  value={selectedInvoiceId}
+                  onChange={(e) => setSelectedInvoiceId(e.target.value)}
+                  className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#047857]"
+                >
+                  {unpaidInvoices.map((inv) => {
+                    const invId = inv._id || inv.id;
+                    const due = Number(inv.currentDue !== undefined ? inv.currentDue : (inv.totalAmount - (inv.paidAmount || 0)));
+                    return (
+                      <option key={invId} value={invId}>
+                        {inv.invoiceNumber} — Due: ₹{due.toLocaleString('en-IN')} (Total: ₹{Number(inv.totalAmount || 0).toLocaleString('en-IN')})
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <div className="p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-[11px]">
+                  All invoices are fully paid! You can record payments against Opening Balance or Advance.
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-[11px] font-semibold text-gray-700 block">Payment Amount (₹) *</label>
@@ -165,7 +257,7 @@ function RecordPaymentModal({ isOpen, onClose, customer }) {
               type="text"
               value={refNo}
               onChange={(e) => setRefNo(e.target.value)}
-              placeholder="e.g. PAY-1002"
+              placeholder="e.g. PS2691"
               className="w-full h-8 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono text-gray-900 focus:outline-none focus:border-[#047857]"
             />
           </div>
@@ -359,9 +451,16 @@ export default function CustomerLedgerPage() {
 
   // Modals Visibility
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentModalType, setPaymentModalType] = useState('OPENING_BALANCE_PAYMENT');
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+  const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
   const [isWhatsappLedgerPreviewOpen, setIsWhatsappLedgerPreviewOpen] = useState(false);
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
+
+  const handleOpenRecordPayment = (type = 'OPENING_BALANCE_PAYMENT') => {
+    setPaymentModalType(type);
+    setIsPaymentModalOpen(true);
+  };
   const defaultMonthStr = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -470,6 +569,7 @@ export default function CustomerLedgerPage() {
     };
   }, [apiResponse, customerId]);
 
+
   const avatarInitials = useMemo(() => {
     const nameStr = customer.name || 'CU';
     const parts = nameStr.trim().split(' ');
@@ -537,29 +637,25 @@ export default function CustomerLedgerPage() {
     return list;
   }, [monthlyCalculation, appliedTxType, appliedRefType]);
 
-  // Single Source of Truth: Dynamic Financial Summary Metrics for Top Cards
+  // Single Source of Truth: Dynamic Financial Summary Metrics for Top Cards (4 Cards)
   const dynamicTopMetrics = useMemo(() => {
     const isFull = statementType === 'FULL';
     const isMonthly = statementType === 'MONTHLY';
 
-    const openingBal = Number(monthlyCalculation.openingBalance || 0);
     const purchases = Number(monthlyCalculation.newPurchases || (isFull ? customer.totalPurchases : 0) || 0);
     const paid = Number(monthlyCalculation.payments || (isFull ? customer.totalPaid : 0) || 0);
-    const netBal = Number(monthlyCalculation.closingDue ?? (isFull ? customer.outstandingBalance : 0) ?? 0);
+    const netBal = Number(monthlyCalculation.closingDue != null ? monthlyCalculation.closingDue : (isFull ? (customer.outstandingBalance || 0) : 0));
     const outstanding = netBal > 0 ? netBal : 0;
     const advance = netBal < 0 ? Math.abs(netBal) : (isFull ? Number(customer.advanceBalance || 0) : 0);
 
     return {
-      showOpeningBalance: !isFull,
-      openingBalance: openingBal,
       totalPurchases: purchases,
       totalPaid: paid,
       outstanding,
       advanceBalance: advance,
-      openingLabel: 'Opening Balance',
-      purchasesLabel: isFull ? 'Total Purchases' : (isMonthly ? 'Monthly Purchases' : 'Period Purchases'),
+      purchasesLabel: isFull ? 'Purchases' : (isMonthly ? 'Monthly Purchases' : 'Period Purchases'),
       paidLabel: isFull ? 'Total Paid' : (isMonthly ? 'Monthly Paid' : 'Period Paid'),
-      outstandingLabel: isFull ? 'Outstanding' : (isMonthly ? 'Closing Due' : 'Period Due'),
+      outstandingLabel: isFull ? 'Total Outstanding' : (isMonthly ? 'Closing Due' : 'Period Due'),
       advanceLabel: isFull ? 'Advance Balance' : 'Period Advance',
     };
   }, [statementType, monthlyCalculation, customer]);
@@ -735,7 +831,6 @@ export default function CustomerLedgerPage() {
 
     const waMsg = buildWhatsAppStatementMessage({
       monthLabel: monthlyCalculation?.monthLabel || 'Statement',
-      openingBalance: monthlyCalculation.openingBalance,
       totalPurchases: monthlyCalculation.newPurchases,
       payments: monthlyCalculation.payments,
       due: monthlyCalculation.closingDue,
@@ -802,6 +897,89 @@ export default function CustomerLedgerPage() {
     }
   };
 
+  // Formatting & Interaction Helpers for 5-Column Customer Ledger
+  const formatLedgerDate = (dateVal, rawDate) => {
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+    }
+    if (typeof dateVal === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateVal.trim())) {
+      return dateVal.trim();
+    }
+    if (dateVal) {
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      }
+    }
+    return dateVal || '';
+  };
+
+  const formatLedgerTime = (timeVal, rawDate) => {
+    if (timeVal && typeof timeVal === 'string' && (timeVal.includes('AM') || timeVal.includes('PM') || timeVal.includes('am') || timeVal.includes('pm'))) {
+      return timeVal;
+    }
+    if (rawDate) {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+      }
+    }
+    return timeVal || '12:00 PM';
+  };
+
+  const formatLedgerParticulars = (tx) => {
+    if (tx.type === 'Invoice') {
+      return tx.particulars?.startsWith('Purchase') ? tx.particulars : `Purchase – ${tx.items ? tx.items.length : 1} Items`;
+    }
+    if (tx.type === 'Advance') {
+      return `Received Advance (${tx.paymentMode || 'Cash'})`;
+    }
+    // Payment
+    return `Received Payment (${tx.paymentMode || 'Cash'})`;
+  };
+
+  const renderBalanceCell = (tx) => {
+    const bal = Number(tx.runningBalance !== undefined ? tx.runningBalance : (tx.balance || 0));
+    if (bal > 0) {
+      return (
+        <span className="text-red-600 font-black">
+          ₹{Math.round(Math.abs(bal)).toLocaleString('en-IN')} Dr
+        </span>
+      );
+    }
+    if (bal < 0) {
+      return (
+        <span className="text-emerald-700 font-black">
+          ₹{Math.round(Math.abs(bal)).toLocaleString('en-IN')} Cr
+        </span>
+      );
+    }
+    return <span className="text-gray-700 font-bold">₹0</span>;
+  };
+
+  const handleRowClick = (tx) => {
+    if (tx.type === 'Invoice') {
+      navigate(`/invoices/${tx.refNo || tx.id}`);
+    } else if (tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE') {
+      setIsEditCustomerOpen(true);
+    } else {
+      setSelectedReceiptPayment(tx);
+    }
+  };
+
   return (
     <div className="w-full pb-10 space-y-4 sm:space-y-5 font-sans text-xs">
       {/* ON-SCREEN UI CONTAINER (HIDDEN DURING PRINT) */}
@@ -830,7 +1008,7 @@ export default function CustomerLedgerPage() {
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
           <button
             type="button"
-            onClick={() => setIsPaymentModalOpen(true)}
+            onClick={() => handleOpenRecordPayment('OPENING_BALANCE_PAYMENT')}
             className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-[#047857] hover:bg-[#036448] text-white font-bold rounded-xl text-[11px] sm:text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -902,57 +1080,45 @@ export default function CustomerLedgerPage() {
                 </div>
               </div>
 
-              {/* DYNAMIC FINANCIAL SUMMARY CARDS */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-2 sm:gap-2.5 w-full lg:w-auto border-t lg:border-t-0 lg:border-l border-gray-100 pt-3 lg:pt-0 lg:pl-4">
-                {/* 1. Opening Balance Card (ONLY for Monthly Statement & Custom Date) */}
-                {dynamicTopMetrics.showOpeningBalance && (
-                  <div className="p-2 sm:p-2.5 bg-slate-50/90 rounded-xl border border-slate-200 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase block truncate">
-                      {dynamicTopMetrics.openingLabel}
-                    </span>
-                    <span className="font-mono font-bold text-slate-800 text-xs sm:text-sm block truncate">
-                      ₹ {dynamicTopMetrics.openingBalance.toLocaleString('en-IN')}.00
-                    </span>
-                  </div>
-                )}
-
-                {/* 2. Purchases Card */}
-                <div className="p-2 sm:p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/80 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
+              {/* DYNAMIC FINANCIAL SUMMARY CARDS: 4 CLEAN CARDS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 w-full lg:w-auto border-t lg:border-t-0 lg:border-l border-gray-100 pt-3 lg:pt-0 lg:pl-4">
+                {/* 1. Total Purchases */}
+                <div className="p-2 sm:p-2.5 bg-blue-50/80 rounded-xl border border-blue-200/80 text-left">
                   <span className="text-[10px] text-blue-600 font-bold uppercase block truncate">
-                    {dynamicTopMetrics.purchasesLabel}
+                    Purchases
                   </span>
-                  <span className="font-mono font-bold text-blue-700 text-xs sm:text-sm block truncate">
-                    ₹ {dynamicTopMetrics.totalPurchases.toLocaleString('en-IN')}.00
-                  </span>
-                </div>
-
-                {/* 3. Paid Card */}
-                <div className="p-2 sm:p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 w-full lg:w-auto lg:min-w-[90px] text-left lg:text-right">
-                  <span className="text-[10px] text-emerald-600 font-bold uppercase block truncate">
-                    {dynamicTopMetrics.paidLabel}
-                  </span>
-                  <span className="font-mono font-bold text-emerald-700 text-xs sm:text-sm block truncate">
-                    ₹ {dynamicTopMetrics.totalPaid.toLocaleString('en-IN')}.00
+                  <span className="font-mono font-bold text-blue-800 text-xs sm:text-sm block truncate">
+                    ₹ {Number(customer.totalPurchases || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
 
-                {/* 4. Outstanding / Closing Due Card */}
-                <div className={`p-2 sm:p-2.5 rounded-xl border w-full lg:w-auto lg:min-w-[95px] text-left lg:text-right ${dynamicTopMetrics.outstanding > 0 ? 'bg-red-50/80 border-red-200' : 'bg-gray-50/80 border-gray-200'}`}>
+                {/* 2. Total Paid */}
+                <div className="p-2 sm:p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-left">
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase block truncate">
+                    Total Paid
+                  </span>
+                  <span className="font-mono font-bold text-emerald-800 text-xs sm:text-sm block truncate">
+                    ₹ {Number(customer.totalPaid || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {/* 3. Total Outstanding */}
+                <div className={`p-2 sm:p-2.5 rounded-xl border text-left ${customer.outstandingBalance > 0 ? 'bg-red-50/80 border-red-200' : 'bg-gray-50/80 border-gray-200'}`}>
                   <span className="text-[10px] font-bold text-red-600 uppercase block truncate">
-                    {dynamicTopMetrics.outstandingLabel}
+                    Total Outstanding
                   </span>
-                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${dynamicTopMetrics.outstanding > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                    ₹ {dynamicTopMetrics.outstanding.toLocaleString('en-IN')}.00
+                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${customer.outstandingBalance > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                    ₹ {Number(customer.outstandingBalance || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
 
-                {/* 5. Advance Balance / Period Advance Card */}
-                <div className={`p-2 sm:p-2.5 rounded-xl border w-full lg:w-auto lg:min-w-[95px] text-left lg:text-right ${dynamicTopMetrics.advanceBalance > 0 ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-gray-50/80 border-gray-200/80'}`}>
+                {/* 4. Advance Balance */}
+                <div className={`p-2 sm:p-2.5 rounded-xl border text-left ${customer.advanceBalance > 0 ? 'bg-emerald-50/80 border-emerald-200/80' : 'bg-gray-50/80 border-gray-200/80'}`}>
                   <span className="text-[10px] font-bold text-emerald-700 uppercase block truncate">
-                    {dynamicTopMetrics.advanceLabel}
+                    Advance Balance
                   </span>
-                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${dynamicTopMetrics.advanceBalance > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                    ₹ {dynamicTopMetrics.advanceBalance.toLocaleString('en-IN')}.00
+                  <span className={`font-mono font-black text-xs sm:text-sm block truncate ${customer.advanceBalance > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                    ₹ {Number(customer.advanceBalance || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -987,6 +1153,7 @@ export default function CustomerLedgerPage() {
           {/* TAB 1: LEDGER VIEW & FILTERS */}
           {activeTab === 'Ledger' && (
             <div className="space-y-4">
+
               {/* STATEMENT PERIOD SELECTOR BAR */}
               <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-4 shadow-2xs text-xs w-full max-w-full overflow-hidden">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 w-full">
@@ -1159,10 +1326,14 @@ export default function CustomerLedgerPage() {
                         </tr>
                       ) : paginatedTransactions.length > 0 ? (
                         paginatedTransactions.map((tx, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50/60 transition-colors align-middle">
+                          <tr
+                            key={idx}
+                            onClick={() => handleRowClick(tx)}
+                            className="hover:bg-gray-50/80 transition-colors align-middle cursor-pointer"
+                          >
                             <td className="py-3 px-3.5 whitespace-nowrap">
-                              <span className="font-bold text-gray-900 block leading-tight">{tx.date}</span>
-                              <span className="text-[10px] text-gray-500 font-mono block">{tx.time || '10:30 AM'}</span>
+                              <span className="font-bold text-gray-900 block leading-tight">{formatLedgerDate(tx.date, tx.rawDate || tx.rawDateObj)}</span>
+                              <span className="text-[10px] text-gray-500 font-mono block mt-0.5">{formatLedgerTime(tx.time, tx.rawDate || tx.rawDateObj)}</span>
                             </td>
 
                             <td className="py-3 px-3.5 whitespace-nowrap">
@@ -1175,9 +1346,14 @@ export default function CustomerLedgerPage() {
                                 <span className="font-bold text-gray-900 block leading-tight">
                                   Purchase - {tx.items ? tx.items.length : 1} Items
                                 </span>
+                              ) : tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE' ? (
+                                <div>
+                                  <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || 'Customer Opening Balance'}</span>
+                                  {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
+                                </div>
                               ) : (
                                 <div>
-                                  <span className="font-bold text-gray-900 block">{tx.particulars || 'Payment Received'}</span>
+                                  <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || 'Payment Received'}</span>
                                   {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
                                 </div>
                               )}
@@ -1192,19 +1368,7 @@ export default function CustomerLedgerPage() {
                             </td>
 
                             <td className="py-2.5 px-4 text-right whitespace-nowrap font-mono font-bold">
-                              {tx.formattedBalance ? (
-                                <span className={tx.runningBalance > 0 ? 'text-red-600 font-black' : tx.runningBalance < 0 ? 'text-emerald-700 font-black' : 'text-gray-700 font-bold'}>
-                                  {tx.formattedBalance}
-                                </span>
-                              ) : (
-                                <span className={(tx.runningBalance || tx.balance || 0) > 0 ? 'text-red-600 font-black' : (tx.runningBalance || tx.balance || 0) < 0 ? 'text-emerald-700 font-black' : 'text-gray-700 font-bold'}>
-                                  {(tx.runningBalance || tx.balance || 0) > 0
-                                    ? `Outstanding ₹${Math.round(Math.abs(tx.runningBalance || tx.balance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                                    : (tx.runningBalance || tx.balance || 0) < 0
-                                      ? `Advance ₹${Math.round(Math.abs(tx.runningBalance || tx.balance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                                      : '₹ 0'}
-                                </span>
-                              )}
+                              {renderBalanceCell(tx)}
                             </td>
 
                             <td className="py-3 px-3.5 text-center whitespace-nowrap">
@@ -1213,21 +1377,40 @@ export default function CustomerLedgerPage() {
                               </span>
                             </td>
 
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                            <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               {tx.type === 'Invoice' ? (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/invoices/${tx.refNo || tx.id}`)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/invoices/${tx.refNo || tx.id}`);
+                                  }}
                                   className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   <span>Invoice</span>
                                 </button>
+                              ) : tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE' ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsEditCustomerOpen(true);
+                                  }}
+                                  className="p-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                                  title="Edit Opening Balance"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Edit Opening</span>
+                                </button>
                               ) : (
                                 <div className="flex items-center justify-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => setSelectedReceiptPayment(tx)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedReceiptPayment(tx);
+                                    }}
                                     className="p-1.5 bg-emerald-50 text-[#047857] hover:bg-emerald-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                                     title="View Receipt"
                                   >
@@ -1235,7 +1418,10 @@ export default function CustomerLedgerPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenEditPayment(tx)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEditPayment(tx);
+                                    }}
                                     className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg cursor-pointer"
                                     title="Edit Payment"
                                   >
@@ -1243,7 +1429,10 @@ export default function CustomerLedgerPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setDeletingPayment(tx)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeletingPayment(tx);
+                                    }}
                                     className="p-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg cursor-pointer"
                                     title="Delete Payment"
                                   >
@@ -1275,9 +1464,12 @@ export default function CustomerLedgerPage() {
                   ) : paginatedTransactions.length > 0 ? (
                     paginatedTransactions.map((tx, idx) => {
                       const isInvoice = tx.type === 'Invoice';
+                      const isOpening = tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE';
                       const particularsText = isInvoice
                         ? `Purchase - ${tx.items ? tx.items.length : 1} Item(s)`
-                        : tx.particulars || 'Payment Received';
+                        : isOpening
+                          ? (tx.particulars || 'Customer Opening Balance')
+                          : tx.particulars || 'Payment Received';
 
                       return (
                         <div
@@ -1292,13 +1484,15 @@ export default function CustomerLedgerPage() {
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                                   isInvoice
                                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : isOpening
+                                      ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                 }`}>
                                   {tx.type}
                                 </span>
                               </div>
                               <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
-                                {tx.date} • {tx.time || '10:30 AM'}
+                                {formatLedgerDate(tx.date, tx.rawDate || tx.rawDateObj)} • {formatLedgerTime(tx.time, tx.rawDate || tx.rawDateObj)}
                               </span>
                             </div>
 
@@ -1312,6 +1506,16 @@ export default function CustomerLedgerPage() {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   <span>View</span>
+                                </button>
+                              ) : isOpening ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEditCustomerOpen(true)}
+                                  className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                  title="Edit Opening Balance"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Edit Opening</span>
                                 </button>
                               ) : (
                                 <>
@@ -1362,19 +1566,19 @@ export default function CustomerLedgerPage() {
                             <div>
                               <span className="text-[9px] text-gray-400 font-semibold block uppercase">Debit (+)</span>
                               <span className="text-xs font-black text-gray-900 block">
-                                {(tx.debit || 0) > 0 ? `₹ ${(tx.debit).toLocaleString('en-IN')}` : '—'}
+                                {(tx.debit || 0) > 0 ? `₹${Math.round(tx.debit).toLocaleString('en-IN')}` : '—'}
                               </span>
                             </div>
                             <div>
                               <span className="text-[9px] text-emerald-600 font-semibold block uppercase">Credit (-)</span>
                               <span className="text-xs font-black text-[#047857] block">
-                                {(tx.credit || 0) > 0 ? `₹ ${(tx.credit).toLocaleString('en-IN')}` : '—'}
+                                {(tx.credit || 0) > 0 ? `₹${Math.round(tx.credit).toLocaleString('en-IN')}` : '—'}
                               </span>
                             </div>
                             <div>
                               <span className="text-[9px] text-purple-600 font-semibold block uppercase">Balance</span>
                               <span className="text-xs font-black text-gray-900 block">
-                                {tx.formattedBalance || `₹ ${Math.abs(tx.runningBalance || tx.balance || 0).toLocaleString('en-IN')}`}
+                                {renderBalanceCell(tx)}
                               </span>
                             </div>
                           </div>
@@ -1420,19 +1624,31 @@ export default function CustomerLedgerPage() {
 
           {/* TAB 2: PROFILE & DETAILS */}
           {activeTab === 'Profile' && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-2xs space-y-4">
-              <h2 className="text-sm font-extrabold text-gray-900 border-b border-gray-100 pb-2">Customer Profile &amp; Details</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div><span className="text-gray-500 font-medium">Customer Code:</span> <strong className="font-mono text-gray-900 ml-1">{customer.customerCode}</strong></div>
-                <div><span className="text-gray-500 font-medium">Register Date:</span> <strong className="font-mono text-gray-900 ml-1">{customer.registerDate}</strong></div>
-                <div><span className="text-gray-500 font-medium">Credit Limit:</span> <strong className="font-mono text-emerald-700 ml-1">₹ {customer.creditLimit.toLocaleString('en-IN')}</strong></div>
-                <div><span className="text-gray-500 font-medium">Customer Type:</span> <strong className="text-gray-900 ml-1">{customer.type}</strong></div>
-                <div><span className="text-gray-500 font-medium">Full Name:</span> <strong className="text-gray-900 ml-1">{customer.name}</strong></div>
-                <div><span className="text-gray-500 font-medium">Mobile Phone:</span> <strong className="font-mono text-gray-900 ml-1">{customer.mobile}</strong></div>
-                <div><span className="text-gray-500 font-medium">Village:</span> <strong className="text-gray-900 ml-1">{customer.village || 'N/A'}</strong></div>
-                <div><span className="text-gray-500 font-medium">Mandal:</span> <strong className="text-gray-900 ml-1">{customer.mandal || 'N/A'}</strong></div>
-                <div><span className="text-gray-500 font-medium">District:</span> <strong className="text-gray-900 ml-1">{customer.district || 'N/A'}</strong></div>
-                <div><span className="text-gray-500 font-medium">GSTIN:</span> <strong className="font-mono text-gray-900 ml-1">{customer.gstin || 'Unregistered'}</strong></div>
+            <div className="space-y-4">
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                  <h2 className="text-sm font-extrabold text-gray-900">Customer Profile &amp; Details</h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditCustomerOpen(true)}
+                    className="px-3 py-1 bg-emerald-50 text-[#047857] hover:bg-emerald-100 border border-emerald-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Details</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div><span className="text-gray-500 font-medium">Customer Code:</span> <strong className="font-mono text-gray-900 ml-1">{customer.customerCode}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Register Date:</span> <strong className="font-mono text-gray-900 ml-1">{customer.registerDate}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Credit Limit:</span> <strong className="font-mono text-emerald-700 ml-1">₹ {customer.creditLimit.toLocaleString('en-IN')}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Customer Type:</span> <strong className="text-gray-900 ml-1">{customer.type}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Full Name:</span> <strong className="text-gray-900 ml-1">{customer.name}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Mobile Phone:</span> <strong className="font-mono text-gray-900 ml-1">{customer.mobile}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Village:</span> <strong className="text-gray-900 ml-1">{customer.village || 'N/A'}</strong></div>
+                  <div><span className="text-gray-500 font-medium">Mandal:</span> <strong className="text-gray-900 ml-1">{customer.mandal || 'N/A'}</strong></div>
+                  <div><span className="text-gray-500 font-medium">District:</span> <strong className="text-gray-900 ml-1">{customer.district || 'N/A'}</strong></div>
+                  <div><span className="text-gray-500 font-medium">GSTIN:</span> <strong className="font-mono text-gray-900 ml-1">{customer.gstin || 'Unregistered'}</strong></div>
+                </div>
               </div>
             </div>
           )}
@@ -1891,6 +2107,8 @@ export default function CustomerLedgerPage() {
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         customer={customer}
+        initialPaymentType={paymentModalType}
+        rawInvoices={rawInvoices}
       />
 
       <RecordAdvanceModal
@@ -1967,6 +2185,32 @@ export default function CustomerLedgerPage() {
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tx = selectedReceiptPayment;
+                    setSelectedReceiptPayment(null);
+                    handleOpenEditPayment(tx);
+                  }}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                  title="Edit Payment"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tx = selectedReceiptPayment;
+                    setSelectedReceiptPayment(null);
+                    setDeletingPayment(tx);
+                  }}
+                  className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                  title="Delete Payment"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
                 </button>
               </div>
 
@@ -2049,7 +2293,7 @@ export default function CustomerLedgerPage() {
                   value={editPaymentRefNo}
                   onChange={(e) => setEditPaymentRefNo(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl font-mono text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  placeholder="PAY-001 or UPI Ref"
+                  placeholder="PS2691 or UPI Ref"
                 />
               </div>
 
@@ -2137,6 +2381,23 @@ export default function CustomerLedgerPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Customer & Opening Balance Modal */}
+      <EditCustomerModal
+        isOpen={isEditCustomerOpen}
+        onClose={() => setIsEditCustomerOpen(false)}
+        customer={customer}
+        onSaveSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile', customerId] });
+          queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+          queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+          queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+          queryClient.invalidateQueries({ queryKey: ['invoices'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+        }}
+      />
       </div>
 
       {/* HIDDEN DEDICATED PRINT CONTAINER FOR A4 SINGLE-PAGE CUSTOMER LEDGER */}
@@ -2213,11 +2474,7 @@ export default function CustomerLedgerPage() {
             {statementType === 'MONTHLY' ? (
               <div className="space-y-0.5">
                 <div className="flex justify-between font-medium">
-                  <span>OPENING BALANCE:</span>
-                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between font-medium">
-                  <span>NEW PURCHASES:</span>
+                  <span>PURCHASES:</span>
                   <span className="font-mono font-bold">₹ {Number(monthlyCalculation.newPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between font-medium text-[#047857]">

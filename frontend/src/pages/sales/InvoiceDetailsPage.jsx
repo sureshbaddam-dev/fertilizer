@@ -7,14 +7,10 @@ import {
   Download,
   Share2,
   FileText,
-  User,
   Phone,
   MapPin,
-  Calendar,
-  CreditCard,
   CheckCircle2,
   AlertCircle,
-  Clock,
   Lock,
   Edit,
   Trash2,
@@ -22,10 +18,8 @@ import {
   ExternalLink,
   MessageSquare,
   X,
-  Check,
 } from 'lucide-react';
 import { invoiceService } from '../../services/invoiceService';
-import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { authService } from '../../services/authService';
 import { buildFullShopAddress, generateInvoicePdf, printInvoicePdf } from '../../utils/pdfGenerator';
@@ -39,6 +33,7 @@ export default function InvoiceDetailsPage() {
   const queryClient = useQueryClient();
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
 
   // Fetch Original Sales Invoice from MongoDB database using Invoice ID / Number
@@ -69,6 +64,7 @@ export default function InvoiceDetailsPage() {
       queryClient.invalidateQueries(['products']);
       queryClient.invalidateQueries(['reports-bi']);
       setIsDeleteModalOpen(false);
+      setDeleteConfirmText('');
       toast.success('Bill deleted successfully');
       navigate(-1);
     },
@@ -84,8 +80,21 @@ export default function InvoiceDetailsPage() {
     navigate(`/invoices/${idToUse}/edit`);
   };
 
+  const handleOpenDeleteModal = () => {
+    setDeleteConfirmText('');
+    setDeleteErrorMsg('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleteMutation.isPending) return;
+    setDeleteConfirmText('');
+    setDeleteErrorMsg('');
+    setIsDeleteModalOpen(false);
+  };
+
   const handleDeleteInvoice = () => {
-    if (!invoice) return;
+    if (!invoice || deleteConfirmText !== 'DELETE' || deleteMutation.isPending) return;
     setDeleteErrorMsg('');
     deleteMutation.mutate(invoice._id || invoice.invoiceNumber);
   };
@@ -234,7 +243,7 @@ export default function InvoiceDetailsPage() {
           onClick={() => navigate(-1)}
           className="px-4 py-2 bg-gray-900 text-white font-bold rounded-xl text-xs hover:bg-gray-800 transition-colors cursor-pointer"
         >
-          Back to Customer Ledger
+          Back
         </button>
       </div>
     );
@@ -246,8 +255,9 @@ export default function InvoiceDetailsPage() {
   const discountAmount = Number(invoice.discountAmount || 0);
   const taxAmount = Number(invoice.taxAmount || 0);
   const grandTotal = Number(invoice.totalAmount || 0);
-  const paidAmount = Number(invoice.paidAmount || 0);
-  const dueAmount = Number(invoice.dueAmount || Math.max(0, grandTotal - paidAmount));
+  const currentPaid = invoice.currentPaid !== undefined ? Number(invoice.currentPaid) : Number(invoice.paidAmount || 0);
+  const currentDue = invoice.currentDue !== undefined ? Number(invoice.currentDue) : Math.max(0, grandTotal - currentPaid);
+  const currentStatus = invoice.currentStatus || (currentDue <= 0 ? 'Paid' : currentPaid > 0 ? 'Partial' : (invoice.status || 'Unpaid'));
 
   const invoiceDateStr = invoice.date || invoice.createdAt
     ? new Date(invoice.date || invoice.createdAt).toLocaleDateString('en-IN', {
@@ -295,7 +305,7 @@ export default function InvoiceDetailsPage() {
           className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-2 cursor-pointer transition-colors shrink-0"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
-          <span>Back to Customer Ledger</span>
+          <span>Back</span>
         </button>
 
         {/* Read-Only Badge & Action Buttons */}
@@ -343,7 +353,7 @@ export default function InvoiceDetailsPage() {
 
           <button
             type="button"
-            onClick={() => setIsDeleteModalOpen(true)}
+            onClick={handleOpenDeleteModal}
             className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Trash2 className="w-4 h-4 text-red-600" />
@@ -356,52 +366,102 @@ export default function InvoiceDetailsPage() {
       {isDeleteModalOpen && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs"
-          onClick={() => setIsDeleteModalOpen(false)}
+          onClick={handleCloseDeleteModal}
         >
           <div
-            className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-gray-100 p-5 space-y-4 text-center z-50 animate-in fade-in zoom-in-95 duration-150"
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 p-5 sm:p-6 space-y-4 text-left z-50 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto border border-red-100">
-              <Trash2 className="w-6 h-6" />
+            {/* Header: Trash Icon + Title + Warning */}
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <h3 className="text-base font-black text-gray-900 leading-tight">Delete Invoice?</h3>
+                <p className="text-xs text-gray-600 font-medium">
+                  ⚠️ Are you sure you want to delete this invoice? This action cannot be undone.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-2 text-left">
-              <h3 className="text-base font-extrabold text-gray-900 text-center">Delete Invoice?</h3>
-              <p className="text-xs text-gray-600 font-medium">
-                Deleting this invoice will:
-              </p>
-              <ul className="text-xs text-gray-700 bg-red-50/70 p-3 rounded-xl border border-red-200 space-y-1 list-disc list-inside font-medium">
-                <li>Restore Inventory Stock</li>
-                <li>Remove Invoice</li>
-                <li>Remove Ledger Entry</li>
-                <li>Update Customer Outstanding</li>
-                <li>Update Dashboard</li>
-                <li>Update Reports</li>
+            {/* IMPORTANT Instruction Box */}
+            <div className="p-3.5 bg-amber-50/80 rounded-xl border border-amber-200/90 space-y-2 text-xs">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900 uppercase tracking-wider text-[10px]">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span>IMPORTANT</span>
+              </div>
+              <p className="text-[11px] font-semibold text-gray-700">Deleting this invoice will:</p>
+              <ul className="text-[11px] text-gray-700 space-y-1 list-disc list-inside font-medium pl-1">
+                <li>Restore the sold inventory stock</li>
+                <li>Remove this invoice from the customer ledger</li>
+                <li>Reverse the invoice amount from customer outstanding</li>
+                <li>Reverse/remove payment allocation related to this invoice, if applicable</li>
+                <li>Recalculate customer outstanding / advance balance</li>
+                <li>Update dashboard and reports</li>
               </ul>
             </div>
 
+            {/* Confirmation Instruction & Input */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-gray-800 block">
+                To confirm deletion, type <span className="font-mono text-red-600 font-black">DELETE</span> below.
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => {
+                  setDeleteConfirmText(e.target.value);
+                  if (deleteErrorMsg) setDeleteErrorMsg('');
+                }}
+                placeholder="Type DELETE"
+                disabled={deleteMutation.isPending}
+                className="w-full h-9 px-3 bg-gray-50 border border-gray-300 rounded-xl font-mono text-xs font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                autoFocus
+              />
+
+              {deleteConfirmText.length > 0 && deleteConfirmText !== 'DELETE' && (
+                <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                  <span>Please type DELETE to confirm.</span>
+                </p>
+              )}
+            </div>
+
             {deleteErrorMsg && (
-              <div className="p-2.5 bg-red-50 text-red-700 rounded-xl border border-red-200 text-left font-medium">
-                {deleteErrorMsg}
+              <div className="p-2.5 bg-red-50 text-red-700 rounded-xl border border-red-200 text-xs font-medium flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <span>{deleteErrorMsg}</span>
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold rounded-xl cursor-pointer"
+                onClick={handleCloseDeleteModal}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-bold rounded-xl text-xs cursor-pointer transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleDeleteInvoice}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                disabled={deleteConfirmText !== 'DELETE' || deleteMutation.isPending}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Invoice'}
+                {deleteMutation.isPending ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Delete Invoice</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -419,11 +479,11 @@ export default function InvoiceDetailsPage() {
                 TAX INVOICE
               </span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                invoice.status === 'Paid'
+                currentStatus === 'Paid'
                   ? 'bg-emerald-50 text-[#047857] border-emerald-200'
                   : 'bg-amber-50 text-amber-800 border-amber-200'
               }`}>
-                {invoice.status || 'Paid'}
+                {currentStatus}
               </span>
             </div>
             <h1 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight pt-1 uppercase break-words">
@@ -466,9 +526,19 @@ export default function InvoiceDetailsPage() {
             <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
               Billed To Customer
             </span>
-            <span className="text-sm font-extrabold text-gray-900 block">
-              {invoice.customerName || invoice.customer?.name || 'General Customer'}
-            </span>
+            {invoice.customerId || invoice.customer?._id ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/customers/${invoice.customerId || invoice.customer?._id}/ledger`)}
+                className="text-sm font-extrabold text-emerald-800 hover:text-emerald-950 hover:underline transition-colors block text-left cursor-pointer"
+              >
+                {invoice.customerName || invoice.customer?.name || 'General Customer'}
+              </button>
+            ) : (
+              <span className="text-sm font-extrabold text-gray-900 block">
+                {invoice.customerName || invoice.customer?.name || 'General Customer'}
+              </span>
+            )}
             <div className="flex items-center gap-1.5 text-gray-600 text-xs font-mono">
               <Phone className="w-3.5 h-3.5 text-gray-400" />
               <span>{invoice.customerMobile || invoice.customer?.mobile || 'N/A'}</span>
@@ -487,7 +557,7 @@ export default function InvoiceDetailsPage() {
               Payment Method: <span className="font-bold text-gray-900">{invoice.paymentMode || 'Cash'}</span>
             </div>
             <div className="font-mono text-xs text-gray-800">
-              Due Status: <span className="font-bold text-emerald-700">{invoice.dueStatus || 'No Due'}</span>
+              Due Status: <span className="font-bold text-emerald-700">{currentDue <= 0 ? 'No Due' : 'Due In 30 Days'}</span>
             </div>
             {invoice.notes && (
               <p className="text-[11px] text-gray-500 italic max-w-xs">{invoice.notes}</p>
@@ -605,7 +675,7 @@ export default function InvoiceDetailsPage() {
           <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200/60 space-y-1.5 text-xs print:hidden">
             <span className="font-extrabold text-gray-900 block text-xs">Invoice Audit Trail</span>
             <div className="text-gray-600 space-y-1 text-[11px] font-mono">
-              <div>Invoice Status: <span className="font-bold text-gray-900">{invoice.status || 'Paid'}</span></div>
+              <div>Invoice Status: <span className="font-bold text-gray-900">{currentStatus}</span></div>
               <div>Payment Mode: <span className="font-bold text-gray-900">{invoice.paymentMode || 'Cash'}</span></div>
               <div>Shop VPA: <span className="font-bold text-emerald-700">{upiId}</span></div>
               <div>Database ID: <span className="font-bold text-gray-700">{invoice._id || invoice.id}</span></div>
@@ -638,7 +708,7 @@ export default function InvoiceDetailsPage() {
           </div>
 
           {/* Totals Breakdown */}
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2 font-mono text-xs">
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2.5 font-mono text-xs">
             <div className="flex justify-between text-gray-600">
               <span>Subtotal:</span>
               <span className="font-bold text-gray-900">₹ {subtotal.toLocaleString('en-IN')}</span>
@@ -657,18 +727,18 @@ export default function InvoiceDetailsPage() {
             </div>
 
             <div className="flex justify-between text-sm font-extrabold text-gray-900 pt-2 border-t border-gray-200">
-              <span>Grand Total:</span>
+              <span>Invoice Total:</span>
               <span className="text-[#047857]">₹ {grandTotal.toLocaleString('en-IN')}</span>
             </div>
 
             <div className="flex justify-between text-xs font-bold text-emerald-700 pt-1">
               <span>Paid Amount:</span>
-              <span>₹ {paidAmount.toLocaleString('en-IN')}</span>
+              <span>₹ {currentPaid.toLocaleString('en-IN')}</span>
             </div>
 
             <div className="flex justify-between text-xs font-bold text-red-600 pt-1 border-t border-gray-200">
-              <span>Outstanding Due:</span>
-              <span>₹ {dueAmount.toLocaleString('en-IN')}</span>
+              <span>Invoice Outstanding:</span>
+              <span>₹ {currentDue.toLocaleString('en-IN')}</span>
             </div>
           </div>
         </div>

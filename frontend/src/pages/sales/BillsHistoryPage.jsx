@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  FileText,
   Search,
   Filter,
   RefreshCw,
   Eye,
-  Printer,
-  MessageSquare,
-  MoreVertical,
+  Edit,
+  Trash2,
+  AlertCircle,
   User,
   ChevronLeft,
   ChevronRight,
@@ -17,11 +16,10 @@ import {
   X,
 } from 'lucide-react';
 import { invoiceService } from '../../services/invoiceService';
-import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
+import { toast } from '../../contexts/ToastContext';
 import { exportInvoiceHistoryToExcel } from '../../utils/excelExporter';
 import Button from '../../components/ui/Button';
-import PageLayout from '../../components/ui/PageHeaderContainer';
 
 export default function BillsHistoryPage() {
   const navigate = useNavigate();
@@ -154,6 +152,65 @@ export default function BillsHistoryPage() {
     }
   };
 
+  const queryClient = useQueryClient();
+  const [deletingInvoice, setDeletingInvoice] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
+
+  // Delete Invoice Mutation (for General Customer invoices)
+  const deleteMutation = useMutation({
+    mutationFn: (id) => invoiceService.deleteInvoice(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['invoices']);
+      queryClient.invalidateQueries(['sales-invoices']);
+      queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+      queryClient.invalidateQueries(['customers']);
+      queryClient.invalidateQueries(['payments']);
+      queryClient.invalidateQueries(['products-inventory']);
+      queryClient.invalidateQueries(['products']);
+      queryClient.invalidateQueries(['reports-bi']);
+      setDeletingInvoice(null);
+      setDeleteConfirmText('');
+      toast.success('Bill deleted successfully');
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to delete invoice';
+      toast.error(msg);
+      setDeleteErrorMsg(msg);
+    },
+  });
+
+  const handleOpenDeleteModal = (inv) => {
+    setDeletingInvoice(inv);
+    setDeleteConfirmText('');
+    setDeleteErrorMsg('');
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleteMutation.isPending) return;
+    setDeletingInvoice(null);
+    setDeleteConfirmText('');
+    setDeleteErrorMsg('');
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deletingInvoice || deleteConfirmText !== 'DELETE' || deleteMutation.isPending) return;
+    setDeleteErrorMsg('');
+    deleteMutation.mutate(deletingInvoice._id || deletingInvoice.invoiceNumber);
+  };
+
+  // Helper to reliably check if invoice belongs to a registered customer (using customerId and customerType)
+  const isRegisteredCustomer = (inv) => {
+    if (!inv) return false;
+    const type = String(inv.customerType || '').toUpperCase();
+    if (type === 'GENERAL' || type === 'WALK_IN' || type === 'WALKIN') {
+      return false;
+    }
+    const rawId = inv.customerId?._id || inv.customerId || inv.customer?._id || inv.customer;
+    return Boolean(rawId);
+  };
+
   return (
     <div className="app-page-stack w-full pb-6 space-y-5">
       {/* 1. Compact Page Header */}
@@ -259,12 +316,13 @@ export default function BillsHistoryPage() {
                     <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Due (₹)</th>
                     <th className="py-2.5 px-2.5 text-center whitespace-nowrap w-20">Status</th>
                     <th className="py-2.5 px-2.5 text-center whitespace-nowrap w-24">Payment Mode</th>
+                    <th className="py-2.5 px-2.5 text-center whitespace-nowrap w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-gray-800 font-normal">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-gray-500">
+                      <td colSpan={10} className="py-8 text-center text-gray-500">
                         <div className="w-5 h-5 border-2 border-[#00783C] border-t-transparent rounded-full animate-spin mx-auto mb-1.5" />
                         <span>Loading sales bills from database...</span>
                       </td>
@@ -285,6 +343,7 @@ export default function BillsHistoryPage() {
                       const isPaid = inv.status === 'Paid';
                       const isPartial = inv.status === 'Partial';
                       const isCancelled = inv.status === 'Cancelled';
+                      const isRegistered = isRegisteredCustomer(inv);
 
                       return (
                         <tr
@@ -300,7 +359,21 @@ export default function BillsHistoryPage() {
                             <span className="text-[10px] text-gray-400 font-mono block">{timeStr}</span>
                           </td>
                           <td className="py-3 px-3 font-bold text-gray-900 truncate max-w-[160px]" title={inv.customerName}>
-                            {inv.customerName}
+                            {inv.customerId ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/customers/${inv.customerId}/ledger`);
+                                }}
+                                className="text-emerald-800 hover:text-emerald-950 hover:underline font-bold text-left cursor-pointer truncate max-w-full"
+                                title={`Open Customer Ledger for ${inv.customerName}`}
+                              >
+                                {inv.customerName}
+                              </button>
+                            ) : (
+                              <span>{inv.customerName}</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-center font-mono text-gray-600 text-xs whitespace-nowrap">
                             {inv.customerMobile || '—'}
@@ -331,6 +404,39 @@ export default function BillsHistoryPage() {
                           </td>
                           <td className="py-3 px-3 text-center whitespace-nowrap font-mono text-gray-700">
                             {inv.paymentMode || 'Cash'}
+                          </td>
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}`)}
+                                className="p-1.5 hover:bg-emerald-50 text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                title="View Details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {!isRegistered && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}/edit`)}
+                                    className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors cursor-pointer"
+                                    title="Edit Invoice"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDeleteModal(inv)}
+                                    className="p-1.5 hover:bg-red-50 text-red-600 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete Invoice"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -371,11 +477,13 @@ export default function BillsHistoryPage() {
               const isPaid = inv.status === 'Paid';
               const isPartial = inv.status === 'Partial';
               const isCancelled = inv.status === 'Cancelled';
+              const isRegistered = isRegisteredCustomer(inv);
 
               return (
                 <div
                   key={inv._id || inv.invoiceNumber}
-                  className="bg-white border border-gray-200/90 rounded-2xl p-4 shadow-2xs space-y-3 font-sans transition-all hover:border-emerald-300"
+                  onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}`)}
+                  className="bg-white border border-gray-200/90 rounded-2xl p-4 shadow-2xs space-y-3 font-sans transition-all hover:border-emerald-300 cursor-pointer"
                 >
                   {/* Card Top: Invoice Number & Status Badge */}
                   <div className="flex items-center justify-between pb-2 border-b border-gray-100">
@@ -405,9 +513,23 @@ export default function BillsHistoryPage() {
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-[10px] text-gray-400 font-medium block">Customer</span>
-                      <span className="font-extrabold text-gray-900 block truncate" title={inv.customerName}>
-                        {inv.customerName}
-                      </span>
+                      {inv.customerId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/customers/${inv.customerId}/ledger`);
+                          }}
+                          className="font-extrabold text-emerald-800 hover:text-emerald-950 hover:underline block truncate text-left cursor-pointer max-w-full"
+                          title={`Open Customer Ledger for ${inv.customerName}`}
+                        >
+                          {inv.customerName}
+                        </button>
+                      ) : (
+                        <span className="font-extrabold text-gray-900 block truncate" title={inv.customerName}>
+                          {inv.customerName}
+                        </span>
+                      )}
                     </div>
                     <div>
                       <span className="text-[10px] text-gray-400 font-medium block">Mobile</span>
@@ -450,15 +572,41 @@ export default function BillsHistoryPage() {
                     </div>
                   </div>
 
-                  {/* Action Button: View Invoice */}
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}`)}
-                    className="w-full py-2 bg-[#047857] hover:bg-[#036448] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-[0.99]"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>View Invoice</span>
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}`)}
+                      className="flex-1 py-2 bg-[#047857] hover:bg-[#036448] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-[0.99]"
+                      title="View Invoice Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>View Invoice</span>
+                    </button>
+
+                    {!isRegistered && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/invoices/${inv._id || inv.invoiceNumber}/edit`)}
+                          className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-2xs cursor-pointer transition-all"
+                          title="Edit Invoice"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDeleteModal(inv)}
+                          className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-2xs cursor-pointer transition-all"
+                          title="Delete Invoice"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -698,6 +846,95 @@ export default function BillsHistoryPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Delete Confirmation Modal for General Customer Invoices */}
+      {deletingInvoice && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans text-xs"
+          onClick={handleCloseDeleteModal}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 p-5 sm:p-6 space-y-4 text-left z-50 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Trash Icon + Title + Warning */}
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <h3 className="text-base font-black text-gray-900 leading-tight">Delete Invoice?</h3>
+                <p className="text-xs text-gray-600 font-medium">
+                  ⚠️ Are you sure you want to delete invoice #{deletingInvoice.invoiceNumber}? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {/* Confirmation Instruction & Input */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-gray-800 block">
+                To confirm deletion, type <span className="font-mono text-red-600 font-black">DELETE</span> below.
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => {
+                  setDeleteConfirmText(e.target.value);
+                  if (deleteErrorMsg) setDeleteErrorMsg('');
+                }}
+                placeholder="Type DELETE"
+                disabled={deleteMutation.isPending}
+                className="w-full h-9 px-3 bg-gray-50 border border-gray-300 rounded-xl font-mono text-xs font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all disabled:opacity-60"
+                autoFocus
+              />
+
+              {deleteConfirmText.length > 0 && deleteConfirmText !== 'DELETE' && (
+                <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                  <span>Please type DELETE to confirm.</span>
+                </p>
+              )}
+            </div>
+
+            {deleteErrorMsg && (
+              <div className="p-2.5 bg-red-50 text-red-700 rounded-xl border border-red-200 text-xs font-medium flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <span>{deleteErrorMsg}</span>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 font-bold rounded-xl text-xs cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteConfirmText !== 'DELETE' || deleteMutation.isPending}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-2xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Delete Invoice</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

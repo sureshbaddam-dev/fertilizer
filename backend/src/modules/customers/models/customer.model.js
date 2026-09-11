@@ -13,6 +13,10 @@ const customerSchema = new mongoose.Schema(
     type: { type: String, default: 'Regular' }, // Regular, Wholesale
     status: { type: String, default: 'Active' }, // Active, Inactive, Blocked
     isActive: { type: Boolean, default: true, index: true },
+    openingBalance: { type: Number, default: 0, min: 0 },
+    openingBalanceType: { type: String, enum: ['DUE', 'ADVANCE'], default: 'DUE' },
+    openingBalanceDate: { type: Date, default: Date.now },
+    openingBalanceNotes: { type: String, default: '' },
     totalPurchases: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },
     outstandingBalance: { type: Number, default: 0 },

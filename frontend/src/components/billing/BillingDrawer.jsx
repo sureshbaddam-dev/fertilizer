@@ -662,14 +662,17 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   }, [grandTotal, isPaidAmountCustom]);
 
   const effectivePaidAmount = useMemo(() => {
-    if (paidAmountInput === '') return grandTotal;
+    if (paidAmountInput === '' || paidAmountInput === null || paidAmountInput === undefined) return 0;
     const parsed = parseFloat(paidAmountInput);
     return isNaN(parsed) || parsed < 0 ? 0 : parsed;
-  }, [paidAmountInput, grandTotal]);
+  }, [paidAmountInput]);
 
   // Outstanding & Available Advance for Selected Customer
   const isGeneral = customerMode === 'general';
   const availableAdvance = isGeneral ? 0 : Number(selectedCustomer?.advanceBalance || 0);
+  const customerOldDue = isGeneral
+    ? 0
+    : Number(selectedCustomer?.outstandingBalance || 0);
   const advanceUsed = Math.min(availableAdvance, grandTotal);
   const netBillToPay = grandTotal - advanceUsed;
 
@@ -739,6 +742,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       }
       customerData = selectedCustomer;
       isAddedCust = true;
+    }
+
+    if (effectivePaidAmount > netBillToPay) {
+      toast.warning('Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.');
+      return;
     }
 
     isSubmittingRef.current = true;
@@ -825,6 +833,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     const custMobile = (customerData.mobile || '').trim();
     if (!custMobile) {
       toast.warning('Customer mobile number is missing. Please add a valid mobile/WhatsApp number.');
+      return;
+    }
+
+    if (effectivePaidAmount > netBillToPay) {
+      toast.warning('Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.');
       return;
     }
 
@@ -1031,7 +1044,6 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
       const waMsg = buildWhatsAppStatementMessage({
         monthLabel: monthlyData.monthLabel,
-        openingBalance: monthlyData.openingBalance,
         newPurchases: grandTotal,
         totalPurchases: monthlyData.newPurchases,
         payments: monthlyData.payments,
@@ -1548,48 +1560,101 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
             </div>
           )}
 
-          {/* Grand Total Row */}
+          {/* Grand Total / Current Invoice Row */}
           <div className="flex justify-between items-center text-gray-900 font-extrabold text-sm pt-1">
-            <span>Grand Total</span>
+            <span>Current Invoice</span>
             <span className="font-mono text-[#047857] text-base font-extrabold">
               ₹ {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
           </div>
 
+          {/* Registered Customer Old Due Breakdown */}
+          {customerMode === 'added' && selectedCustomer && customerOldDue > 0 && (
+            <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-amber-900 font-medium">
+                <span>Old Due (Previous Balance):</span>
+                <span className="font-mono font-bold text-amber-900">
+                  ₹ {customerOldDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-gray-900 font-black border-t border-amber-200/80 pt-1 text-[13px]">
+                <span>Total Amount Due:</span>
+                <span className="font-mono text-red-600 font-black">
+                  ₹ {(grandTotal + customerOldDue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* EDITABLE PAID AMOUNT FIELD */}
           <div className="pt-2 space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-extrabold text-gray-900 block">
-                Paid Amount (₹) <span className="text-red-500">*</span>
+                Payment for This Invoice (₹) <span className="text-red-500">*</span>
               </label>
 
               {/* Dynamic Payment State Helper Tag */}
               {effectivePaidAmount === netBillToPay ? (
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                  Exact Payment (No Due)
+                  Exact Payment (Bill Settled)
                 </span>
               ) : effectivePaidAmount < netBillToPay ? (
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
-                  Due: ₹ {(netBillToPay - effectivePaidAmount).toLocaleString('en-IN')}
+                  Bill Due: ₹ {(netBillToPay - effectivePaidAmount).toLocaleString('en-IN')}
                 </span>
               ) : (
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
-                  Extra: ₹ {(effectivePaidAmount - netBillToPay).toLocaleString('en-IN')}
+                <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
+                  Max allowed: ₹ {netBillToPay.toLocaleString('en-IN')}
                 </span>
               )}
             </div>
 
             <input
               type="number"
+              max={netBillToPay}
+              min={0}
               value={paidAmountInput}
               onChange={(e) => {
                 setPaidAmountInput(e.target.value);
                 setIsPaidAmountCustom(true);
               }}
-              placeholder={String(Math.round(grandTotal))}
-              className="w-full h-9 px-3 bg-[#ECFDF5] border border-emerald-300 rounded-xl font-mono font-extrabold text-[#047857] text-sm focus:outline-none focus:border-[#00783C]"
+              placeholder="0"
+              className={`w-full h-9 px-3 rounded-xl font-mono font-extrabold text-sm focus:outline-none transition-colors ${
+                effectivePaidAmount > netBillToPay
+                  ? 'bg-red-50/80 border border-red-300 text-red-700 focus:border-red-500 focus:ring-2 focus:ring-red-200'
+                  : 'bg-[#ECFDF5] border border-emerald-300 text-[#047857] focus:border-[#00783C]'
+              }`}
             />
+            {effectivePaidAmount > netBillToPay && (
+              <p className="text-[11px] font-medium text-red-600">
+                Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.
+              </p>
+            )}
           </div>
+
+          {/* Balance Breakdown After Payment */}
+          {customerMode === 'added' && selectedCustomer && customerOldDue > 0 && (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1 text-[11px]">
+              <div className="flex justify-between text-slate-600 font-medium">
+                <span>Current Invoice Balance:</span>
+                <span className="font-mono font-bold text-slate-800">
+                  ₹ {Math.max(0, netBillToPay - effectivePaidAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-600 font-medium">
+                <span>Old Due:</span>
+                <span className="font-mono font-bold text-amber-800">
+                  ₹ {customerOldDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-900 font-black border-t border-slate-200 pt-1 text-xs">
+                <span>Remaining Total Balance:</span>
+                <span className="font-mono text-red-600">
+                  ₹ {(Math.max(0, netBillToPay - effectivePaidAmount) + customerOldDue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* PAYMENT MODE & NOTES */}

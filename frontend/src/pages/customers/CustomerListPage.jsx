@@ -1,199 +1,29 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
-  Filter,
   Download,
   Plus,
   MessageSquare,
   Edit2,
-  MoreVertical,
   ChevronLeft,
   ChevronRight,
   Users,
   AlertCircle,
   TrendingUp,
   X,
-  Check,
   Trash2,
   FileText,
   FileSpreadsheet,
 } from 'lucide-react';
 import AddCustomerModal from '../../components/customers/AddCustomerModal';
+import EditCustomerModal from '../../components/customers/EditCustomerModal';
 import { customerService } from '../../services/customerService';
 import { useSettings } from '../../contexts/SettingsContext';
 import Button from '../../components/ui/Button';
 import PageLayout from '../../components/ui/PageHeaderContainer';
 import { toast } from '../../contexts/ToastContext';
-
-// Edit Customer Modal Component
-function EditCustomerModal({ isOpen, onClose, customer, onSaveSuccess }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    mobile: '',
-    village: '',
-    mandal: '',
-    district: '',
-    type: 'Regular',
-  });
-
-  const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Populate existing customer details whenever customer or isOpen changes
-  useEffect(() => {
-    if (customer && isOpen) {
-      setFormData({
-        name: customer.name || '',
-        mobile: customer.mobile || '',
-        village: customer.village || customer.address || '',
-        mandal: customer.mandal || '',
-        district: customer.district || '',
-        type: customer.type || customer.customerType || 'Regular',
-      });
-      setErrorMsg('');
-    }
-  }, [customer, isOpen]);
-
-  if (!isOpen || !customer) return null;
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setErrorMsg('');
-    try {
-      await customerService.updateCustomer(customer._id, formData);
-      toast.success('Customer updated successfully');
-      onSaveSuccess();
-      onClose();
-    } catch (err) {
-      const msg = err?.response?.data?.message || 'Failed to update customer';
-      toast.error(msg);
-      setErrorMsg(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
-      onClick={onClose}
-    >
-      <div
-        className="relative bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 p-4 space-y-3 z-50 text-xs"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-          <div className="flex items-center gap-1.5 font-bold text-gray-900">
-            <Edit2 className="w-4 h-4 text-[#047857]" />
-            <span>Edit Customer Details</span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {errorMsg && (
-          <div className="p-2 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center gap-1.5 text-[11px]">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1 col-span-2">
-              <label className="text-[11px] font-semibold text-gray-700 block">Customer Name *</label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-700 block">Mobile Number *</label>
-              <input
-                type="text"
-                required
-                value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-700 block">Customer Type</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="w-full h-8 px-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#00783C]"
-              >
-                <option value="Regular">Regular</option>
-                <option value="Wholesale">Wholesale</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-700 block">Village / Area</label>
-              <input
-                type="text"
-                value={formData.village}
-                onChange={(e) => setFormData({ ...formData, village: e.target.value })}
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-700 block">Mandal</label>
-              <input
-                type="text"
-                value={formData.mandal}
-                onChange={(e) => setFormData({ ...formData, mandal: e.target.value })}
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-
-            <div className="space-y-1 col-span-2">
-              <label className="text-[11px] font-semibold text-gray-700 block">District</label>
-              <input
-                type="text"
-                value={formData.district}
-                onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                className="w-full h-8 px-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:border-[#00783C]"
-              />
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-semibold cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-1.5 btn-agri-primary rounded-xl text-xs font-bold shadow-2xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 // Delete Confirmation Modal Component
 function DeleteCustomerModal({ isOpen, onClose, customer, onDeleteSuccess }) {
@@ -851,16 +681,16 @@ export default function CustomerListPage() {
 
             {/* CUSTOMER LIST TABLE (DESKTOP / LAPTOP) */}
             <div className="hidden md:block border border-gray-200/80 rounded-xl overflow-x-auto shadow-2xs [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-center text-xs border-collapse">
                 <thead className="bg-gray-50/90 border-b border-gray-200 text-[11px] font-bold text-gray-700 uppercase">
                   <tr>
                     <th className="py-3 px-3 text-center w-10">#</th>
-                    <th className="py-3 px-3">Customer Name</th>
-                    <th className="py-3 px-3">Mobile</th>
-                    <th className="py-3 px-3">Village / Area</th>
-                    <th className="py-3 px-3 text-right">Total Purchases</th>
-                    <th className="py-3 px-3 text-right">Total Paid</th>
-                    <th className="py-3 px-3 text-right">Due (Outstanding)</th>
+                    <th className="py-3 px-3 text-center">Customer Name</th>
+                    <th className="py-3 px-3 text-center">Mobile</th>
+                    <th className="py-3 px-3 text-center">Village / Area</th>
+                    <th className="py-3 px-3 text-center">Total Purchases</th>
+                    <th className="py-3 px-3 text-center">Total Paid</th>
+                    <th className="py-3 px-3 text-center">Due (Outstanding)</th>
                     <th className="py-3 px-3 text-center w-24">Actions</th>
                   </tr>
                 </thead>
@@ -888,30 +718,30 @@ export default function CustomerListPage() {
                           <td className="py-2.5 px-3 text-center font-bold text-gray-500">{rowNum}</td>
 
                           {/* Customer Name */}
-                          <td className="py-2.5 px-3 font-bold text-gray-900 whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-center font-bold text-gray-900 whitespace-nowrap">
                             <span>{c.name}</span>
                           </td>
 
                           {/* Mobile Number */}
-                          <td className="py-2.5 px-3 font-mono text-gray-700 whitespace-nowrap">{c.mobile}</td>
+                          <td className="py-2.5 px-3 text-center font-mono text-gray-700 whitespace-nowrap">{c.mobile}</td>
 
                           {/* Village / Area */}
-                          <td className="py-2.5 px-3 font-medium text-gray-700 whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-center font-medium text-gray-700 whitespace-nowrap">
                             {c.village || c.address || '—'}
                           </td>
 
                           {/* Total Purchases */}
-                          <td className="py-2.5 px-3 text-right font-mono font-medium text-gray-900 whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-center font-mono font-medium text-gray-900 whitespace-nowrap">
                             ₹ {Math.round(c.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
 
                           {/* Total Paid */}
-                          <td className="py-2.5 px-3 text-right font-mono font-medium text-gray-900 whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-center font-mono font-medium text-gray-900 whitespace-nowrap">
                             ₹ {Math.round(c.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </td>
 
                           {/* Due (Outstanding) */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-center font-mono font-bold whitespace-nowrap">
                             <span className={dueVal > 0 ? 'text-red-600' : 'text-gray-900'}>
                               ₹ {Math.round(dueVal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                             </span>

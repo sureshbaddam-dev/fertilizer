@@ -654,7 +654,7 @@ export const HELP_ARTICLES = [
     title: 'Revenue & Gross Profit Reports',
     summary: 'Realized gross profit calculations based on exact FIFO batch purchase costs.',
     steps: [
-      { title: '1. Revenue Tab', description: 'View Gross Sales vs Cost of Goods Sold (COGS).' },
+      { title: '1. Revenue Tab', description: 'View Gross Sales vs Procurement Cost.' },
       { title: '2. Net Margin', description: 'Analyze margin percentages per product category.' },
     ],
     relatedArticleIds: ['sales-reports'],

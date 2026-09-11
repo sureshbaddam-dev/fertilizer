@@ -154,37 +154,51 @@ export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = 
       maximumFractionDigits: 0,
     })}`;
 
-  // 3. ACCOUNT SUMMARY BOX (Clean fixed two-column layout at top-right X=110mm, width=92mm, right edge=202mm)
-  const totPurchases = Number(totals?.totalPurchases ?? customer?.totalPurchases ?? 0);
-  const totPaid = Number(totals?.totalPaid ?? customer?.totalPaid ?? 0);
-  const dueVal = Number(totals?.outstanding ?? totals?.outstandingBalance ?? customer?.outstandingBalance ?? 0);
+  // 3. ACCOUNT FINANCIAL SUMMARY BOX
+  const totPurchases = Number(totals?.totalPurchases ?? (customer?.totalPurchases ?? 0));
+  const totPaid = Number(totals?.totalPaid ?? (customer?.totalPaid ?? 0));
+  const dueVal = Number(totals?.outstanding ?? (totals?.outstandingBalance ?? (customer?.outstandingBalance ?? Math.max(0, totPurchases - totPaid))));
+  const advVal = Number(totals?.advanceBalance ?? (customer?.advanceBalance ?? Math.max(0, totPaid - totPurchases)));
 
+  // Financial Summary Box (Full width, X=8, width=194)
   doc.setFillColor(248, 250, 248);
-  doc.roundedRect(110, 32, 92, 26, 2, 2, 'F');
+  doc.roundedRect(8, 62, 194, 22, 2, 2, 'F');
   doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(110, 32, 92, 26, 2, 2, 'S');
-
-  doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(4, 120, 87);
-  doc.text('ACCOUNT SUMMARY', 114, 37);
+  doc.roundedRect(8, 62, 194, 22, 2, 2, 'S');
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(71, 85, 105);
-  doc.text('Total Purchases:', 114, 43);
-  doc.text('Total Payments:', 114, 48);
+  doc.setTextColor(4, 120, 87);
+  doc.text('ACCOUNT FINANCIAL SUMMARY', 12, 68);
 
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Purchases:', 12, 77);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(formatCurrency(totPurchases), 198, 43, { align: 'right' });
-  doc.setTextColor(4, 120, 87);
-  doc.text(formatCurrency(totPaid), 198, 48, { align: 'right' });
+  doc.text(formatCurrency(totPurchases), 32, 77);
 
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Total Paid:', 60, 77);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(dueVal > 0 ? 220 : 4, dueVal > 0 ? 38 : 120, dueVal > 0 ? 38 : 87);
-  doc.text('Outstanding Balance:', 114, 54);
-  doc.text(formatCurrency(dueVal), 198, 54, { align: 'right' });
+  doc.setTextColor(4, 120, 87);
+  doc.text(formatCurrency(totPaid), 78, 77);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Total Outstanding:', 108, 77);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(dueVal > 0 ? 220 : 71, dueVal > 0 ? 38 : 85, dueVal > 0 ? 38 : 105);
+  doc.text(formatCurrency(dueVal), 138, 77);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Advance Balance:', 160, 77);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(advVal > 0 ? 4 : 71, advVal > 0 ? 120 : 85, advVal > 0 ? 87 : 105);
+  doc.text(formatCurrency(advVal), 198, 77, { align: 'right' });
 
   // 4. LEDGER TRANSACTIONS TABLE (5 COLUMNS: DATE | PARTICULARS | DEBIT | CREDIT | BALANCE)
   const formatNumOnly = (val) => {
@@ -236,7 +250,22 @@ export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = 
           });
         }
       } else if (isPayment || isAdvance) {
-        particularsLines.push('Payment');
+        const pType = tx.paymentType || 'Payment';
+        const pMode = tx.paymentMode || tx.mode || 'Cash';
+        const pNotes = tx.notes || '';
+
+        if (pType === 'INVOICE_PAYMENT') {
+          const invRef = tx.invoiceNumber || tx.refNo || '';
+          particularsLines.push(`Invoice Payment ${invRef ? `(${invRef}) ` : ''}• Mode: ${pMode}`);
+        } else if (pType === 'ADVANCE' || isAdvance) {
+          particularsLines.push(`Advance Deposit • Mode: ${pMode}`);
+        } else {
+          particularsLines.push(`Payment • Mode: ${pMode}`);
+        }
+
+        if (pNotes && pNotes.trim() && !particularsLines[0].includes(pNotes.trim())) {
+          particularsLines.push(`Note: ${pNotes.trim()}`);
+        }
       } else {
         particularsLines.push(tx.particulars || tx.description || 'Transaction');
       }
@@ -256,7 +285,7 @@ export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = 
   }
 
   autoTable(doc, {
-    startY: 63,
+    startY: 91,
     margin: { left: 8, right: 8, top: 10, bottom: 14 },
     head: [['DATE', 'PARTICULARS', 'DEBIT', 'CREDIT', 'BALANCE']],
     body: tableData,
@@ -409,40 +438,34 @@ export async function buildMonthlyStatementPdfDoc(customerArg = {}, shopSettings
   doc.text(`Customer Address: ${custAddress}`, 8, 52);
   doc.text(`Statement Month: ${monthLabel}`, 8, 57);
 
-  // 3. SUMMARY BOX (OPENING BALANCE, NEW PURCHASES, PAYMENTS, DUE IN RED)
+  // 3. SUMMARY BOX (PURCHASES, PAYMENTS, DUE IN RED)
   doc.setFillColor(248, 250, 248);
-  doc.roundedRect(108, 32, 94, 30, 2, 2, 'F');
+  doc.roundedRect(108, 32, 94, 25, 2, 2, 'F');
   doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(108, 32, 94, 30, 2, 2, 'S');
+  doc.roundedRect(108, 32, 94, 25, 2, 2, 'S');
 
   // Summary Metrics - All Bold, DUE in Red
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
 
-  // Row 1: Opening Balance
+  // Row 1: Purchases
   doc.setTextColor(71, 85, 105);
-  doc.text('OPENING BALANCE:', 112, 38);
+  doc.text('PURCHASES:', 112, 38);
   doc.setTextColor(15, 23, 42);
-  doc.text(formatCurrency(openBal), 198, 38, { align: 'right' });
+  doc.text(formatCurrency(newPurchases), 198, 38, { align: 'right' });
 
-  // Row 2: New Purchases
+  // Row 2: Payments
   doc.setTextColor(71, 85, 105);
-  doc.text('NEW PURCHASES:', 112, 44);
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatCurrency(newPurchases), 198, 44, { align: 'right' });
-
-  // Row 3: Payments
-  doc.setTextColor(71, 85, 105);
-  doc.text('PAYMENTS:', 112, 50);
+  doc.text('PAYMENTS:', 112, 45);
   doc.setTextColor(4, 120, 87);
-  doc.text(formatCurrency(payments), 198, 50, { align: 'right' });
+  doc.text(formatCurrency(payments), 198, 45, { align: 'right' });
 
-  // Row 4: DUE (Highlight Label & Value in RED #DC2626)
+  // Row 3: DUE (Highlight Label & Value in RED #DC2626)
   doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(220, 38, 38); // RED COLOR
-  doc.text('DUE / CLOSING BALANCE:', 112, 57);
-  doc.text(formatCurrency(closingDue), 198, 57, { align: 'right' });
+  doc.text('DUE / OUTSTANDING:', 112, 53);
+  doc.text(formatCurrency(closingDue), 198, 53, { align: 'right' });
 
   // 4. MONTHLY TRANSACTIONS TABLE (5 COLUMNS: DATE | PARTICULARS | DEBIT | CREDIT | BALANCE)
   const formatNumOnly = (val) => {
