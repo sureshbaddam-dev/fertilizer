@@ -171,8 +171,9 @@ export default function QuickAddProductDrawer({
       reset();
       toast.success('Product created successfully');
       onClose();
-      if (onSuccess && res.data?.product) {
-        onSuccess(res.data.product);
+      const createdProduct = res.data?.data?.product || res.data?.data || res.data?.product || res.data;
+      if (onSuccess && createdProduct) {
+        onSuccess(createdProduct);
       }
     },
     onError: (err) => {
@@ -193,8 +194,9 @@ export default function QuickAddProductDrawer({
       reset();
       toast.success('Product updated successfully');
       onClose();
-      if (onSuccess && res.data?.product) {
-        onSuccess(res.data.product);
+      const updatedProduct = res.data?.data?.product || res.data?.data || res.data?.product || res.data;
+      if (onSuccess && updatedProduct) {
+        onSuccess(updatedProduct);
       }
     },
     onError: (err) => {

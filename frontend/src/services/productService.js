@@ -67,4 +67,20 @@ export const productService = {
   async getStockAdjustments(params = {}) {
     return await apiClient.get('/products/stock-adjustments', { params });
   },
+
+  async addOpeningStock(data) {
+    return await apiClient.post('/products/opening-stock', data);
+  },
+
+  async getOpeningStocks(params = {}) {
+    return await apiClient.get('/products/opening-stock', { params });
+  },
+
+  async updateOpeningStock(id, data) {
+    return await apiClient.put(`/products/opening-stock/${id}`, data);
+  },
+
+  async deleteOpeningStock(id) {
+    return await apiClient.delete(`/products/opening-stock/${id}`);
+  },
 };

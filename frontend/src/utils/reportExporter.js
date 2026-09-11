@@ -48,10 +48,15 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
   const purchaseData = biData?.purchases || {};
 
   const kpiData = [
-    ['Total Sales Revenue', `Rs. ${(salesData.totalSales || 0).toLocaleString('en-IN')}`, `Growth: ${salesData.salesGrowth || 0}%`],
-    ['Total Procurement', `Rs. ${(purchaseData.totalPurchase || 0).toLocaleString('en-IN')}`, `Growth: ${purchaseData.purchaseGrowth || 0}%`],
-    ['Historical Gross Profit', `Rs. ${(overall.grossProfit || 0).toLocaleString('en-IN')}`, `Margin: ${overall.profitPct || 0}%`],
-    ['Net Customer Outstanding', `Rs. ${(salesData.outstandingCollection || 0).toLocaleString('en-IN')}`, `Receivables`],
+    ['Total Sales Revenue', `Rs. ${(overall.totalSales || salesData.totalSales || 0).toLocaleString('en-IN')}`, `Growth: ${salesData.salesGrowth || 0}%`],
+    ['Total Procurement', `Rs. ${(overall.totalPurchase || purchaseData.totalPurchase || 0).toLocaleString('en-IN')}`, `Growth: ${purchaseData.purchaseGrowth || 0}%`],
+    ['Opening Stock Value', `Rs. ${(overall.openingStockValue || 0).toLocaleString('en-IN')}`, 'Initial Business Stock'],
+    ['Realized Gross Profit', `Rs. ${(overall.grossProfit || 0).toLocaleString('en-IN')}`, `Margin: ${overall.profitPct || 0}%`],
+    ['Current Inventory Value', `Rs. ${(overall.currentStockValue ?? overall.inventoryValue ?? 0).toLocaleString('en-IN')}`, 'Physical Assets'],
+    ['Cash Collection', `Rs. ${(overall.cashCollection || 0).toLocaleString('en-IN')}`, 'Liquid Realization'],
+    ['Customer Receivables / Dues', `Rs. ${(overall.customerOutstanding || overall.customerDues || salesData.outstandingCollection || 0).toLocaleString('en-IN')}`, 'Receivables'],
+    ['Supplier Dues / Payables', `Rs. ${(overall.supplierOutstanding || overall.supplierDues || 0).toLocaleString('en-IN')}`, 'Payables'],
+    ['Advance Collections', `Rs. ${(overall.advanceCollections || 0).toLocaleString('en-IN')}`, 'Customer Advances'],
   ];
 
   callAutoTable({
@@ -133,12 +138,15 @@ export const exportReportToExcel = async (biData, dateRangeText = 'All Time', re
     [`Period: ${dateRangeText}`, `Exported: ${new Date().toLocaleString('en-IN')}`],
     [],
     ['KPI Metric', 'Amount (INR)', 'Growth % / Status'],
-    ['Total Sales Revenue', sales.totalSalesVal || 0, `+${sales.monthlyGrowthPct || 14.8}%`],
-    ['Total Procurement', purchases.totalPurchaseVal || 0, `+${purchases.purchaseGrowthPct || 10.4}%`],
-    ['Gross Profit', sales.profit || 0, '~21.4% Margin'],
-    ['Net Customer Outstanding', sales.outstandingAmount || 0, 'Receivables'],
-    ['Net Supplier Payable', purchases.outstandingPayable || 0, 'Payables'],
-    ['Current Inventory Value', stock.currentStockValue || 0, `${stock.currentStockQuantity || 0} Units`],
+    ['Total Sales Revenue', overall.totalSales || sales.totalSalesVal || 0, `+${sales.monthlyGrowthPct || 14.8}%`],
+    ['Total Procurement', overall.totalPurchase || purchases.totalPurchaseVal || 0, `+${purchases.purchaseGrowthPct || 10.4}%`],
+    ['Opening Stock Value', overall.openingStockValue || 0, 'Initial Stock Valuation'],
+    ['Gross Profit', overall.grossProfit || sales.profit || 0, `${overall.profitPct || 0}% Margin`],
+    ['Current Inventory Value', overall.currentStockValue || stock.currentStockValue || 0, `${stock.currentStockQuantity || 0} Units`],
+    ['Cash Collection', overall.cashCollection || 0, 'Total Realized Collections'],
+    ['Net Customer Receivables', overall.customerOutstanding || sales.outstandingAmount || 0, 'Customer Dues'],
+    ['Net Supplier Payables', overall.supplierOutstanding || purchases.outstandingPayable || 0, 'Supplier Dues'],
+    ['Advance Collections', overall.advanceCollections || 0, 'Customer Advances'],
   ];
   const kpiSheet = XLSX.utils.aoa_to_sheet(kpiRows);
   XLSX.utils.book_append_sheet(wb, kpiSheet, 'Financial Summary');

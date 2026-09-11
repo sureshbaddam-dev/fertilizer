@@ -77,6 +77,11 @@ const productBatchSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    isOpeningStock: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     isDeleted: {
       type: Boolean,
       default: false,

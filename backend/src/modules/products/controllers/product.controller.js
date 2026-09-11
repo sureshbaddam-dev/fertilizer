@@ -136,3 +136,27 @@ export const getStockAdjustments = asyncHandler(async (req, res) => {
   const data = await productService.getStockAdjustments(req.query, userId);
   return sendSuccess(res, 'Stock adjustments retrieved successfully', data, HTTP_STATUS.OK);
 });
+
+export const addOpeningStock = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const result = await productService.addOpeningStock(req.body, userId);
+  return sendSuccess(res, 'Opening stock added successfully', result, HTTP_STATUS.CREATED);
+});
+
+export const getOpeningStockList = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const data = await productService.getOpeningStockList(req.query, userId);
+  return sendSuccess(res, 'Opening stocks fetched successfully', data, HTTP_STATUS.OK);
+});
+
+export const updateOpeningStock = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const result = await productService.updateOpeningStock(req.params.id, req.body, userId);
+  return sendSuccess(res, 'Opening stock updated successfully', result, HTTP_STATUS.OK);
+});
+
+export const deleteOpeningStock = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const result = await productService.deleteOpeningStock(req.params.id, userId);
+  return sendSuccess(res, 'Opening stock deleted successfully', result, HTTP_STATUS.OK);
+});

@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Info,
   RotateCcw,
+  PackagePlus,
 } from 'lucide-react';
 import PageLayout from '../../components/ui/PageHeaderContainer';
 import StatCard from '../../components/ui/StatCard';
@@ -22,6 +23,7 @@ import ProductAvatar from '../../components/ui/ProductAvatar';
 import InventoryDetailsDrawer from '../../components/inventory/InventoryDetailsDrawer';
 import DamageStockModal from '../../components/inventory/DamageStockModal';
 import SupplierReturnModal from '../../components/inventory/SupplierReturnModal';
+import OpeningStockModal from '../../components/inventory/OpeningStockModal';
 
 export default function InventoryPage() {
   const navigate = useNavigate();
@@ -37,6 +39,7 @@ export default function InventoryPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Modals for Stock Management
+  const [isOpeningStockModalOpen, setIsOpeningStockModalOpen] = useState(false);
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
 
@@ -174,6 +177,16 @@ export default function InventoryPage() {
       icon={Layers}
       action={(
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+          <Button
+            variant="primary"
+            size="md"
+            icon={PackagePlus}
+            onClick={() => setIsOpeningStockModalOpen(true)}
+            className="text-xs px-2.5 sm:px-3.5 py-1.5 sm:py-2 flex-1 sm:flex-initial justify-center shadow-xs"
+          >
+            Opening Stock
+          </Button>
+
           <Button
             variant="outline"
             size="md"
@@ -424,8 +437,10 @@ export default function InventoryPage() {
                       );
                     }
 
+                    const totalInward = Number(p.totalInward ?? (Number(p.totalOpeningStockQty || 0) + Number(p.totalPurchasedQty || 0)));
                     const totalPurchased = p.totalPurchasedQty !== undefined ? p.totalPurchasedQty : 0;
                     const totalSold = p.totalSoldQty !== undefined ? p.totalSoldQty : 0;
+                    const totalOutward = Number(p.totalOutward ?? (Number(p.totalSoldQty || 0) + Number(p.totalDamagedQty || 0) + Number(p.totalReturnedQty || 0)));
 
                     return (
                       <tr
@@ -475,14 +490,14 @@ export default function InventoryPage() {
                           {statusBadge}
                         </td>
 
-                        {/* Total Purchased */}
+                        {/* Total Inward */}
                         <td className="py-2.5 px-2.5 text-center font-mono text-gray-700 align-middle whitespace-nowrap">
-                          {totalPurchased} {unitName}
+                          {totalInward} {unitName}
                         </td>
 
-                        {/* Total Sold */}
+                        {/* Total Outward */}
                         <td className="py-2.5 px-2.5 text-center font-mono text-gray-700 align-middle whitespace-nowrap">
-                          {totalSold} {unitName}
+                          {totalOutward} {unitName}
                         </td>
 
                         {/* Last Purchase */}
@@ -524,8 +539,10 @@ export default function InventoryPage() {
                 const stockVal = Number(p.stockValue ?? p.totalStockValue ?? (stock * Number(p.defaultPurchaseRate || p.purchaseRate || p.purchasePrice || 0)));
                 const companyName = p.brandId?.name || p.companyId?.name || p.company || 'N/A';
                 const categoryName = p.categoryId?.name || p.category || 'Uncategorized';
+                const totalInward = Number(p.totalInward ?? (Number(p.totalOpeningStockQty || 0) + Number(p.totalPurchasedQty || 0)));
                 const totalPurchased = p.totalPurchasedQty !== undefined ? p.totalPurchasedQty : 0;
                 const totalSold = p.totalSoldQty !== undefined ? p.totalSoldQty : 0;
+                const totalOutward = Number(p.totalOutward ?? (Number(p.totalSoldQty || 0) + Number(p.totalDamagedQty || 0) + Number(p.totalReturnedQty || 0)));
 
                 // Status Badge for Card
                 let statusBadge = (
@@ -591,7 +608,7 @@ export default function InventoryPage() {
                       </div>
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold block uppercase font-sans">Total Inward / Outward</span>
-                        <span className="font-medium text-gray-700 block">{totalPurchased} in / {totalSold} out</span>
+                        <span className="font-medium text-gray-700 block">{totalInward} in / {totalOutward} out</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-gray-400 font-bold block uppercase font-sans">Last Purchase</span>
@@ -669,6 +686,20 @@ export default function InventoryPage() {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         product={selectedProduct}
+      />
+
+      {/* Opening Stock Modal */}
+      <OpeningStockModal
+        isOpen={isOpeningStockModalOpen}
+        onClose={() => setIsOpeningStockModalOpen(false)}
+        products={rawProducts}
+        onSaveSuccess={() => {
+          queryClient.invalidateQueries(['products-inventory']);
+          queryClient.invalidateQueries(['products']);
+          queryClient.invalidateQueries(['stock-adjustments']);
+          queryClient.invalidateQueries(['dashboard-summary']);
+          queryClient.invalidateQueries(['reports-bi']);
+        }}
       />
 
       {/* Damaged Stock Modal */}

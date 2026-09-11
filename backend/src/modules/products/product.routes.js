@@ -13,6 +13,10 @@ import {
   updateBatch,
   recordDamagedStock,
   getStockAdjustments,
+  addOpeningStock,
+  getOpeningStockList,
+  updateOpeningStock,
+  deleteOpeningStock,
 } from './controllers/product.controller.js';
 import { uploadProductImageMiddleware } from '../../middlewares/upload.middleware.js';
 import { protect } from '../../middlewares/auth.middleware.js';
@@ -27,6 +31,10 @@ router.get('/', getProducts);
 router.get('/top-selling', getTopSellingProducts);
 router.get('/cloudinary-images/search', searchCloudinaryProductImages);
 router.get('/stock-adjustments', getStockAdjustments);
+router.get('/opening-stock', getOpeningStockList);
+router.post('/opening-stock', addOpeningStock);
+router.put('/opening-stock/:id', updateOpeningStock);
+router.delete('/opening-stock/:id', deleteOpeningStock);
 router.post('/', createProduct);
 router.post('/damaged-stock', recordDamagedStock);
 router.post('/upload-image', uploadProductImageMiddleware.single('image'), uploadProductImage);

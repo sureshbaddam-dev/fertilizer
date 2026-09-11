@@ -7,6 +7,8 @@ import { Customer } from '../../customers/models/customer.model.js';
 import { CustomerPayment } from '../../customers/models/customerPayment.model.js';
 import { ProductBatch } from '../../products/models/productBatch.model.js';
 import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
+import { StockLedger } from '../../purchases/models/stockLedger.model.js';
+import { productService } from '../../products/services/product.service.js';
 
 export const reportsService = {
   async getBIAnalytics(filters = {}, userId) {
@@ -28,6 +30,26 @@ export const reportsService = {
     const endOfPrevMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
 
     const startOfYear = new Date(currentYear, 0, 1);
+
+    // Parse date period filters if supplied
+    let periodStartDate = null;
+    let periodEndDate = null;
+    if (filters.dateRange === 'TODAY') {
+      periodStartDate = startOfToday;
+      periodEndDate = endOfToday;
+    } else if (filters.dateRange === 'THIS_WEEK') {
+      periodStartDate = startOfWeek;
+      periodEndDate = endOfToday;
+    } else if (filters.dateRange === 'THIS_MONTH') {
+      periodStartDate = startOfMonth;
+      periodEndDate = endOfToday;
+    } else if (filters.dateRange === 'THIS_YEAR') {
+      periodStartDate = startOfYear;
+      periodEndDate = endOfToday;
+    } else if (filters.startDate && filters.endDate) {
+      periodStartDate = new Date(filters.startDate);
+      periodEndDate = new Date(filters.endDate);
+    }
 
     // Build base SalesInvoice match query excluding cancelled/void invoices
     const salesMatch = {
@@ -78,10 +100,12 @@ export const reportsService = {
       salesHeaderFacetResult,
       salesItemFacetResult,
       purchaseFacetResult,
-      productFacetResult,
+      productServiceResult,
       customerBalanceResult,
       supplierBalanceResult,
       validPaymentResult,
+      openingStockBatchResult,
+      openingStockLedgerResult,
     ] = await Promise.all([
       // 1a. SalesInvoice Header-Level MongoDB Facet Aggregation Pipeline
       SalesInvoice.aggregate([
@@ -170,24 +194,142 @@ export const reportsService = {
         { $match: salesMatch },
         { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
         {
+          $lookup: {
+            from: 'products',
+            let: { pId: '$items.productId' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $eq: [{ $toString: '$_id' }, { $toString: '$$pId' }],
+                  },
+                },
+              },
+            ],
+            as: 'productDoc',
+          },
+        },
+        {
+          $lookup: {
+            from: 'productbatches',
+            let: { pId: '$items.productId', bNum: '$items.batchNumber' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      {
+                        $or: [
+                          { $and: [{ $ne: ['$$bNum', ''] }, { $ne: ['$$bNum', null] }, { $eq: ['$batchNumber', '$$bNum'] }] },
+                          { $eq: [{ $toString: '$productId' }, { $toString: '$$pId' }] },
+                        ],
+                      },
+                      { $gt: ['$purchaseRate', 0] },
+                    ],
+                  },
+                },
+              },
+              { $sort: { isOpeningStock: -1, createdAt: 1 } },
+              { $limit: 1 },
+            ],
+            as: 'matchedBatchDoc',
+          },
+        },
+        {
+          $addFields: {
+            batchAllocTotalCost: {
+              $reduce: {
+                input: { $ifNull: ['$items.batchAllocations', []] },
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    {
+                      $multiply: [
+                        { $toDouble: { $ifNull: ['$$this.quantity', 0] } },
+                        { $toDouble: { $ifNull: ['$$this.purchaseRate', 0] } },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            resolvedPurchaseCostRate: {
+              $cond: [
+                { $gt: ['$batchAllocTotalCost', 0] },
+                {
+                  $divide: [
+                    '$batchAllocTotalCost',
+                    { $cond: [{ $gt: [{ $toDouble: { $ifNull: ['$items.quantity', 1] } }, 0] }, { $toDouble: '$items.quantity' }, 1] },
+                  ],
+                },
+                {
+                  $cond: [
+                    { $gt: [{ $toDouble: { $ifNull: ['$items.purchaseCostRate', 0] } }, 0] },
+                    { $toDouble: '$items.purchaseCostRate' },
+                    {
+                      $cond: [
+                        { $gt: [{ $toDouble: { $ifNull: [{ $arrayElemAt: ['$matchedBatchDoc.purchaseRate', 0] }, 0] } }, 0] },
+                        { $toDouble: { $arrayElemAt: ['$matchedBatchDoc.purchaseRate', 0] } },
+                        { $toDouble: { $ifNull: [{ $arrayElemAt: ['$productDoc.defaultPurchaseRate', 0] }, 0] } },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $addFields: {
+            resolvedItemCost: {
+              $cond: [
+                { $gt: ['$batchAllocTotalCost', 0] },
+                '$batchAllocTotalCost',
+                {
+                  $multiply: [
+                    { $toDouble: { $ifNull: ['$items.quantity', 0] } },
+                    '$resolvedPurchaseCostRate',
+                  ],
+                },
+              ],
+            },
+            resolvedItemRevenue: {
+              $cond: [
+                { $gt: [{ $toDouble: { $ifNull: ['$items.taxableAmount', 0] } }, 0] },
+                { $toDouble: '$items.taxableAmount' },
+                {
+                  $multiply: [
+                    { $toDouble: { $ifNull: ['$items.quantity', 0] } },
+                    { $toDouble: { $ifNull: ['$items.unitPrice', 0] } },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $addFields: {
+            resolvedLineProfit: {
+              $subtract: ['$resolvedItemRevenue', '$resolvedItemCost'],
+            },
+          },
+        },
+        {
           $facet: {
             totalProfit: [
               {
                 $group: {
                   _id: null,
                   totalGrossProfit: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.lineProfit', 0] } }, 0] },
-                        { $toDouble: '$items.lineProfit' },
-                        {
-                          $multiply: [
-                            { $toDouble: { $ifNull: ['$items.quantity', 0] } },
-                            { $subtract: [{ $toDouble: { $ifNull: ['$items.unitPrice', 0] } }, { $toDouble: { $ifNull: ['$items.purchaseCostRate', 0] } }] },
-                          ],
-                        },
-                      ],
-                    },
+                    $sum: '$resolvedLineProfit',
+                  },
+                  totalCOGS: {
+                    $sum: '$resolvedItemCost',
                   },
                 },
               },
@@ -199,27 +341,10 @@ export const reportsService = {
                   name: { $first: { $ifNull: ['$items.productName', 'Product'] } },
                   quantitySold: { $sum: { $toDouble: { $ifNull: ['$items.quantity', 0] } } },
                   salesValue: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.taxableAmount', 0] } }, 0] },
-                        { $toDouble: '$items.taxableAmount' },
-                        { $multiply: [{ $toDouble: { $ifNull: ['$items.quantity', 0] } }, { $toDouble: { $ifNull: ['$items.unitPrice', 0] } }] },
-                      ],
-                    },
+                    $sum: '$resolvedItemRevenue',
                   },
                   profit: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.lineProfit', 0] } }, 0] },
-                        { $toDouble: '$items.lineProfit' },
-                        {
-                          $multiply: [
-                            { $toDouble: { $ifNull: ['$items.quantity', 0] } },
-                            { $subtract: [{ $toDouble: { $ifNull: ['$items.unitPrice', 0] } }, { $toDouble: { $ifNull: ['$items.purchaseCostRate', 0] } }] },
-                          ],
-                        },
-                      ],
-                    },
+                    $sum: '$resolvedLineProfit',
                   },
                 },
               },
@@ -231,27 +356,10 @@ export const reportsService = {
                 $group: {
                   _id: { $month: '$createdAt' },
                   sales: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.taxableAmount', 0] } }, 0] },
-                        { $toDouble: '$items.taxableAmount' },
-                        { $multiply: [{ $toDouble: { $ifNull: ['$items.quantity', 0] } }, { $toDouble: { $ifNull: ['$items.unitPrice', 0] } }] },
-                      ],
-                    },
+                    $sum: '$resolvedItemRevenue',
                   },
                   profit: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.lineProfit', 0] } }, 0] },
-                        { $toDouble: '$items.lineProfit' },
-                        {
-                          $multiply: [
-                            { $toDouble: { $ifNull: ['$items.quantity', 0] } },
-                            { $subtract: [{ $toDouble: { $ifNull: ['$items.unitPrice', 0] } }, { $toDouble: { $ifNull: ['$items.purchaseCostRate', 0] } }] },
-                          ],
-                        },
-                      ],
-                    },
+                    $sum: '$resolvedLineProfit',
                   },
                 },
               },
@@ -262,27 +370,10 @@ export const reportsService = {
                 $group: {
                   _id: { $year: '$createdAt' },
                   sales: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.taxableAmount', 0] } }, 0] },
-                        { $toDouble: '$items.taxableAmount' },
-                        { $multiply: [{ $toDouble: { $ifNull: ['$items.quantity', 0] } }, { $toDouble: { $ifNull: ['$items.unitPrice', 0] } }] },
-                      ],
-                    },
+                    $sum: '$resolvedItemRevenue',
                   },
                   profit: {
-                    $sum: {
-                      $cond: [
-                        { $gt: [{ $toDouble: { $ifNull: ['$items.lineProfit', 0] } }, 0] },
-                        { $toDouble: '$items.lineProfit' },
-                        {
-                          $multiply: [
-                            { $toDouble: { $ifNull: ['$items.quantity', 0] } },
-                            { $subtract: [{ $toDouble: { $ifNull: ['$items.unitPrice', 0] } }, { $toDouble: { $ifNull: ['$items.purchaseCostRate', 0] } }] },
-                          ],
-                        },
-                      ],
-                    },
+                    $sum: '$resolvedLineProfit',
                   },
                 },
               },
@@ -369,116 +460,8 @@ export const reportsService = {
         },
       ]),
 
-      // 3. Product Inventory MongoDB Aggregation Pipeline
-      Product.aggregate([
-        { $match: { userId: userObjId, isActive: true } },
-        {
-          $facet: {
-            inventorySummary: [
-              {
-                $lookup: {
-                  from: 'productbatches',
-                  let: { prodId: '$_id' },
-                  pipeline: [
-                    {
-                      $match: {
-                        $expr: {
-                          $and: [
-                            { $eq: ['$productId', '$$prodId'] },
-                            { $eq: ['$userId', userObjId] }
-                          ]
-                        }
-                      }
-                    }
-                  ],
-                  as: 'batchDocs',
-                },
-              },
-              {
-                $project: {
-                  totalStock: 1,
-                  defaultPurchaseRate: 1,
-                  batchVal: {
-                    $reduce: {
-                      input: {
-                        $filter: {
-                          input: '$batchDocs',
-                          as: 'b',
-                          cond: { $and: [{ $eq: ['$$b.isActive', true] }, { $gt: [{ $toDouble: '$$b.currentStock' }, 0] }] },
-                        },
-                      },
-                      initialValue: 0,
-                      in: {
-                        $add: [
-                          '$$value',
-                          { $multiply: [{ $toDouble: { $ifNull: ['$$this.currentStock', 0] } }, { $toDouble: { $ifNull: ['$$this.purchaseRate', 0] } }] },
-                        ],
-                      },
-                    },
-                  },
-                  batchStock: {
-                    $reduce: {
-                      input: {
-                        $filter: {
-                          input: '$batchDocs',
-                          as: 'b',
-                          cond: { $and: [{ $eq: ['$$b.isActive', true] }, { $gt: [{ $toDouble: '$$b.currentStock' }, 0] }] },
-                        },
-                      },
-                      initialValue: 0,
-                      in: { $add: ['$$value', { $toDouble: { $ifNull: ['$$this.currentStock', 0] } }] },
-                    },
-                  },
-                },
-              },
-              {
-                $group: {
-                  _id: null,
-                  totalInventoryValue: {
-                    $sum: {
-                      $add: [
-                        '$batchVal',
-                        {
-                          $multiply: [
-                            { $max: [0, { $subtract: [{ $toDouble: { $ifNull: ['$totalStock', 0] } }, '$batchStock'] }] },
-                            { $toDouble: { $ifNull: ['$defaultPurchaseRate', 0] } },
-                          ],
-                        },
-                      ],
-                    },
-                  },
-                  totalProducts: { $sum: 1 },
-                },
-              },
-            ],
-            lowStockCount: [
-              {
-                $match: {
-                  $expr: {
-                    $lte: [
-                      { $toDouble: { $ifNull: ['$totalStock', 0] } },
-                      { $toDouble: { $ifNull: ['$minimumStockAlert', 10] } },
-                    ],
-                  },
-                },
-              },
-              { $count: 'count' },
-            ],
-            outOfStockCount: [{ $match: { totalStock: 0 } }, { $count: 'count' }],
-            mostPurchasedProducts: [
-              {
-                $project: {
-                  name: 1,
-                  stock: '$totalStock',
-                  value: { $multiply: [{ $toDouble: { $ifNull: ['$totalStock', 0] } }, { $toDouble: { $ifNull: ['$defaultPurchaseRate', 0] } }] },
-                },
-              },
-              { $sort: { value: -1 } },
-              { $limit: 10 },
-            ],
-          },
-        },
-      ]),
+      // 3. Product Inventory from Authoritative Product Service
+      productService.getAllProducts({}, userId),
 
       // 4. Customer MongoDB Aggregation Pipeline
       Customer.aggregate([
@@ -538,11 +521,62 @@ export const reportsService = {
           },
         },
       ]),
+
+      // 7. Business-Level Opening Stock Valuation from ProductBatch
+      ProductBatch.aggregate([
+        {
+          $match: {
+            userId: userObjId,
+            isOpeningStock: true,
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalOpeningStockValue: {
+              $sum: {
+                $multiply: [
+                  { $toDouble: { $ifNull: ['$initialQuantity', '$currentStock'] } },
+                  { $toDouble: { $ifNull: ['$purchaseRate', 0] } },
+                ],
+              },
+            },
+            totalOpeningStockQty: {
+              $sum: { $toDouble: { $ifNull: ['$initialQuantity', '$currentStock'] } },
+            },
+          },
+        },
+      ]),
+
+      // 8. Business-Level Opening Stock Valuation from StockLedger (Fallback audit)
+      StockLedger.aggregate([
+        {
+          $match: {
+            userId: userObjId,
+            transactionType: 'OPENING_STOCK',
+            isDeleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalOpeningStockValue: {
+              $sum: {
+                $multiply: [
+                  { $toDouble: { $ifNull: ['$quantity', 0] } },
+                  { $toDouble: { $ifNull: ['$purchaseRate', 0] } },
+                ],
+              },
+            },
+          },
+        },
+      ]),
     ]);
 
     const salesDataObj = { ...(salesHeaderFacetResult[0] || {}), ...(salesItemFacetResult[0] || {}) };
     const purchaseDataObj = purchaseFacetResult[0] || {};
-    const productDataObj = productFacetResult[0] || {};
+    const allProductsList = productServiceResult?.products || [];
 
     const totalInvoicesCount = salesDataObj.totalSales?.[0]?.totalInvoices || 0;
 
@@ -563,19 +597,137 @@ export const reportsService = {
     const totalPurchaseVal = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPurchaseVal || 0);
     const totalPurchasePaid = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPaid || 0);
 
-    const currentStockVal = Math.round(productDataObj.inventorySummary?.[0]?.totalInventoryValue || 0);
-    const lowStockCount = productDataObj.lowStockCount?.[0]?.count || 0;
-    const outOfStockCount = productDataObj.outOfStockCount?.[0]?.count || 0;
+    // Authoritative Current Stock Valuation exactly matching Inventory Page
+    const currentStockVal = Math.round(
+      allProductsList.reduce((sum, p) => sum + Number(p.stockValue ?? p.totalStockValue ?? 0), 0)
+    );
+    const totalProductsCount = allProductsList.length;
+    const lowStockCount = allProductsList.filter((p) => {
+      const stock = Number(p.totalStock ?? p.currentStock ?? 0);
+      const minAlert = Number(p.minimumStockAlert ?? p.lowStockAlert ?? 10);
+      return stock > 0 && stock <= minAlert;
+    }).length;
+    const outOfStockCount = allProductsList.filter((p) => Number(p.totalStock ?? p.currentStock ?? 0) <= 0).length;
+    const mostPurchasedProducts = allProductsList
+      .map((p) => ({
+        name: p.name,
+        stock: Number(p.totalStock || 0),
+        value: Number(p.stockValue ?? p.totalStockValue ?? 0),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
 
-    const finalCustomerOutstanding = Math.round(totalInvoicesCount > 0 ? (customerBalanceResult[0]?.totalOutstanding || totalSalesDue) : 0);
     const totalAdvanceCollections = Math.round(customerBalanceResult[0]?.totalAdvance || 0);
     const finalSupplierOutstanding = Math.round(supplierBalanceResult[0]?.totalOutstanding || 0);
+
+    // Fetch individual customer balances and unpaid invoices to accurately compute Opening Balance Dues vs Current Invoice Dues
+    const [activeCustomers, activeInvoices] = await Promise.all([
+      Customer.find({ userId: userObjId, isActive: { $ne: false } })
+        .select('_id name mobile customerType openingBalance openingBalanceType outstandingBalance advanceBalance')
+        .lean()
+        .exec(),
+      SalesInvoice.find({
+        userId: userObjId,
+        status: { $ne: 'Cancelled' },
+        isDeleted: { $ne: true },
+      })
+        .select('_id invoiceNumber customerId customerName customerMobile totalAmount paidAmount dueAmount status')
+        .lean()
+        .exec(),
+    ]);
+
+    let totalCustomerDues = 0;
+    const customerReceivablesList = [];
+
+    const addedMobiles = new Set();
+    const addedIds = new Set();
+
+    activeCustomers
+      .filter((c) => c.customerType === 'ADDED' || !c.customerType)
+      .forEach((c) => {
+        const cIdStr = c._id.toString();
+        addedIds.add(cIdStr);
+        if (c.mobile) addedMobiles.add(c.mobile.trim());
+
+        const totalDue = Math.round(Number(c.outstandingBalance) || 0);
+        totalCustomerDues += totalDue;
+
+        if (totalDue > 0) {
+          customerReceivablesList.push({
+            id: cIdStr,
+            name: c.name || 'Unnamed Customer',
+            mobile: c.mobile || '-',
+            dues: totalDue,
+            totalDue,
+            customerType: 'ADDED',
+          });
+        }
+      });
+
+    // Process General Customers with unpaid invoice balances
+    const generalDueInvoices = activeInvoices.filter(
+      (i) =>
+        (!i.customerId || !addedIds.has(i.customerId.toString())) &&
+        (!i.customerMobile || !addedMobiles.has(i.customerMobile.trim())) &&
+        (Number(i.dueAmount) || 0) > 0
+    );
+
+    const generalCustomerMap = {};
+    generalDueInvoices.forEach((inv) => {
+      const name = (inv.customerName || 'General Customer').trim();
+      const mobile = (inv.customerMobile || '-').trim();
+      const key = `${name.toLowerCase()}_${mobile}`;
+
+      if (!generalCustomerMap[key]) {
+        generalCustomerMap[key] = {
+          id: inv._id.toString(),
+          name,
+          mobile,
+          dues: 0,
+          totalDue: 0,
+          customerType: 'GENERAL',
+        };
+      }
+
+      const invDue = Math.round(Number(inv.dueAmount) || 0);
+      generalCustomerMap[key].dues += invDue;
+      generalCustomerMap[key].totalDue += invDue;
+    });
+
+    Object.values(generalCustomerMap).forEach((g) => {
+      totalCustomerDues += g.totalDue;
+      customerReceivablesList.push(g);
+    });
+
+    customerReceivablesList.sort((a, b) => b.totalDue - a.totalDue);
 
     // Total Collections is calculated dynamically from valid CustomerPayment records or valid bill payments
     const validPaymentsCollection = Math.round(validPaymentResult[0]?.totalCollection || 0);
     const totalCollection = Math.round(totalInvoicesCount > 0 ? Math.max(totalSalesPaid, validPaymentsCollection) : validPaymentsCollection);
 
-    const totalGrossProfit = totalInvoicesCount > 0 ? Math.round(salesDataObj.totalProfit?.[0]?.totalGrossProfit || 0) : 0;
+    // Accurate COGS and Gross Profit calculation using FIFO layers
+    const totalCOGS = totalInvoicesCount > 0 ? Math.round(salesDataObj.totalProfit?.[0]?.totalCOGS || 0) : 0;
+    const totalGrossProfit = totalInvoicesCount > 0
+      ? Math.round(salesDataObj.totalProfit?.[0]?.totalGrossProfit ?? (totalSalesVal - totalCOGS))
+      : 0;
+
+    // Total Business Opening Stock Value derived from authoritative product batches or batch aggregates
+    let openingStockValFromProducts = 0;
+    allProductsList.forEach((p) => {
+      (p.batches || []).forEach((b) => {
+        if (b.isOpeningStock) {
+          const qty = Number(b.initialQuantity ?? b.quantityPurchased ?? b.currentStock ?? 0);
+          const rate = Number(b.purchaseRate ?? p.defaultPurchaseRate ?? 0);
+          openingStockValFromProducts += qty * rate;
+        }
+      });
+    });
+
+    const batchOpeningVal = Math.round(openingStockBatchResult?.[0]?.totalOpeningStockValue || 0);
+    const ledgerOpeningVal = Math.round(openingStockLedgerResult?.[0]?.totalOpeningStockValue || 0);
+    const totalOpeningStockVal = openingStockValFromProducts > 0
+      ? Math.round(openingStockValFromProducts)
+      : (batchOpeningVal > 0 ? batchOpeningVal : ledgerOpeningVal);
 
     // Safe Sales Growth % calculation
     let salesGrowthPct = 0;
@@ -635,17 +787,71 @@ export const reportsService = {
       profit: y.profit || 0,
     }));
 
+    // Dynamic Business Health Engine (0-100 Score with 5 Deterministic Pillars)
     const isSupplierDuesExceedStock = finalSupplierOutstanding > currentStockVal;
-    let businessHealthStatus = 'Excellent';
-    let businessHealthScore = 100;
 
-    if (isSupplierDuesExceedStock && currentStockVal > 0) {
-      businessHealthStatus = 'Warning';
-      businessHealthScore = Math.max(40, Math.round(100 - (finalSupplierOutstanding / currentStockVal) * 50));
-    } else if (finalCustomerOutstanding > totalSalesVal * 0.4 && totalSalesVal > 0) {
-      businessHealthStatus = 'Good';
-      businessHealthScore = 75;
+    // Pillar 1: Profit Margin (0-20 pts)
+    let pillarProfit = 15;
+    if (totalSalesVal > 0) {
+      if (profitPctVal >= 20) pillarProfit = 20;
+      else if (profitPctVal >= 15) pillarProfit = 16;
+      else if (profitPctVal >= 10) pillarProfit = 12;
+      else if (profitPctVal >= 5) pillarProfit = 8;
+      else if (profitPctVal > 0) pillarProfit = 4;
+      else pillarProfit = 0;
     }
+
+    // Pillar 2: Sales Activity & Growth (0-20 pts)
+    let pillarSales = 15;
+    if (salesGrowthPct >= 15) pillarSales = 20;
+    else if (salesGrowthPct >= 0) pillarSales = 16;
+    else if (salesGrowthPct >= -10) pillarSales = 12;
+    else if (salesGrowthPct >= -25) pillarSales = 8;
+    else pillarSales = 4;
+
+    // Pillar 3: Supplier Coverage / Working Capital (0-20 pts)
+    let pillarSupplier = 20;
+    if (finalSupplierOutstanding > 0) {
+      if (currentStockVal >= finalSupplierOutstanding * 2) pillarSupplier = 20;
+      else if (currentStockVal >= finalSupplierOutstanding) pillarSupplier = 15;
+      else if (currentStockVal >= finalSupplierOutstanding * 0.5) pillarSupplier = 10;
+      else pillarSupplier = 4;
+    }
+
+    // Pillar 4: Customer Receivables Exposure (0-20 pts)
+    let pillarReceivables = 20;
+    if (totalCustomerDues > 0) {
+      if (totalSalesVal > 0) {
+        const dueRatio = totalCustomerDues / totalSalesVal;
+        if (dueRatio <= 0.2) pillarReceivables = 20;
+        else if (dueRatio <= 0.4) pillarReceivables = 16;
+        else if (dueRatio <= 0.7) pillarReceivables = 12;
+        else if (dueRatio <= 1.0) pillarReceivables = 8;
+        else pillarReceivables = 4;
+      } else {
+        pillarReceivables = 12;
+      }
+    }
+
+    // Pillar 5: Inventory & Out-of-Stock Health (0-20 pts)
+    let pillarInventory = 20;
+    if (totalProductsCount > 0) {
+      if (outOfStockCount === 0 && lowStockCount === 0) pillarInventory = 20;
+      else if (outOfStockCount === 0 && lowStockCount <= 2) pillarInventory = 16;
+      else {
+        const penalty = outOfStockCount * 4 + lowStockCount * 1;
+        pillarInventory = Math.max(5, 20 - penalty);
+      }
+    }
+
+    const businessHealthScore = Math.min(100, Math.max(0, pillarProfit + pillarSales + pillarSupplier + pillarReceivables + pillarInventory));
+
+    let businessHealthStatus = 'Good';
+    if (businessHealthScore >= 90) businessHealthStatus = 'Excellent';
+    else if (businessHealthScore >= 75) businessHealthStatus = 'Good';
+    else if (businessHealthScore >= 50) businessHealthStatus = 'Fair';
+    else if (businessHealthScore >= 25) businessHealthStatus = 'Needs Attention';
+    else businessHealthStatus = 'Critical';
 
     const businessInsights = [
       {
@@ -664,14 +870,14 @@ export const reportsService = {
       },
       {
         id: 3,
-        type: 'INFO',
+        type: profitPctVal >= 15 ? 'SUCCESS' : profitPctVal > 0 ? 'INFO' : 'WARNING',
         title: `Profit Margin Holds at ${profitPctVal}%`,
         description: `Gross profit of ₹${totalGrossProfit.toLocaleString('en-IN')} generated on ₹${totalSalesVal.toLocaleString('en-IN')} total sales.`,
       },
       {
         id: 4,
-        type: lowStockCount > 0 ? 'WARNING' : 'SUCCESS',
-        title: lowStockCount > 0 ? `${lowStockCount} Products Near Low Stock Threshold` : 'Inventory Reorder Level Healthy',
+        type: outOfStockCount > 0 ? 'WARNING' : lowStockCount > 0 ? 'INFO' : 'SUCCESS',
+        title: outOfStockCount > 0 ? `${outOfStockCount} Products Out of Stock` : lowStockCount > 0 ? `${lowStockCount} Products Near Low Stock Threshold` : 'Inventory Reorder Level Healthy',
         description: `${lowStockCount} items require reorder replenishment while ${outOfStockCount} items are completely out of stock.`,
       },
     ];
@@ -684,7 +890,7 @@ export const reportsService = {
         yearlySales,
         totalSales: totalSalesVal,
         totalCollection,
-        outstandingCollection: finalCustomerOutstanding,
+        outstandingCollection: totalCustomerDues,
         salesGrowth: salesGrowthPct,
         avgBillValue,
         charts: {
@@ -696,7 +902,13 @@ export const reportsService = {
           topCustomers: totalInvoicesCount > 0 ? (salesDataObj.topCustomers || []) : [],
           topSellingProducts: totalInvoicesCount > 0 ? (salesDataObj.topProducts || []) : [],
           recentSales: totalInvoicesCount > 0 ? (salesDataObj.recentSales || []) : [],
-          outstandingCustomers: totalInvoicesCount > 0 ? (salesDataObj.topCustomers || []).filter((c) => c.dues > 0) : [],
+          outstandingCustomers: (customerReceivablesList || []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            mobile: c.mobile,
+            dues: c.totalDue,
+            customerType: c.customerType,
+          })),
         },
       },
       purchases: {
@@ -717,19 +929,25 @@ export const reportsService = {
           topSuppliers: purchaseDataObj.topSuppliers || [],
           recentPurchases: purchaseDataObj.recentPurchases || [],
           outstandingSuppliers: (purchaseDataObj.topSuppliers || []).filter((s) => s.balance > 0),
-          mostPurchasedProducts: productDataObj.mostPurchasedProducts || [],
+          mostPurchasedProducts: mostPurchasedProducts || [],
         },
       },
       overallBusiness: {
         totalSales: totalSalesVal,
         totalPurchase: totalPurchaseVal,
+        openingStockValue: totalOpeningStockVal,
         grossProfit: totalGrossProfit,
         profitPct: profitPctVal,
         inventoryValue: currentStockVal,
-        cashCollection: totalCollection,
-        customerOutstanding: finalCustomerOutstanding,
-        supplierOutstanding: finalSupplierOutstanding,
         currentStockValue: currentStockVal,
+        cashCollection: totalCollection,
+        customerOutstanding: totalCustomerDues,
+        customerDues: totalCustomerDues,
+        customerReceivables: totalCustomerDues,
+        totalCustomerDues,
+        customerReceivablesList,
+        supplierOutstanding: finalSupplierOutstanding,
+        supplierDues: finalSupplierOutstanding,
         advanceCollections: totalAdvanceCollections,
         businessHealth: {
           status: businessHealthStatus,

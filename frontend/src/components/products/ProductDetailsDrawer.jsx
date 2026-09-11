@@ -641,7 +641,7 @@ export default function ProductDetailsDrawer({
                         <th className="py-2 px-2.5">Batch</th>
                         <th className="py-2 px-2.5 text-center">Qty Sold</th>
                         <th className="py-2 px-2.5 text-right">Selling Price</th>
-                        <th className="py-2 px-2.5 text-right">COGS</th>
+                        <th className="py-2 px-2.5 text-right">Cost / Unit</th>
                         <th className="py-2 px-2.5 text-right">Profit / Unit</th>
                       </tr>
                     </thead>

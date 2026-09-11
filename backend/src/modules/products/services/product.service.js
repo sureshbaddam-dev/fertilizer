@@ -4,7 +4,6 @@ import { productRepository } from '../repositories/product.repository.js';
 import { ProductBatch } from '../models/productBatch.model.js';
 import { categoryRepository } from '../../masters/repositories/category.repository.js';
 import { unitRepository } from '../../masters/repositories/unit.repository.js';
-import { baseMasterService } from '../../../common/baseMaster.service.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
@@ -302,7 +301,7 @@ export const productService = {
     const productIds = productsDocs.map((p) => p._id);
     const productObjIds = productIds.map((id) => (id instanceof mongoose.Types.ObjectId ? id : new mongoose.Types.ObjectId(id)));
 
-    const [allBatches, purchaseAgg, salesAgg] = await Promise.all([
+    const [allBatches, purchaseAgg, salesAgg, adjustmentAgg] = await Promise.all([
       ProductBatch.find({
         userId,
         productId: { $in: productIds },
@@ -339,7 +338,14 @@ export const productService = {
         },
       ]),
       SalesInvoice.aggregate([
-        { $match: { userId: userObjId, 'items.productId': { $in: productObjIds } } },
+        {
+          $match: {
+            userId: userObjId,
+            status: { $ne: 'Cancelled' },
+            isDeleted: { $ne: true },
+            'items.productId': { $in: productObjIds },
+          },
+        },
         { $unwind: '$items' },
         { $match: { 'items.productId': { $in: productObjIds } } },
         {
@@ -347,6 +353,22 @@ export const productService = {
             _id: '$items.productId',
             totalSoldQty: { $sum: { $toDouble: { $ifNull: ['$items.quantity', 0] } } },
             lastSaleDate: { $max: { $ifNull: ['$date', '$createdAt'] } },
+          },
+        },
+      ]),
+      StockLedger.aggregate([
+        {
+          $match: {
+            userId: userObjId,
+            productId: { $in: productObjIds },
+            isDeleted: { $ne: true },
+            transactionType: { $in: ['DAMAGE', 'PURCHASE_RETURN', 'RETURN'] },
+          },
+        },
+        {
+          $group: {
+            _id: { productId: '$productId', type: '$transactionType' },
+            totalQty: { $sum: { $abs: { $toDouble: { $ifNull: ['$quantity', 0] } } } },
           },
         },
       ]),
@@ -379,6 +401,20 @@ export const productService = {
       }
     });
 
+    const damageMap = new Map();
+    const returnMap = new Map();
+    adjustmentAgg.forEach((item) => {
+      if (item._id?.productId) {
+        const pid = item._id.productId.toString();
+        const type = (item._id.type || '').toUpperCase();
+        if (type === 'DAMAGE') {
+          damageMap.set(pid, (damageMap.get(pid) || 0) + (item.totalQty || 0));
+        } else if (type === 'PURCHASE_RETURN' || type === 'RETURN') {
+          returnMap.set(pid, (returnMap.get(pid) || 0) + (item.totalQty || 0));
+        }
+      }
+    });
+
     // ATTACH BATCHES, INWARD/OUTWARD METRICS, EFFECTIVE SELLING PRICE, AND LAST DATES TO EACH PRODUCT DOCUMENT
     const products = productsDocs.map((pDoc) => {
       const pObj = pDoc.toObject ? pDoc.toObject() : { ...pDoc };
@@ -397,8 +433,21 @@ export const productService = {
       const purData = purchaseMap.get(pIdStr) || {};
       const saleData = salesMap.get(pIdStr) || {};
 
-      // Compute accurate stock value from remaining active batch layers up to product.totalStock
-      let remainingStockToValue = Math.max(0, Number(pObj.totalStock || 0));
+      const openingBatches = pBatches.filter((b) => b.isOpeningStock === true);
+      const totalOpeningStockQty = openingBatches.reduce((sum, b) => sum + Number(b.initialQuantity || b.currentStock || 0), 0);
+      const totalPurchasedQty = purData.totalPurchasedQty || 0;
+      const totalInward = totalOpeningStockQty + totalPurchasedQty;
+
+      const totalSoldQty = saleData.totalSoldQty || 0;
+      const totalDamagedQty = damageMap.get(pIdStr) || 0;
+      const totalReturnedQty = returnMap.get(pIdStr) || 0;
+      const totalOutward = totalSoldQty + totalDamagedQty + totalReturnedQty;
+
+      // Authoritative Stock Reconciliation: Current Stock = Total Inward - Total Outward
+      const calculatedCurrentStock = Math.max(0, totalInward - totalOutward);
+
+      // Compute accurate stock value from remaining active batch layers up to calculatedCurrentStock
+      let remainingStockToValue = calculatedCurrentStock;
       let calculatedStockValue = 0;
 
       const activeBatchesSorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
@@ -429,6 +478,8 @@ export const productService = {
 
       return {
         ...pObj,
+        totalStock: calculatedCurrentStock,
+        currentStock: calculatedCurrentStock,
         defaultPurchaseRate: pObj.defaultPurchaseRate > 0 ? pObj.defaultPurchaseRate : effectivePurchaseRate,
         purchaseRate: pObj.purchaseRate > 0 ? pObj.purchaseRate : effectivePurchaseRate,
         purchasePrice: pObj.purchasePrice > 0 ? pObj.purchasePrice : effectivePurchaseRate,
@@ -444,9 +495,14 @@ export const productService = {
         activeBatchCount: activeBatches.length,
         batchNumber: primaryBatchNumber,
         batchCode: primaryBatchNumber,
-        totalPurchasedQty: purData.totalPurchasedQty || 0,
+        totalOpeningStockQty,
+        totalPurchasedQty,
+        totalInward,
+        totalSoldQty,
+        totalDamagedQty,
+        totalReturnedQty,
+        totalOutward,
         lastPurchaseDate: purData.lastPurchaseDate || null,
-        totalSoldQty: saleData.totalSoldQty || 0,
         lastSaleDate: saleData.lastSaleDate || null,
       };
     });
@@ -520,8 +576,90 @@ export const productService = {
       };
     });
 
-    // Compute accurate stock value from remaining active batch layers up to product.totalStock
-    let remainingStockToValue = Math.max(0, Number(productObj.totalStock || 0));
+    const targetProdObjId = new mongoose.Types.ObjectId(id);
+    const [purchaseAgg, salesAgg, adjustmentAgg] = await Promise.all([
+      PurchaseItem.aggregate([
+        { $match: { userId: userObjId, productId: targetProdObjId, isDeleted: { $ne: true } } },
+        {
+          $lookup: {
+            from: 'purchases',
+            localField: 'purchaseId',
+            foreignField: '_id',
+            as: 'purchaseDoc',
+          },
+        },
+        { $unwind: { path: '$purchaseDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $match: {
+            $or: [
+              { purchaseDoc: { $exists: false } },
+              { 'purchaseDoc.isDeleted': { $ne: true } },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: '$productId',
+            totalPurchasedQty: { $sum: { $toDouble: { $ifNull: ['$quantity', 0] } } },
+            lastPurchaseDate: { $max: { $ifNull: ['$purchaseDoc.purchaseDate', '$createdAt'] } },
+          },
+        },
+      ]),
+      SalesInvoice.aggregate([
+        {
+          $match: {
+            userId: userObjId,
+            status: { $ne: 'Cancelled' },
+            isDeleted: { $ne: true },
+            'items.productId': targetProdObjId,
+          },
+        },
+        { $unwind: '$items' },
+        { $match: { 'items.productId': targetProdObjId } },
+        {
+          $group: {
+            _id: '$items.productId',
+            totalSoldQty: { $sum: { $toDouble: { $ifNull: ['$items.quantity', 0] } } },
+            lastSaleDate: { $max: { $ifNull: ['$date', '$createdAt'] } },
+          },
+        },
+      ]),
+      StockLedger.aggregate([
+        {
+          $match: {
+            userId: userObjId,
+            productId: targetProdObjId,
+            isDeleted: { $ne: true },
+            transactionType: { $in: ['DAMAGE', 'PURCHASE_RETURN', 'RETURN'] },
+          },
+        },
+        {
+          $group: {
+            _id: '$transactionType',
+            totalQty: { $sum: { $abs: { $toDouble: { $ifNull: ['$quantity', 0] } } } },
+          },
+        },
+      ]),
+    ]);
+
+    const totalPurchasedQty = purchaseAgg[0]?.totalPurchasedQty || 0;
+    const totalSoldQty = salesAgg[0]?.totalSoldQty || 0;
+    let totalDamagedQty = 0;
+    let totalReturnedQty = 0;
+    adjustmentAgg.forEach((item) => {
+      const type = (item._id || '').toUpperCase();
+      if (type === 'DAMAGE') totalDamagedQty += item.totalQty || 0;
+      else if (type === 'PURCHASE_RETURN' || type === 'RETURN') totalReturnedQty += item.totalQty || 0;
+    });
+
+    const openingBatches = annotatedBatches.filter((b) => b.isOpeningStock === true);
+    const totalOpeningStockQty = openingBatches.reduce((sum, b) => sum + Number(b.initialQuantity || b.currentStock || 0), 0);
+    const totalInward = totalOpeningStockQty + totalPurchasedQty;
+    const totalOutward = totalSoldQty + totalDamagedQty + totalReturnedQty;
+    const calculatedCurrentStock = Math.max(0, totalInward - totalOutward);
+
+    // Compute accurate stock value from remaining active batch layers up to calculatedCurrentStock
+    let remainingStockToValue = calculatedCurrentStock;
     let calculatedStockValue = 0;
 
     const activeBatchesSorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
@@ -554,6 +692,8 @@ export const productService = {
     return {
       product: {
         ...productObj,
+        totalStock: calculatedCurrentStock,
+        currentStock: calculatedCurrentStock,
         defaultPurchaseRate: productObj.defaultPurchaseRate > 0 ? productObj.defaultPurchaseRate : effectivePurchaseRate,
         purchaseRate: productObj.purchaseRate > 0 ? productObj.purchaseRate : effectivePurchaseRate,
         purchasePrice: productObj.purchasePrice > 0 ? productObj.purchasePrice : effectivePurchaseRate,
@@ -565,6 +705,15 @@ export const productService = {
         activeBatchCount: activeBatches.length,
         stockValue: calculatedStockValue,
         totalStockValue: calculatedStockValue,
+        totalOpeningStockQty,
+        totalPurchasedQty,
+        totalInward,
+        totalSoldQty,
+        totalDamagedQty,
+        totalReturnedQty,
+        totalOutward,
+        lastPurchaseDate: purchaseAgg[0]?.lastPurchaseDate || null,
+        lastSaleDate: salesAgg[0]?.lastSaleDate || null,
         batches: annotatedBatches,
         batchNumber: primaryBatchNumber,
         batchCode: primaryBatchNumber,
@@ -1300,6 +1449,15 @@ export const productService = {
           if (sPrice <= 0) sPrice = Number(productDoc.defaultSellingPrice || 0);
 
           if (cogs <= 0 && itemBatch) cogs = Number(itemBatch.purchaseRate || 0);
+          if (cogs <= 0) {
+            // Find any batch for this product with a valid purchaseRate
+            for (const [, b] of batchMap.entries()) {
+              if (b.productId && b.productId.toString() === id && Number(b.purchaseRate || 0) > 0) {
+                cogs = Number(b.purchaseRate);
+                break;
+              }
+            }
+          }
           if (cogs <= 0) cogs = Number(productDoc.defaultPurchaseRate || 0);
 
           const totalAmt = Number(item.totalAmount || qty * sPrice);
@@ -1463,17 +1621,48 @@ export const productService = {
       stockHistory = historyWithStock.reverse();
     }
 
-    const currentStock = Number(productDoc.totalStock || 0);
+    const openingBatches = await ProductBatch.find({
+      userId,
+      productId,
+      isOpeningStock: true,
+      isDeleted: { $ne: true },
+    }).lean().exec();
+
+    const totalOpeningStockQty = openingBatches.reduce((sum, b) => sum + Number(b.initialQuantity || b.currentStock || 0), 0);
+    const totalInward = totalOpeningStockQty + totalPurchasedQty;
+    const totalOutward = totalSoldQty + totalSupplierReturnedQty + totalDamagedQty;
+    const currentStock = Math.max(0, totalInward - totalOutward);
+
+    const activeBatches = await ProductBatch.find({
+      userId,
+      productId,
+      isDeleted: { $ne: true },
+    }).sort({ createdAt: -1 }).lean().exec();
+
+    const batches = activeBatches.map((b) => ({
+      id: b._id.toString(),
+      batchNumber: b.batchNumber || 'N/A',
+      isOpeningStock: Boolean(b.isOpeningStock),
+      initialQuantity: Number(b.initialQuantity || 0),
+      currentStock: Number(b.currentStock || 0),
+      purchaseRate: Number(b.purchaseRate || 0),
+      sellingPrice: Number(b.sellingPrice || 0),
+      mrp: Number(b.mrp || 0),
+      expiryDate: b.expiryDate ? new Date(b.expiryDate).toLocaleDateString('en-IN') : null,
+      isActive: b.isActive !== false && b.currentStock > 0,
+      status: (b.currentStock || 0) > 0 ? 'Active' : 'Depleted',
+    }));
 
     return {
       productId: id,
+      totalOpeningStockQty,
       totalPurchasedQty,
-      totalInward: totalPurchasedQty,
+      totalInward,
       totalSupplierReturnedQty,
       totalReturnedQty: totalSupplierReturnedQty,
       totalDamagedQty,
       totalSoldQty,
-      totalOutward: totalSoldQty,
+      totalOutward,
       currentStock,
       lastPurchaseDate,
       lastSaleDate,
@@ -1484,6 +1673,7 @@ export const productService = {
       purchaseHistory,
       salesHistory,
       stockHistory,
+      batches,
     };
   },
 
@@ -1713,6 +1903,405 @@ export const productService = {
     return {
       adjustments,
       summary,
+    };
+  },
+
+  /**
+   * Add Opening Stock for a product
+   * Creates a dedicated opening stock batch and updates product totalStock without creating any Purchase or SupplierLedger entry.
+   */
+  async addOpeningStock(data, userId) {
+    if (!userId) throw new AppError('User ID is required', HTTP_STATUS.UNAUTHORIZED);
+
+    const {
+      productId,
+      quantity,
+      purchaseRate = 0,
+      costRate = 0,
+      sellingPrice = 0,
+      mrp = 0,
+      batchNumber,
+      mfgDate = null,
+      expiryDate = null,
+      supplierId = null,
+      notes = '',
+      openingDate = null,
+    } = data;
+
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+      throw new AppError('Valid Product ID is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const qty = Number(quantity);
+    if (isNaN(qty) || qty <= 0) {
+      throw new AppError('Opening stock quantity must be greater than zero', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const product = await Product.findOne({ _id: productId, userId, isDeleted: { $ne: true } }).exec();
+    if (!product) {
+      throw new AppError('Product not found or inactive', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const rate = Number(
+      purchaseRate ||
+      costRate ||
+      data.rate ||
+      data.cost ||
+      data.unitCost ||
+      data.purchasePrice ||
+      data.costPrice ||
+      product.defaultPurchaseRate ||
+      0
+    );
+    if (isNaN(rate) || rate < 0) {
+      throw new AppError('Cost/Purchase rate cannot be negative', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Generate or format Batch Number
+    const datePart = openingDate
+      ? new Date(openingDate).toISOString().slice(0, 10).replace(/-/g, '')
+      : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    let finalBatchNumber = (batchNumber || '').trim();
+    if (!finalBatchNumber) {
+      const existingOpeningCount = await ProductBatch.countDocuments({
+        userId,
+        productId,
+        isOpeningStock: true,
+      }).exec();
+      finalBatchNumber = `OPN-${datePart}-${String(existingOpeningCount + 1).padStart(3, '0')}`;
+    }
+
+    // Check for duplicate active batch number on this product
+    const duplicateBatch = await ProductBatch.findOne({
+      userId,
+      productId,
+      batchNumber: finalBatchNumber,
+      isDeleted: { $ne: true },
+    }).exec();
+
+    if (duplicateBatch) {
+      throw new AppError(`A batch with number "${finalBatchNumber}" already exists for this product.`, HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const finalSellingPrice = Number(
+      sellingPrice ||
+      data.saleRate ||
+      data.sellingRate ||
+      data.price ||
+      data.unitPrice ||
+      product.defaultSellingPrice ||
+      rate ||
+      0
+    );
+    const finalMrp = Number(mrp || product.defaultMrp || finalSellingPrice || rate || 0);
+
+    const prevProductStock = Number(product.totalStock || 0);
+    const newProductStock = prevProductStock + qty;
+
+    // Create Opening Stock ProductBatch (purchaseId is strictly null)
+    const newBatch = await ProductBatch.create({
+      userId,
+      productId: product._id,
+      purchaseId: null,
+      supplierId: supplierId && mongoose.Types.ObjectId.isValid(supplierId) ? supplierId : null,
+      batchNumber: finalBatchNumber,
+      mfgDate: mfgDate ? new Date(mfgDate) : null,
+      expiryDate: expiryDate ? new Date(expiryDate) : null,
+      purchaseRate: normalizeMoney(rate),
+      mrp: normalizeMoney(finalMrp),
+      sellingPrice: normalizeMoney(finalSellingPrice),
+      initialQuantity: qty,
+      currentStock: qty,
+      isOpeningStock: true,
+      isActive: true,
+      createdAt: openingDate ? new Date(openingDate) : new Date(),
+    });
+
+    // Update product stock and fallback default rates if not set
+    product.totalStock = newProductStock;
+    if ((!product.defaultPurchaseRate || product.defaultPurchaseRate === 0) && rate > 0) {
+      product.defaultPurchaseRate = normalizeMoney(rate);
+    }
+    if ((!product.defaultSellingPrice || product.defaultSellingPrice === 0) && finalSellingPrice > 0) {
+      product.defaultSellingPrice = normalizeMoney(finalSellingPrice);
+    }
+    await product.save();
+
+    // Insert StockLedger entry for full auditability
+    await StockLedger.create({
+      userId,
+      transactionType: 'OPENING_STOCK',
+      referenceId: newBatch._id,
+      referenceNumber: finalBatchNumber,
+      productId: product._id,
+      batchId: newBatch._id,
+      batchNumber: finalBatchNumber,
+      quantity: qty,
+      purchaseRate: normalizeMoney(rate),
+      sellingPrice: normalizeMoney(finalSellingPrice),
+      previousStock: prevProductStock,
+      currentStock: newProductStock,
+      reason: 'Opening Inventory Stock',
+      notes: (notes || 'Initial opening stock entry').trim(),
+      supplierId: newBatch.supplierId || null,
+      timestamp: openingDate ? new Date(openingDate) : new Date(),
+    });
+
+    logger.info(`✅ Added Opening Stock: Product "${product.name}", Qty: ${qty}, Batch: ${finalBatchNumber}, Cost: ₹${rate}`);
+
+    return {
+      batch: newBatch,
+      product: {
+        _id: product._id,
+        name: product.name,
+        totalStock: product.totalStock,
+      },
+    };
+  },
+
+  /**
+   * Get all Opening Stock batches
+   */
+  async getOpeningStockList(query = {}, userId) {
+    if (!userId) throw new AppError('User ID is required', HTTP_STATUS.UNAUTHORIZED);
+
+    const filter = {
+      userId,
+      isOpeningStock: true,
+      isDeleted: { $ne: true },
+    };
+
+    if (query.productId && mongoose.Types.ObjectId.isValid(query.productId)) {
+      filter.productId = new mongoose.Types.ObjectId(query.productId);
+    }
+
+    const batches = await ProductBatch.find(filter)
+      .populate({
+        path: 'productId',
+        select: 'name code barcode image categoryId brandId defaultUnitId totalStock',
+        populate: [
+          { path: 'categoryId', select: 'name' },
+          { path: 'brandId', select: 'name' },
+          { path: 'defaultUnitId', select: 'name shortName' },
+        ],
+      })
+      .populate('supplierId', 'name mobile')
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    let totalOpeningQty = 0;
+    let totalOpeningValue = 0;
+    let totalRemainingQty = 0;
+    let totalRemainingValue = 0;
+
+    const formattedList = batches.map((b) => {
+      const initQty = Number(b.initialQuantity || 0);
+      const curStock = Number(b.currentStock || 0);
+      const consumedQty = Math.max(0, initQty - curStock);
+      const rate = Number(b.purchaseRate || 0);
+      const initVal = normalizeMoney(initQty * rate);
+      const remVal = normalizeMoney(curStock * rate);
+
+      totalOpeningQty += initQty;
+      totalOpeningValue = normalizeMoney(totalOpeningValue + initVal);
+      totalRemainingQty += curStock;
+      totalRemainingValue = normalizeMoney(totalRemainingValue + remVal);
+
+      return {
+        _id: b._id,
+        batchNumber: b.batchNumber,
+        productId: b.productId?._id || b.productId,
+        productName: b.productId?.name || 'Unknown Product',
+        productImage: b.productId?.image || '',
+        category: b.productId?.categoryId?.name || 'General',
+        brand: b.productId?.brandId?.name || '',
+        unit: b.productId?.defaultUnitId?.shortName || 'Bag',
+        initialQuantity: initQty,
+        currentStock: curStock,
+        consumedQuantity: consumedQty,
+        purchaseRate: rate,
+        sellingPrice: Number(b.sellingPrice || 0),
+        mrp: Number(b.mrp || 0),
+        initialValue: initVal,
+        remainingValue: remVal,
+        mfgDate: b.mfgDate,
+        expiryDate: b.expiryDate,
+        isFullyConsumed: curStock === 0,
+        supplierName: b.supplierId?.name || 'N/A',
+        createdAt: b.createdAt,
+      };
+    });
+
+    return {
+      openingStocks: formattedList,
+      summary: {
+        totalRecords: formattedList.length,
+        totalOpeningQty,
+        totalOpeningValue,
+        totalRemainingQty,
+        totalRemainingValue,
+        totalConsumedQty: totalOpeningQty - totalRemainingQty,
+      },
+    };
+  },
+
+  /**
+   * Update an existing Opening Stock batch
+   */
+  async updateOpeningStock(batchId, data, userId) {
+    if (!userId) throw new AppError('User ID is required', HTTP_STATUS.UNAUTHORIZED);
+
+    const batch = await ProductBatch.findOne({
+      _id: batchId,
+      userId,
+      isOpeningStock: true,
+      isDeleted: { $ne: true },
+    }).exec();
+
+    if (!batch) {
+      throw new AppError('Opening stock record not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const product = await Product.findOne({ _id: batch.productId, userId, isDeleted: { $ne: true } }).exec();
+    if (!product) {
+      throw new AppError('Associated product not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    // Update batchNumber if provided
+    if (data.batchNumber !== undefined && data.batchNumber.trim()) {
+      const newBatchNum = data.batchNumber.trim();
+      if (newBatchNum !== batch.batchNumber) {
+        const dup = await ProductBatch.findOne({
+          userId,
+          productId: batch.productId,
+          batchNumber: newBatchNum,
+          _id: { $ne: batch._id },
+          isDeleted: { $ne: true },
+        }).exec();
+        if (dup) {
+          throw new AppError(`A batch with number "${newBatchNum}" already exists for this product.`, HTTP_STATUS.BAD_REQUEST);
+        }
+        batch.batchNumber = newBatchNum;
+      }
+    }
+
+    const consumedQty = Math.max(0, (batch.initialQuantity || 0) - (batch.currentStock || 0));
+
+    // If updating quantity, validate new quantity
+    if (data.quantity !== undefined && data.quantity !== null) {
+      const newQty = Number(data.quantity);
+      if (isNaN(newQty) || newQty <= 0) {
+        throw new AppError('Quantity must be greater than zero', HTTP_STATUS.BAD_REQUEST);
+      }
+
+      const qtyDelta = newQty - batch.initialQuantity;
+      batch.initialQuantity = newQty;
+      batch.currentStock = Math.max(0, newQty - consumedQty);
+      batch.isActive = batch.currentStock > 0;
+
+      product.totalStock = Math.max(0, (product.totalStock || 0) + qtyDelta);
+      await product.save();
+    }
+
+    if (data.purchaseRate !== undefined || data.costRate !== undefined || data.rate !== undefined || data.cost !== undefined || data.openingRate !== undefined) {
+      const rate = Number(data.purchaseRate ?? data.costRate ?? data.rate ?? data.cost ?? data.openingRate ?? 0);
+      if (rate >= 0) {
+        batch.purchaseRate = normalizeMoney(rate);
+        if ((!product.defaultPurchaseRate || product.defaultPurchaseRate === 0) && rate > 0) {
+          product.defaultPurchaseRate = normalizeMoney(rate);
+          await product.save();
+        }
+      }
+    }
+
+    if (data.sellingPrice !== undefined || data.saleRate !== undefined || data.sellingRate !== undefined || data.price !== undefined) {
+      const sp = Number(data.sellingPrice ?? data.saleRate ?? data.sellingRate ?? data.price ?? 0);
+      if (sp >= 0) {
+        batch.sellingPrice = normalizeMoney(sp);
+        if ((!product.defaultSellingPrice || product.defaultSellingPrice === 0) && sp > 0) {
+          product.defaultSellingPrice = normalizeMoney(sp);
+          await product.save();
+        }
+      }
+    }
+
+    if (data.mrp !== undefined) {
+      const mrpVal = Number(data.mrp);
+      if (mrpVal >= 0) batch.mrp = normalizeMoney(mrpVal);
+    }
+
+    if (data.mfgDate !== undefined) batch.mfgDate = data.mfgDate ? new Date(data.mfgDate) : null;
+    if (data.expiryDate !== undefined) batch.expiryDate = data.expiryDate ? new Date(data.expiryDate) : null;
+
+    await batch.save();
+
+    logger.info(`✅ Updated Opening Stock Batch "${batch.batchNumber}" for Product "${product.name}"`);
+
+    return {
+      batch,
+      product: {
+        _id: product._id,
+        name: product.name,
+        totalStock: product.totalStock,
+      },
+    };
+  },
+
+  /**
+   * Delete an Opening Stock batch
+   */
+  async deleteOpeningStock(batchId, userId) {
+    if (!userId) throw new AppError('User ID is required', HTTP_STATUS.UNAUTHORIZED);
+
+    const batch = await ProductBatch.findOne({
+      _id: batchId,
+      userId,
+      isOpeningStock: true,
+      isDeleted: { $ne: true },
+    }).exec();
+
+    if (!batch) {
+      throw new AppError('Opening stock record not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    const product = await Product.findOne({ _id: batch.productId, userId }).exec();
+    if (product) {
+      product.totalStock = Math.max(0, (product.totalStock || 0) - (batch.initialQuantity || batch.currentStock || 0));
+      await product.save();
+    }
+
+    batch.isDeleted = true;
+    batch.deletedAt = new Date();
+    batch.isActive = false;
+    await batch.save();
+
+    // Insert reversal in StockLedger
+    if (product) {
+      await StockLedger.create({
+        userId,
+        transactionType: 'ADJUSTMENT',
+        referenceId: batch._id,
+        referenceNumber: batch.batchNumber,
+        productId: product._id,
+        batchId: batch._id,
+        batchNumber: batch.batchNumber,
+        quantity: -batch.initialQuantity,
+        purchaseRate: batch.purchaseRate,
+        previousStock: (product.totalStock || 0) + batch.initialQuantity,
+        currentStock: product.totalStock || 0,
+        reason: 'Opening stock deleted/cancelled',
+        notes: `Opening batch ${batch.batchNumber} removed`,
+        timestamp: new Date(),
+      });
+    }
+
+    logger.info(`🗑️ Deleted Opening Stock Batch "${batch.batchNumber}"`);
+
+    return {
+      success: true,
+      message: `Opening stock batch "${batch.batchNumber}" deleted successfully`,
     };
   },
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Layers, TrendingUp, ShoppingBag, ShoppingCart, Calendar, ExternalLink } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { Link } from 'react-router-dom';
 import { productService } from '../../services/productService';
@@ -29,7 +29,9 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
 
   const stockValue = Number(historyData?.stockValue ?? (currentStock * purchaseRate));
 
-  const totalPurchased = Number(historyData?.totalPurchasedQty ?? historyData?.totalInward ?? product.totalPurchasedQty ?? 0);
+  const totalOpeningStock = Number(historyData?.totalOpeningStockQty ?? product.totalOpeningStockQty ?? 0);
+  const totalPurchased = Number(historyData?.totalPurchasedQty ?? product.totalPurchasedQty ?? 0);
+  const totalInward = Number(historyData?.totalInward ?? product.totalInward ?? (totalPurchased + totalOpeningStock));
   const totalReturned = Number(historyData?.totalSupplierReturnedQty ?? historyData?.totalReturnedQty ?? 0);
   const totalDamaged = Number(historyData?.totalDamagedQty ?? 0);
   const totalSold = Number(historyData?.totalSoldQty ?? historyData?.totalOutward ?? product.totalSoldQty ?? 0);
@@ -54,13 +56,10 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
   const salesHistory = Array.isArray(historyData?.salesHistory) ? historyData.salesHistory : [];
   const stockHistory = Array.isArray(historyData?.stockHistory) ? historyData.stockHistory : [];
 
-  const monthlySalesQty = Number(historyData?.monthlySales?.quantity ?? historyData?.monthlySalesQty ?? 0);
-  const yearlySalesQty = Number(historyData?.yearlySales?.quantity ?? historyData?.yearlySalesQty ?? 0);
-  const monthlyRevenue = Number(historyData?.monthlySales?.revenue ?? historyData?.monthlyRevenue ?? 0);
-  const yearlyRevenue = Number(historyData?.yearlySales?.revenue ?? historyData?.yearlyRevenue ?? 0);
-
   const companyName = product.brandId?.name || product.companyId?.name || product.company || 'N/A';
   const categoryName = product.categoryId?.name || product.category || 'Uncategorized';
+
+  const batches = Array.isArray(historyData?.batches) ? historyData.batches : [];
 
   return (
     <div
@@ -68,7 +67,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
       onClick={onClose}
     >
       <div
-        className="relative w-full md:w-[94vw] lg:w-[92vw] xl:max-w-3xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-hidden"
+        className="relative w-full md:w-[94vw] lg:w-[92vw] xl:max-w-4xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -118,9 +117,11 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
             </div>
 
             <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl space-y-0.5">
-              <span className="text-[9px] font-bold text-blue-800 uppercase block">Purchased</span>
-              <p className="text-sm font-extrabold font-mono text-blue-900">{totalPurchased} {unitName}</p>
-              <p className="text-[9px] text-blue-600 truncate">{lastPurchaseDate}</p>
+              <span className="text-[9px] font-bold text-blue-800 uppercase block">Total Inward</span>
+              <p className="text-sm font-extrabold font-mono text-blue-900">{totalInward} {unitName}</p>
+              <p className="text-[9px] text-blue-600 truncate">
+                {totalOpeningStock > 0 ? `Op: ${totalOpeningStock} • Pur: ${totalPurchased}` : (lastPurchaseDate !== 'N/A' ? `Last Pur: ${lastPurchaseDate}` : 'No Purchases')}
+              </p>
             </div>
 
             <div className="p-2.5 bg-rose-50/60 border border-rose-100 rounded-xl space-y-0.5">
@@ -143,11 +144,23 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
           </div>
 
           {/* History Section Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-gray-200 pt-1">
+          <div className="flex items-center gap-2 border-b border-gray-200 pt-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setActiveTab('batches')}
+              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all whitespace-nowrap ${
+                activeTab === 'batches'
+                  ? 'border-[#047857] text-[#047857]'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Batches ({batches.length})
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('stockMovements')}
-              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all whitespace-nowrap ${
                 activeTab === 'stockMovements'
                   ? 'border-[#047857] text-[#047857]'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
@@ -159,7 +172,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
             <button
               type="button"
               onClick={() => setActiveTab('purchaseHistory')}
-              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all whitespace-nowrap ${
                 activeTab === 'purchaseHistory'
                   ? 'border-[#047857] text-[#047857]'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
@@ -171,7 +184,7 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
             <button
               type="button"
               onClick={() => setActiveTab('salesHistory')}
-              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all ${
+              className={`px-3 py-1.5 font-bold text-xs border-b-2 cursor-pointer transition-all whitespace-nowrap ${
                 activeTab === 'salesHistory'
                   ? 'border-[#047857] text-[#047857]'
                   : 'border-transparent text-gray-500 hover:text-gray-800'
@@ -180,6 +193,97 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
               Sales ({salesHistory.length})
             </button>
           </div>
+
+          {/* Tab: Batch-wise Breakdown Table */}
+          {activeTab === 'batches' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-gray-500 font-medium">
+                <span>Batch-wise Breakdown for <strong>{product.name}</strong></span>
+              </div>
+
+              {isHistoryLoading ? (
+                <div className="p-6 text-center text-xs text-gray-400 animate-pulse">Loading batch details...</div>
+              ) : batches.length > 0 ? (
+                <div className="w-full">
+                  <div className="border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
+                    <table className="w-full min-w-[650px] text-left text-[11px] border-collapse">
+                      <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold text-[10px] uppercase">
+                        <tr>
+                          <th className="py-2.5 px-3">Product</th>
+                          <th className="py-2.5 px-3">Brand</th>
+                          <th className="py-2.5 px-3">Batch Number</th>
+                          <th className="py-2.5 px-3 text-right">Opening Qty</th>
+                          <th className="py-2.5 px-3 text-right">Opening Rate</th>
+                          <th className="py-2.5 px-3 text-right">Opening Value</th>
+                          <th className="py-2.5 px-3 text-right">Current Qty</th>
+                          <th className="py-2.5 px-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
+                        {batches.map((b) => {
+                          const opQty = Number(b.initialQuantity || 0);
+                          const opRate = Number(b.purchaseRate || 0);
+                          const opValue = Math.round(opQty * opRate);
+                          const curQty = Number(b.currentStock || 0);
+                          const isOp = Boolean(b.isOpeningStock);
+
+                          return (
+                            <tr key={b.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-3 font-bold text-gray-900">
+                                {product.name}
+                              </td>
+                              <td className="py-2.5 px-3 text-gray-600">
+                                {companyName !== 'N/A' ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-[10px] font-semibold">
+                                    {companyName}
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-bold text-gray-800">{b.batchNumber}</span>
+                                  {isOp && (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                                      Opening
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-gray-700">
+                                {opQty} {unitName}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-gray-700">
+                                ₹ {opRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900">
+                                ₹ {opValue.toLocaleString('en-IN')}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                                {curQty} {unitName}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  curQty > 0
+                                    ? 'bg-emerald-50 text-[#047857] border border-emerald-200'
+                                    : 'bg-gray-100 text-gray-500 border border-gray-200'
+                                }`}>
+                                  {curQty > 0 ? 'Active' : 'Depleted'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 bg-gray-50/50 border border-gray-200 rounded-xl text-center text-xs text-gray-400 font-medium">
+                  No Batches Recorded for this Product
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Tab 0: Stock Movements Table */}
           {activeTab === 'stockMovements' && (
@@ -205,15 +309,20 @@ export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
                       </thead>
                       <tbody className="divide-y divide-gray-100 font-medium text-gray-800">
                         {stockHistory.map((sh) => {
-                          const isPlus = Number(sh.quantity) > 0;
+                          const isOpening = sh.type === 'OPENING_STOCK';
                           const isDmg = sh.type === 'DAMAGE';
                           const isRet = sh.type === 'PURCHASE_RETURN' || sh.type === 'RETURN';
                           const isSale = sh.type === 'SALE';
+                          const isPlus = Number(sh.quantity) > 0;
                           return (
                             <tr key={sh.id} className="hover:bg-slate-50">
                               <td className="py-2 px-3 font-mono text-gray-600 whitespace-nowrap">{sh.date}</td>
                               <td className="py-2 px-3">
-                                {isPlus ? (
+                                {isOpening ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                                    Opening Stock
+                                  </span>
+                                ) : isPlus ? (
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     Purchase
                                   </span>
