@@ -99,7 +99,7 @@ export default function SubscriptionOverviewPage() {
       key: 'durationLabel',
       render: (row) => (
         <span className="font-semibold text-slate-700 text-xs">
-          {row.durationLabel || (row.subscriptionStatus === 'DEMO' ? '7 Days Demo' : '1 Month')}
+          {row.durationLabel || (row.durationDays ? `${row.durationDays} Days Trial` : (row.subscriptionStatus === 'DEMO' ? 'Trial' : '1 Month'))}
         </span>
       ),
     },

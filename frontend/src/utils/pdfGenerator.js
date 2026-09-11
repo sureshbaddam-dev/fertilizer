@@ -758,8 +758,8 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   });
 
   autoTable(doc, {
-    startY: 63,
-    margin: { left: 8, right: 8, top: 10, bottom: 14 },
+    startY: 62,
+    margin: { left: 8, right: 8, top: 8, bottom: 8 },
     head: [['#', 'PRODUCT DESCRIPTION', 'QTY / UNIT', 'RATE', 'DISCOUNT', 'TOTAL AMOUNT']],
     body: tableRows,
     theme: 'striped',
@@ -768,9 +768,9 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     headStyles: {
       fillColor: [4, 120, 87],
       textColor: 255,
-      fontSize: 9,
+      fontSize: 8.5,
       fontStyle: 'bold',
-      cellPadding: 3.5,
+      cellPadding: 2.8,
       halign: 'center',
       valign: 'middle',
     },
@@ -778,8 +778,8 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
       fillColor: [248, 250, 248],
     },
     bodyStyles: {
-      fontSize: 8.5,
-      cellPadding: 3.5,
+      fontSize: 8,
+      cellPadding: 2.5,
       textColor: [30, 41, 59],
       valign: 'middle',
       halign: 'center',
@@ -795,8 +795,8 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     },
   });
 
-  // 4. STATEMENT SUMMARY CARD (Positioned dynamically below lastAutoTable.finalY + 8, X=110mm, width=92mm, right edge=202mm)
-  const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 120) + 8;
+  // 4. STATEMENT SUMMARY CARD (Positioned dynamically below lastAutoTable.finalY + 5, X=110mm, width=92mm, right edge=202mm)
+  const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 110) + 5;
 
   const subtotal = Number(invoice.subtotal || invoice.subTotal || invoice.totalAmount || 0);
   const discountVal = Number(invoice.discountAmount || invoice.discount || 0);
@@ -805,47 +805,47 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   const dueAmount = Number(invoice.dueAmount || invoice.due || Math.max(0, grandTotal - paidAmount));
 
   const summaryRows = 4 + (discountVal > 0 ? 1 : 0);
-  const summaryHeight = 10 + summaryRows * 5.5;
+  const summaryHeight = 8 + summaryRows * 5;
 
   doc.setFillColor(248, 250, 248);
   doc.roundedRect(110, finalY, 92, summaryHeight, 2, 2, 'F');
   doc.setDrawColor(203, 213, 225);
   doc.roundedRect(110, finalY, 92, summaryHeight, 2, 2, 'S');
 
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(4, 120, 87);
-  doc.text('STATEMENT SUMMARY', 114, finalY + 6);
+  doc.text('STATEMENT SUMMARY', 114, finalY + 5.5);
 
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
 
-  let currentLineY = finalY + 12;
+  let currentLineY = finalY + 10.5;
   doc.text('Subtotal:', 114, currentLineY);
   doc.setTextColor(15, 23, 42);
   doc.text(formatCurrency(subtotal), 198, currentLineY, { align: 'right' });
 
   if (discountVal > 0) {
-    currentLineY += 5.5;
+    currentLineY += 5;
     doc.setTextColor(71, 85, 105);
     doc.text('Discount:', 114, currentLineY);
     doc.setTextColor(220, 38, 38);
     doc.text(`- ${formatCurrency(discountVal)}`, 198, currentLineY, { align: 'right' });
   }
 
-  currentLineY += 5.5;
+  currentLineY += 5;
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
   doc.text('Grand Total:', 114, currentLineY);
   doc.text(formatCurrency(grandTotal), 198, currentLineY, { align: 'right' });
 
-  currentLineY += 5.5;
+  currentLineY += 5;
   doc.setTextColor(4, 120, 87);
   doc.text('Paid Amount:', 114, currentLineY);
   doc.text(formatCurrency(paidAmount), 198, currentLineY, { align: 'right' });
 
-  currentLineY += 5.5;
+  currentLineY += 5;
   if (dueAmount > 0) {
     doc.setTextColor(220, 38, 38);
     doc.text('Due Amount:', 114, currentLineY);
@@ -856,20 +856,20 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     doc.text(formatCurrency(0), 198, currentLineY, { align: 'right' });
   }
 
-  // 5. FOOTER & THANK YOU MESSAGE
-  const footerY = Math.max(currentLineY + 16, 270);
-  doc.setFontSize(10);
+  // 5. FOOTER & THANK YOU MESSAGE (Constrained to fit safely on single A4 page)
+  const footerY = Math.min(280, Math.max(currentLineY + 10, 268));
+  doc.setFontSize(9.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(4, 120, 87);
   doc.text('Thank You For Your Business! Visit Again.', 105, footerY, { align: 'center' });
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(148, 163, 184);
   doc.text(
     'This is a Computer Generated Tax Invoice • Powered by VEDIXA ERP',
     105,
-    footerY + 5,
+    footerY + 4.5,
     { align: 'center' }
   );
 
@@ -908,15 +908,19 @@ export async function printInvoicePdf(invoice, shopSettings) {
     document.body.appendChild(iframe);
   }
 
-  iframe.src = blobUrl;
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch (err) {
-      console.error('Print iframe error:', err);
-    }
-  };
+  return new Promise((resolve) => {
+    iframe.src = blobUrl;
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        resolve(true);
+      } catch (err) {
+        console.error('Print iframe error:', err);
+        resolve(false);
+      }
+    };
+  });
 }
 
 /**

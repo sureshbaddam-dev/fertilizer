@@ -14,7 +14,6 @@ import {
   Lock,
   Edit,
   Trash2,
-  QrCode,
   ExternalLink,
   MessageSquare,
   X,
@@ -22,9 +21,11 @@ import {
 import { invoiceService } from '../../services/invoiceService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { authService } from '../../services/authService';
-import { buildFullShopAddress, generateInvoicePdf, printInvoicePdf } from '../../utils/pdfGenerator';
+import { buildFullShopAddress, generateInvoicePdf } from '../../utils/pdfGenerator';
 import { getItemUnitPrice } from '../../utils/pricing';
 import vedixaLogoImg from '../../assets/vedixa_logo.png';
+import PrintableInvoice from '../../components/sales/PrintableInvoice';
+import { printInvoiceHtml } from '../../utils/invoicePrintHelper';
 import { toast } from '../../contexts/ToastContext';
 
 export default function InvoiceDetailsPage() {
@@ -134,16 +135,10 @@ export default function InvoiceDetailsPage() {
   const grandTotalAmt = Number(invoice?.totalAmount || 0);
 
   const upiPayLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiPayeeName)}&am=${grandTotalAmt}&tr=${invoice?.invoiceNumber}&tn=${encodeURIComponent('Payment for Invoice ' + (invoice?.invoiceNumber || ''))}&cu=INR`;
-  const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(upiPayLink)}`;
-  const qrCodeUrl = upiQrCodeUrl;
 
   const handlePrint = async () => {
     if (!invoice) return;
-    try {
-      await printInvoicePdf(invoice, shopSettings);
-    } catch (err) {
-      console.error('Print PDF failed:', err);
-    }
+    await printInvoiceHtml(invoice, shopSettings);
   };
 
   const [downloadNoticeMsg, setDownloadNoticeMsg] = useState('');
@@ -160,7 +155,6 @@ export default function InvoiceDetailsPage() {
   const [isWhatsappPreviewOpen, setIsWhatsappPreviewOpen] = useState(false);
   const [editableMessage, setEditableMessage] = useState('');
   const [attachPdf, setAttachPdf] = useState(true);
-  const [includeQr, setIncludeQr] = useState(true);
   const [includePayLink, setIncludePayLink] = useState(true);
 
   const openWhatsappPreview = () => {
@@ -469,292 +463,7 @@ export default function InvoiceDetailsPage() {
       )}
 
       {/* Main Printable Tax Invoice Document Card */}
-      <div className="bg-white border border-gray-200/90 rounded-2xl p-3.5 sm:p-8 shadow-xs space-y-5 sm:space-y-6">
-        
-        {/* Document Header Banner */}
-        <div className="flex flex-col sm:flex-row justify-between items-start border-b border-gray-200 pb-4 sm:pb-5 gap-3.5">
-          <div className="space-y-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 bg-[#047857] text-white font-extrabold rounded-lg text-xs tracking-wide uppercase">
-                TAX INVOICE
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                currentStatus === 'Paid'
-                  ? 'bg-emerald-50 text-[#047857] border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
-              }`}>
-                {currentStatus}
-              </span>
-            </div>
-            <h1 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight pt-1 uppercase break-words">
-              {shopDisplayName}
-            </h1>
-            <p className="text-xs text-gray-600 font-medium leading-relaxed break-words">
-              {fullShopAddress}
-            </p>
-            <p className="text-[11px] text-gray-500 font-mono break-words">
-              GSTIN: {shopGST} • Phone: {shopPhone}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
-            <div className="sm:text-right space-y-1 bg-gray-50 p-3 sm:p-3.5 rounded-xl border border-gray-200/60 font-mono text-xs flex-1 sm:flex-none">
-              <div className="text-gray-500 font-bold uppercase text-[10px]">Invoice Number</div>
-              <div className="text-base font-extrabold text-[#047857]">{invoice.invoiceNumber}</div>
-              <div className="text-gray-600 font-semibold pt-1 border-t border-gray-200 text-[11px]">
-                Date: {invoiceDateStr} • {invoiceTimeStr}
-              </div>
-            </div>
-
-            {/* Official VEDIXA Top-Right Branding */}
-            <div className="flex flex-col items-center justify-center text-center shrink-0 pl-1">
-              <img
-                src={vedixaLogoImg}
-                alt="VEDIXA"
-                className="h-10 w-auto object-contain select-none"
-              />
-              <span className="text-[9.5px] font-black text-[#047857] tracking-wider uppercase mt-0.5">
-                VEDIXA
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Billed To Customer Information Box */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/70 p-4 rounded-xl border border-gray-200/80">
-          <div className="space-y-1">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
-              Billed To Customer
-            </span>
-            {invoice.customerId || invoice.customer?._id ? (
-              <button
-                type="button"
-                onClick={() => navigate(`/customers/${invoice.customerId || invoice.customer?._id}/ledger`)}
-                className="text-sm font-extrabold text-emerald-800 hover:text-emerald-950 hover:underline transition-colors block text-left cursor-pointer"
-              >
-                {invoice.customerName || invoice.customer?.name || 'General Customer'}
-              </button>
-            ) : (
-              <span className="text-sm font-extrabold text-gray-900 block">
-                {invoice.customerName || invoice.customer?.name || 'General Customer'}
-              </span>
-            )}
-            <div className="flex items-center gap-1.5 text-gray-600 text-xs font-mono">
-              <Phone className="w-3.5 h-3.5 text-gray-400" />
-              <span>{invoice.customerMobile || invoice.customer?.mobile || 'N/A'}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-gray-600 text-xs">
-              <MapPin className="w-3.5 h-3.5 text-gray-400" />
-              <span>{invoice.customerAddress || invoice.customer?.village || '—'}</span>
-            </div>
-          </div>
-
-          <div className="space-y-1 sm:text-right flex flex-col sm:items-end justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-gray-200">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
-              Payment Details
-            </span>
-            <div className="font-mono text-xs text-gray-800">
-              Payment Method: <span className="font-bold text-gray-900">{invoice.paymentMode || 'Cash'}</span>
-            </div>
-            <div className="font-mono text-xs text-gray-800">
-              Due Status: <span className="font-bold text-emerald-700">{currentDue <= 0 ? 'No Due' : 'Due In 30 Days'}</span>
-            </div>
-            {invoice.notes && (
-              <p className="text-[11px] text-gray-500 italic max-w-xs">{invoice.notes}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Itemized Billed Products Table */}
-        <div className="space-y-2">
-          <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider">
-            Billed Items ({items.length})
-          </h3>
-
-          {/* DESKTOP & PRINT BILLED ITEMS TABLE */}
-          <div className="hidden md:block print:block border border-gray-200 rounded-xl overflow-x-auto shadow-2xs">
-            <table className="w-full text-center text-[11px] border-collapse print-invoice-table print:text-[10px] font-sans">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold text-[10px] uppercase">
-                <tr>
-                  <th className="py-3 px-2 text-center align-middle w-[5%] font-sans">#</th>
-                  <th className="py-3 px-3 text-center align-middle w-[32%] font-sans">Product Description</th>
-                  <th className="py-3 px-2 text-center align-middle w-[12%] font-sans">Qty / Unit</th>
-                  <th className="py-3 px-3 text-center align-middle w-[16%] font-sans">Rate (₹)</th>
-                  <th className="py-3 px-3 text-center align-middle w-[13%] font-sans">Discount (₹)</th>
-                  <th className="py-3 px-3 text-center align-middle w-[22%] font-sans">Total Amount (₹)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 font-medium text-gray-800 font-sans">
-                {(() => {
-                  const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
-                  const billDisc = Number(invoice.discountAmount || 0);
-
-                  return items.map((item, idx) => {
-                    const pName = item.productName || item.product?.name || item.name || 'Agri Item';
-                    const qty = Number(item.quantity || item.qty || 1);
-                    const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
-                    const rate = getItemUnitPrice(item);
-                    const itemGross = qty * rate;
-                    const disc = Number(item.discountAmount || item.discount || 0);
-                    const effectiveDisc = disc > 0
-                      ? disc
-                      : (billDisc > 0 && rawSubtotal > 0 ? Math.round((itemGross / rawSubtotal) * billDisc * 100) / 100 : 0);
-                    const rowTotal = Math.max(0, itemGross - effectiveDisc);
-
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="py-2.5 px-2 text-center font-sans text-gray-400 align-middle">{idx + 1}</td>
-                        <td className="py-2.5 px-3 text-center font-bold text-gray-900 align-middle break-words font-sans">{pName}</td>
-                        <td className="py-2.5 px-2 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">{qty} {unit}</td>
-                        <td className="py-2.5 px-3 text-center font-sans font-medium text-gray-900 align-middle whitespace-nowrap">₹ {Math.round(rate).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                        <td className="py-2.5 px-3 text-center font-sans font-bold text-[#047857] align-middle whitespace-nowrap">
-                          {effectiveDisc > 0 ? `₹ ${Math.round(effectiveDisc).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ 0'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-sans font-bold text-gray-900 align-middle whitespace-nowrap">
-                          ₹ {Math.round(rowTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
-
-          {/* MOBILE RESPONSIVE PRODUCT CARDS */}
-          <div className="block md:hidden print:hidden space-y-2.5">
-            {(() => {
-              const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
-              const billDisc = Number(invoice.discountAmount || 0);
-
-              return items.map((item, idx) => {
-                const pName = item.productName || item.product?.name || item.name || 'Agri Item';
-                const qty = Number(item.quantity || item.qty || 1);
-                const unit = item.unit || item.unitId?.shortName || item.product?.defaultUnitId?.shortName || 'Bag';
-                const rate = getItemUnitPrice(item);
-                const itemGross = qty * rate;
-                const disc = Number(item.discountAmount || item.discount || 0);
-                const effectiveDisc = disc > 0
-                  ? disc
-                  : (billDisc > 0 && rawSubtotal > 0 ? Math.round((itemGross / rawSubtotal) * billDisc * 100) / 100 : 0);
-                const rowTotal = Math.max(0, itemGross - effectiveDisc);
-
-                return (
-                  <div key={idx} className="bg-white border border-gray-200/90 rounded-2xl p-3 shadow-2xs space-y-2 font-sans">
-                    <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
-                      <span className="font-extrabold text-gray-900 text-xs">{pName}</span>
-                      <span className="font-mono font-black text-[#047857] text-xs">
-                        ₹ {Math.round(rowTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                      <div>
-                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Qty</span>
-                        <span className="font-bold text-gray-800">{qty} {unit}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Rate</span>
-                        <span className="font-bold text-gray-800">₹ {Math.round(rate).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-gray-400 block uppercase font-sans">Discount</span>
-                        <span className="font-bold text-[#047857]">₹ {Math.round(effectiveDisc).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
-
-        {/* Financial Totals Breakdown & UPI Payment Card */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 print:block">
-          
-          {/* Audit Trail Box */}
-          <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200/60 space-y-1.5 text-xs print:hidden">
-            <span className="font-extrabold text-gray-900 block text-xs">Invoice Audit Trail</span>
-            <div className="text-gray-600 space-y-1 text-[11px] font-mono">
-              <div>Invoice Status: <span className="font-bold text-gray-900">{currentStatus}</span></div>
-              <div>Payment Mode: <span className="font-bold text-gray-900">{invoice.paymentMode || 'Cash'}</span></div>
-              <div>Shop VPA: <span className="font-bold text-emerald-700">{upiId}</span></div>
-              <div>Database ID: <span className="font-bold text-gray-700">{invoice._id || invoice.id}</span></div>
-            </div>
-          </div>
-
-          {/* Dynamic Pay Now via UPI QR Code Card */}
-          <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/80 flex flex-col justify-between items-center text-center space-y-2 print:hidden">
-            <div className="flex items-center gap-1.5 font-extrabold text-gray-900 text-xs">
-              <QrCode className="w-4 h-4 text-[#047857]" />
-              <span>Scan &amp; Pay via PhonePe / GPay</span>
-            </div>
-            
-            <div className="bg-white p-1.5 rounded-lg border border-gray-200 shadow-2xs">
-              <img src={upiQrCodeUrl} alt="UPI QR Code" className="w-24 h-24 object-contain" />
-            </div>
-
-            <div className="w-full space-y-1">
-              <a
-                href={upiPayLink}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-1.5 bg-[#047857] hover:bg-[#036448] text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1 shadow-2xs transition-colors"
-              >
-                <span>Pay ₹{grandTotal.toLocaleString('en-IN')} Now</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              <span className="text-[10px] text-gray-500 font-mono block">VPA: {upiId}</span>
-            </div>
-          </div>
-
-          {/* Totals Breakdown */}
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2.5 font-mono text-xs">
-            <div className="flex justify-between text-gray-600">
-              <span>Subtotal:</span>
-              <span className="font-bold text-gray-900">₹ {subtotal.toLocaleString('en-IN')}</span>
-            </div>
-
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-gray-600">
-                <span>Total Discount:</span>
-                <span className="font-bold text-emerald-700">- ₹ {discountAmount.toLocaleString('en-IN')}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-gray-600">
-              <span>GST Tax Amount:</span>
-              <span className="font-bold text-gray-900">₹ {taxAmount.toLocaleString('en-IN')}</span>
-            </div>
-
-            <div className="flex justify-between text-sm font-extrabold text-gray-900 pt-2 border-t border-gray-200">
-              <span>Invoice Total:</span>
-              <span className="text-[#047857]">₹ {grandTotal.toLocaleString('en-IN')}</span>
-            </div>
-
-            <div className="flex justify-between text-xs font-bold text-emerald-700 pt-1">
-              <span>Paid Amount:</span>
-              <span>₹ {currentPaid.toLocaleString('en-IN')}</span>
-            </div>
-
-            <div className="flex justify-between text-xs font-bold text-red-600 pt-1 border-t border-gray-200">
-              <span>Invoice Outstanding:</span>
-              <span>₹ {currentDue.toLocaleString('en-IN')}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer Authorization Stamp */}
-        <div className="pt-6 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-end text-[11px] text-gray-400 gap-4">
-          <div>
-            <p className="font-bold text-gray-700">Thank you for your business!</p>
-            <p>Computer generated tax invoice • VEDIXA ERP</p>
-          </div>
-          <div className="text-right font-mono">
-            <div className="h-10 border-b border-gray-300 w-36 mb-1"></div>
-            <span>Authorized Signatory</span>
-          </div>
-        </div>
-      </div>
+      <PrintableInvoice invoice={invoice} shopSettings={shopSettings} />
 
       {/* ZOHO / VYAPAR / TALLY STYLE INVOICE DOCUMENT PREVIEW MODAL */}
       {isWhatsappPreviewOpen && (
@@ -794,101 +503,7 @@ export default function InvoiceDetailsPage() {
               
               {/* CENTER COLUMN: ACTUAL INVOICE DOCUMENT PAPER PREVIEW */}
               <div className="lg:col-span-8 bg-slate-100/80 p-4 rounded-2xl border border-slate-200 overflow-y-auto max-h-[64vh] shadow-inner space-y-4">
-                
-                {/* Paper Sheet Document Box */}
-                <div className="bg-white shadow-xl border border-gray-300 rounded-xl p-6 space-y-5 text-xs text-gray-900 font-sans">
-                  
-                  {/* Shop & Invoice Header */}
-                  <div className="flex justify-between items-start border-b-2 border-[#047857] pb-4">
-                    <div className="space-y-1">
-                      <h1 className="text-xl font-extrabold text-emerald-900 tracking-tight">{shopDisplayName}</h1>
-                      <p className="text-xs font-semibold text-gray-700">{shopSettings.address || 'Main Road, Guntur Market Yard, AP'}</p>
-                      <div className="flex items-center gap-3 text-[11px] font-mono text-gray-600">
-                        <span>Phone: {shopSettings.mobile || '9848081875'}</span>
-                        <span>GSTIN: {shopSettings.gstNumber || '37AABCF1234H1Z5'}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right space-y-1">
-                      <span className="px-3 py-1 bg-emerald-100 text-[#047857] font-extrabold text-xs rounded-md uppercase tracking-wider block">
-                        TAX INVOICE
-                      </span>
-                      <div className="text-xs font-mono font-bold text-gray-900">#{invoice.invoiceNumber}</div>
-                      <div className="text-[11px] font-mono text-gray-500">Date: {invoiceDateStr}</div>
-                    </div>
-                  </div>
-
-                  {/* Customer Box */}
-                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-xl border border-gray-200 font-sans text-xs">
-                    <div>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase block">Billed To</span>
-                      <h2 className="font-extrabold text-gray-900 text-sm">{invoice.customerName || invoice.customer?.name || 'Valued Customer'}</h2>
-                      <div className="text-gray-600 font-mono">Phone: {invoice.customerMobile || invoice.customer?.mobile || 'N/A'}</div>
-                    </div>
-                    <div className="text-right font-mono">
-                      <span className="text-[10px] text-gray-400 font-bold uppercase block font-sans">Payment Details</span>
-                      <div>Status: <span className="font-extrabold text-emerald-700">{invoice.status || 'Paid'}</span></div>
-                      <div>Method: <span className="font-bold text-gray-800">{invoice.paymentMethod || 'Cash'}</span></div>
-                    </div>
-                  </div>
-
-                  {/* Billed Items Table */}
-                  <div className="space-y-1.5">
-                    <h3 className="font-extrabold text-xs text-gray-900 uppercase">Billed Product Items ({items.length})</h3>
-                    <div className="border border-gray-300 rounded-xl overflow-hidden shadow-2xs">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead className="bg-gray-100 text-[10px] font-bold text-gray-700 uppercase border-b border-gray-300">
-                          <tr>
-                            <th className="py-2.5 px-3 border-r border-gray-300 text-left">Product Name</th>
-                            <th className="py-2.5 px-3 border-r border-gray-300 text-center">Qty / Unit</th>
-                            <th className="py-2.5 px-3 border-r border-gray-300 text-center">Rate (₹)</th>
-                            <th className="py-2.5 px-3 border-r border-gray-300 text-center">Discount (₹)</th>
-                            <th className="py-2.5 px-3 border-r border-gray-300 text-center">GST %</th>
-                            <th className="py-2.5 px-3 text-center">Total (₹)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 font-medium text-gray-900">
-                          {items.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50/50">
-                              <td className="py-2.5 px-3 border-r border-gray-300 font-bold text-left">{item.productName || item.name || 'Agri Product'}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono">{item.quantity || item.qty || 1} {item.unit || 'Bag'}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono">₹ {Math.round(item.sellingPrice || item.rate || item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-500">₹ {Math.round(item.discountAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                              <td className="py-2.5 px-3 border-r border-gray-300 text-center font-mono text-gray-600">{item.gstRate ?? 0}%</td>
-                              <td className="py-2.5 px-3 text-center font-mono font-bold">
-                                ₹ {Math.round(item.totalAmount || (item.quantity * item.sellingPrice) || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Summary Totals & Footer QR */}
-                  <div className="flex justify-between items-end pt-3 border-t border-gray-300">
-                    <div className="space-y-1">
-                      <img src={qrCodeUrl} alt="UPI QR Code" className="w-16 h-16 object-contain border border-gray-200 rounded p-1" />
-                      <span className="text-[9px] font-bold text-gray-600 block">Scan to Pay via PhonePe / GPay</span>
-                    </div>
-
-                    <div className="w-64 bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-1.5 text-xs">
-                      <div className="flex justify-between items-center text-gray-600 font-medium">
-                        <span className="text-left">Subtotal:</span>
-                        <span className="font-mono text-right pr-3">₹ {Math.round(subtotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-emerald-700 font-semibold">
-                        <span className="text-left">Paid Amount:</span>
-                        <span className="font-mono text-right pr-3">₹ {Math.round(paidAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-red-600 font-bold pt-1.5 border-t border-gray-300">
-                        <span className="text-left">Due Amount:</span>
-                        <span className="font-mono text-right pr-3">₹ {Math.round(dueAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
+                <PrintableInvoice invoice={invoice} shopSettings={shopSettings} />
               </div>
 
               {/* RIGHT SIDEBAR COLUMN: WHATSAPP OPTIONS & MESSAGE PANEL */}
@@ -914,10 +529,6 @@ export default function InvoiceDetailsPage() {
                     <label className="flex items-center gap-2 cursor-pointer font-bold text-gray-700 text-[11px]">
                       <input type="checkbox" checked={attachPdf} onChange={(e) => setAttachPdf(e.target.checked)} className="rounded text-[#047857]" />
                       <span>Attach Invoice PDF Document</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-gray-700 text-[11px]">
-                      <input type="checkbox" checked={includeQr} onChange={(e) => setIncludeQr(e.target.checked)} className="rounded text-[#047857]" />
-                      <span>Include Dynamic UPI QR Code</span>
                     </label>
                   </div>
                 </div>

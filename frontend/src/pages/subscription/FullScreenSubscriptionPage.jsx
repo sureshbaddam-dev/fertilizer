@@ -108,7 +108,7 @@ export default function FullScreenSubscriptionPage() {
   const isExpired = subData?.isExpired !== undefined ? subData.isExpired : (currentSub?.status === 'EXPIRED' || (currentSub?.expiryDate && new Date(currentSub.expiryDate) < new Date()));
   const remainingDays = currentSub?.expiryDate ? calculateRemainingDays(currentSub.expiryDate) : 0;
   const trialCountdown = currentSub?.expiryDate ? getTrialCountdown(currentSub.expiryDate) : null;
-  const planDisplayName = isTrial ? '7-Day Free Trial' : currentSub?.planName || currentSub?.planCode || 'Plan';
+  const planDisplayName = isTrial ? (currentSub?.planName || 'Free Trial') : currentSub?.planName || currentSub?.planCode || 'Plan';
 
   // Sign Out Handler
   const handleLogout = async () => {
@@ -411,7 +411,7 @@ export default function FullScreenSubscriptionPage() {
             <div className="max-w-lg mx-auto mt-1 p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs font-semibold flex flex-col items-center justify-center gap-1 text-center shadow-2xs">
               <div className="flex items-center gap-1.5 font-bold text-rose-800">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{isTrial ? 'Your 7-day free trial has expired.' : 'Your subscription has expired.'}</span>
+                <span>{isTrial ? 'Your free trial has expired.' : 'Your subscription has expired.'}</span>
               </div>
               <span className="text-slate-600 font-medium">
                 Please choose a subscription plan to continue.

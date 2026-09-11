@@ -110,7 +110,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const remainingDays = currentSub?.expiryDate ? calculateRemainingDays(currentSub.expiryDate) : 0;
   const trialCountdown = currentSub?.expiryDate ? getTrialCountdown(currentSub.expiryDate) : null;
   const planName = isTrial
-    ? 'Free Trial (7 Days)'
+    ? (currentSub?.planName || 'Free Trial')
     : currentSub?.planId?.name || currentSub?.planName || (currentSub?.planCode ? currentSub.planCode.replace(/_/g, ' ') : '3 Months');
   const expiryFormatted = currentSub?.expiryDate ? formatISTDate(currentSub.expiryDate) : null;
 

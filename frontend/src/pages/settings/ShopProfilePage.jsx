@@ -9,6 +9,8 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Trash2,
+  ShieldCheck,
+  ArrowRight,
 } from 'lucide-react';
 import { settingService } from '../../services/settingService';
 import { subscriptionService } from '../../services/subscriptionService';

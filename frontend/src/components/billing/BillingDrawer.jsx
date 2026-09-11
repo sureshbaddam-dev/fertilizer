@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X,
@@ -22,6 +23,8 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import AddCustomerModal from '../customers/AddCustomerModal';
+import PrintableInvoice from '../sales/PrintableInvoice';
+import { printInvoiceHtml } from '../../utils/invoicePrintHelper';
 import { toast } from '../../contexts/ToastContext';
 
 // Memoized Cart Item Row Component to isolate re-renders on quantity / price input
@@ -244,6 +247,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const gstType = shopSettingsData?.gstType || 'CGST_SGST';
 
   const [lastSavedInvoice, setLastSavedInvoice] = useState(null);
+  const [invoiceForPrint, setInvoiceForPrint] = useState(null);
 
   const isSelectingProdRef = useRef(false);
 
@@ -677,41 +681,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const netBillToPay = grandTotal - advanceUsed;
 
   const isSubmittingRef = useRef(false);
+  const [isSavingBill, setIsSavingBill] = useState(false);
+  const [isPrintingBill, setIsPrintingBill] = useState(false);
 
-  // Submit & Save Bill Mutation
-  const createInvoiceMutation = useMutation({
-    mutationFn: (data) => invoiceService.createInvoice(data),
-    onSuccess: () => {
-      isSubmittingRef.current = false;
-      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
-      queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
-      queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
-      queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
-
-      toast.success('Bill submitted & saved successfully');
-      setItems([]);
-      setManualDiscountValue('');
-      setPaidAmountInput('');
-      setIsPaidAmountCustom(false);
-      setNotes('');
-      onClose();
-    },
-    onError: (err) => {
-      isSubmittingRef.current = false;
-      toast.error('Failed to submit bill', { description: err?.response?.data?.message || err?.message });
-    },
-  });
-
-  const handleSubmitBill = () => {
-    if (createInvoiceMutation.isPending || isSubmittingRef.current) return;
-
+  // Unified Validation & Invoice Payload Construction (Single Source of Truth)
+  const validateAndBuildInvoicePayload = () => {
     if (items.length === 0) {
-      toast.warning('Cart is empty. Please add items to submit bill.');
-      return;
+      toast.warning('Cart is empty. Please add items before proceeding.');
+      return null;
     }
 
     // Frontend Stock Verification Before Submit (authoritative check happens on backend)
@@ -720,7 +697,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         const available = Math.max(0, Number(item.currentStock));
         if (item.qty > available) {
           toast.warning(`Insufficient stock for "${item.name}". Available stock: ${available}, Requested: ${item.qty}`);
-          return;
+          return null;
         }
       }
     }
@@ -731,14 +708,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     if (customerMode === 'general') {
       if (!generalName.trim() || !generalMobile.trim()) {
         toast.warning('Please enter General Customer Name and Mobile Number.');
-        return;
+        return null;
       }
       customerData = { name: generalName.trim(), mobile: generalMobile.trim() };
       isAddedCust = false;
     } else {
       if (!selectedCustomer) {
         toast.warning('Please search and select a customer.');
-        return;
+        return null;
       }
       customerData = selectedCustomer;
       isAddedCust = true;
@@ -746,13 +723,12 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
     if (effectivePaidAmount > netBillToPay) {
       toast.warning('Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.');
-      return;
+      return null;
     }
 
-    isSubmittingRef.current = true;
     const idempotencyKey = `IDEMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    createInvoiceMutation.mutate({
+    const payload = {
       customer: customerData,
       customerId: isAddedCust ? selectedCustomer?._id : null,
       customerType: isAddedCust ? 'ADDED' : 'GENERAL',
@@ -787,13 +763,64 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       paymentMethod: selectedPaymentMode,
       notes: notes.trim(),
       idempotencyKey,
-    });
+    };
+
+    return { payload, isAddedCust, customerData };
+  };
+
+  // Centralized Save Invoice to Database & React Query Invalidation
+  const executeSaveInvoice = async (payload) => {
+    const savedRes = await invoiceService.createInvoice(payload);
+    const savedInvoice = savedRes?.data?.invoice || savedRes?.invoice || savedRes?.data || savedRes || {};
+    setLastSavedInvoice(savedInvoice);
+
+    queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
+    queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
+    queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
+    queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+
+    return savedInvoice;
+  };
+
+  const resetBillForm = () => {
+    setItems([]);
+    setManualDiscountValue('');
+    setPaidAmountInput('');
+    setIsPaidAmountCustom(false);
+    setNotes('');
+  };
+
+  // 1. Submit & Save Bill
+  const handleSubmitBill = async () => {
+    if (isSubmittingRef.current || isSavingBill || isPrintingBill || isWhatsAppProcessing) return;
+
+    const validated = validateAndBuildInvoicePayload();
+    if (!validated) return;
+
+    isSubmittingRef.current = true;
+    setIsSavingBill(true);
+
+    try {
+      await executeSaveInvoice(validated.payload);
+      toast.success('Bill submitted & saved successfully');
+      resetBillForm();
+      onClose();
+    } catch (err) {
+      toast.error('Failed to submit bill', { description: err?.response?.data?.message || err?.message });
+    } finally {
+      setIsSavingBill(false);
+      isSubmittingRef.current = false;
+    }
   };
 
   const [isWhatsAppProcessing, setIsWhatsAppProcessing] = useState(false);
 
   const handleWhatsAppFlow = async () => {
-    if (createInvoiceMutation.isPending || isSubmittingRef.current || isWhatsAppProcessing) return;
+    if (isSubmittingRef.current || isSavingBill || isPrintingBill || isWhatsAppProcessing) return;
 
     if (items.length === 0) {
       toast.warning('Cart is empty. Please add items before sending WhatsApp statement.');
@@ -1139,6 +1166,36 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
   };
 
+  // 2. Print Bill: SAVE FIRST -> THEN PRINT REAL HTML INVOICE VIA ISOLATED IFRAME
+  const handlePrintBill = async () => {
+    if (isSubmittingRef.current || isSavingBill || isPrintingBill || isWhatsAppProcessing) return;
+
+    const validated = validateAndBuildInvoicePayload();
+    if (!validated) return;
+
+    isSubmittingRef.current = true;
+    setIsPrintingBill(true);
+
+    try {
+      // Step A: Save invoice in the database
+      const savedInvoice = await executeSaveInvoice(validated.payload);
+      toast.success('Bill saved successfully');
+
+      // Step B: Print the real HTML invoice document via isolated hidden iframe
+      await printInvoiceHtml(savedInvoice, shopSettings);
+
+      // Step C: Reset form and close drawer
+      resetBillForm();
+      onClose();
+    } catch (err) {
+      console.error('Save bill failed during Print Bill flow:', err);
+      toast.error('Failed to save bill', { description: err?.response?.data?.message || err?.message });
+    } finally {
+      setIsPrintingBill(false);
+      isSubmittingRef.current = false;
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -1396,7 +1453,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                           src={p.image}
                           name={p.name}
                           size={40}
-                          className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-gray-200/80 bg-white"
+                          className="w-10 h-10 rounded-lg overflow-hidden shrink-0"
                         />
                         <div className="min-w-0">
                           <span className="font-extrabold text-gray-900 text-xs block truncate leading-tight" title={p.name}>
@@ -1693,17 +1750,23 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         <div className="grid grid-cols-12 gap-2">
           <button
             type="button"
-            disabled={items.length === 0}
-            onClick={() => window.print()}
+            disabled={items.length === 0 || isSavingBill || isPrintingBill || isWhatsAppProcessing}
+            onClick={handlePrintBill}
             className="col-span-3 py-2.5 px-1.5 text-[11px] font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-xl flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
           >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Print Bill</span>
+            {isPrintingBill ? (
+              <span className="text-[10px] animate-pulse">Saving &amp; Printing...</span>
+            ) : (
+              <>
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Bill</span>
+              </>
+            )}
           </button>
 
           <button
             type="button"
-            disabled={items.length === 0 || createInvoiceMutation.isPending || isWhatsAppProcessing}
+            disabled={items.length === 0 || isSavingBill || isPrintingBill || isWhatsAppProcessing}
             onClick={handleWhatsAppFlow}
             className="col-span-4 py-2.5 px-1 text-[11px] font-bold text-white bg-[#047857] hover:bg-[#036448] rounded-xl shadow-2xs flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
           >
@@ -1719,11 +1782,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
           <button
             type="button"
-            disabled={items.length === 0 || createInvoiceMutation.isPending || isWhatsAppProcessing}
+            disabled={items.length === 0 || isSavingBill || isPrintingBill || isWhatsAppProcessing}
             onClick={handleSubmitBill}
             className="col-span-5 py-2.5 px-1.5 text-[11px] font-extrabold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
           >
-            {createInvoiceMutation.isPending ? (
+            {isSavingBill ? (
               <span>Saving...</span>
             ) : (
               <>

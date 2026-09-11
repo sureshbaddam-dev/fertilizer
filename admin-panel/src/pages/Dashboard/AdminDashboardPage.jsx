@@ -38,11 +38,12 @@ export default function AdminDashboardPage() {
     totalWebsiteVisitors: 0,
     totalBusinesses: 0,
     newUsers: 0,
+    openSupportTickets: 0,
   });
 
   const [recentUsers, setRecentUsers] = useState([]);
-  const [supportTickets, setSupportTickets] = useState([]);
   const [analyticsData, setAnalyticsData] = useState(null);
+  const [subSettings, setSubSettings] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Quick Demo Grant Modal State
@@ -51,6 +52,7 @@ export default function AdminDashboardPage() {
   const [demoDuration, setDemoDuration] = useState('7');
   const [isSubmittingDemo, setIsSubmittingDemo] = useState(false);
   const [demoSuccessMsg, setDemoSuccessMsg] = useState('');
+  const [demoErrorMsg, setDemoErrorMsg] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -59,17 +61,22 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, usersRes, ticketsRes, analyticsRes] = await Promise.all([
+      const [statsRes, usersRes, analyticsRes, settingsRes] = await Promise.all([
         adminApiService.getDashboardStats(),
         adminApiService.getUsersList({ page: 1, limit: 6 }),
-        adminApiService.getSupportTickets({ status: 'ALL' }),
         adminApiService.getDashboardAnalytics(),
+        adminApiService.getSubscriptionSettings().catch(() => null),
       ]);
 
       if (statsRes) setStats(statsRes);
       if (usersRes?.users) setRecentUsers(usersRes.users);
-      if (ticketsRes) setSupportTickets(ticketsRes);
       if (analyticsRes) setAnalyticsData(analyticsRes);
+      if (settingsRes) {
+        setSubSettings(settingsRes);
+        if (settingsRes?.demoSettings?.defaultDemoDays) {
+          setDemoDuration(String(settingsRes.demoSettings.defaultDemoDays));
+        }
+      }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -77,21 +84,31 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const allowCustomAdminDemoGrants = subSettings?.demoSettings?.allowCustomAdminDemoGrants !== false;
+
   const handleGrantDemoSubmit = async (e) => {
     e.preventDefault();
     if (!selectedUserForDemo) return;
+    const parsedDays = parseInt(demoDuration, 10);
+    if (isNaN(parsedDays) || parsedDays < 1) {
+      setDemoErrorMsg('Please enter a valid whole number of days (at least 1).');
+      return;
+    }
+
     setIsSubmittingDemo(true);
     setDemoSuccessMsg('');
+    setDemoErrorMsg('');
     try {
-      await adminApiService.grantCustomDemoSubscription(selectedUserForDemo, parseInt(demoDuration, 10));
-      setDemoSuccessMsg(`Successfully granted ${demoDuration}-day demo subscription!`);
+      await adminApiService.grantCustomDemoSubscription(selectedUserForDemo, parsedDays);
+      setDemoSuccessMsg(`Successfully granted ${parsedDays}-day demo subscription!`);
       setTimeout(() => {
         setIsDemoModalOpen(false);
         setDemoSuccessMsg('');
         fetchDashboardData();
       }, 1200);
-    } catch (_err) {
-      setDemoSuccessMsg('Failed to grant demo.');
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to grant demo.';
+      setDemoErrorMsg(msg);
     } finally {
       setIsSubmittingDemo(false);
     }
@@ -104,7 +121,7 @@ export default function AdminDashboardPage() {
     count: item.count || 0,
   }));
 
-  const pendingTicketsCount = supportTickets.filter((t) => t.status === 'PENDING' || t.status === 'OPEN').length;
+  const pendingTicketsCount = stats.openSupportTickets || 0;
 
   return (
     <div className="space-y-6 font-sans antialiased text-slate-800">
@@ -192,10 +209,10 @@ export default function AdminDashboardPage() {
         >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Support Tickets</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-purple-700">{supportTickets.length || 0}</span>
+            <span className="text-2xl font-black text-purple-700">{stats.openSupportTickets || 0}</span>
             <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">Support</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-medium block">Customer Inquiries</span>
+          <span className="text-[10px] text-slate-500 font-medium block">Open / Pending Inquiries</span>
         </div>
       </div>
 
@@ -211,8 +228,17 @@ export default function AdminDashboardPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setIsDemoModalOpen(true)}
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+              onClick={() => {
+                if (!allowCustomAdminDemoGrants) return;
+                setIsDemoModalOpen(true);
+              }}
+              disabled={!allowCustomAdminDemoGrants}
+              title={!allowCustomAdminDemoGrants ? 'Custom demo grants are disabled in Subscription Settings' : 'Grant demo subscription to a user'}
+              className={`px-3.5 py-2 font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition ${
+                allowCustomAdminDemoGrants
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+              }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>+ Give Demo</span>
@@ -222,7 +248,7 @@ export default function AdminDashboardPage() {
               className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs rounded-xl border border-blue-200 flex items-center gap-1.5 cursor-pointer"
             >
               <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
-              <span>View Support ({pendingTicketsCount})</span>
+              <span>View Support ({stats.openSupportTickets || 0})</span>
             </button>
             <button
               onClick={() => navigate('/admin/users')}
@@ -248,130 +274,142 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Action Required Box (1 Col) */}
-        <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
-            <span className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-amber-600" /> Action Required
-            </span>
-            <span className="text-[10px] font-extrabold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
-              {pendingTicketsCount} Total Items
-            </span>
-          </div>
-
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between p-1.5 bg-white border border-amber-200 rounded-xl">
-              <span className="font-semibold text-slate-700">Open Support Tickets</span>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-blue-700">{pendingTicketsCount}</span>
-                <button
-                  onClick={() => navigate('/admin/support')}
-                  className="px-2 py-0.5 bg-blue-600 text-white font-bold text-[10px] rounded-lg hover:bg-blue-700 cursor-pointer"
-                >
-                  View
-                </button>
-              </div>
+        {/* Action Required / System Health (1 Col) */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+          <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4 text-amber-600" /> Platform Pulse
+          </span>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600 font-medium">Free Trials Active</span>
+              <span className="font-bold text-amber-700">{stats.demoSubscriptions ?? 0}</span>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600 font-medium">Expiring in 7 Days</span>
+              <span className="font-bold text-rose-700">{stats.expiringSoon ?? 0}</span>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-600 font-medium">Total Businesses</span>
+              <span className="font-bold text-slate-800">{stats.totalBusinesses ?? 0}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. RECENT USERS & REVENUE ANALYTICS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Users Table (2 Cols) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-emerald-600" /> Recent User Accounts
-            </h3>
+      {/* 4. RECENT REGISTRATIONS & REVENUE TREND */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Registered Users */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Recent Registrations</h2>
+              <p className="text-xs text-slate-500 font-medium">Latest shop owners on the platform</p>
+            </div>
             <button
               onClick={() => navigate('/admin/users')}
-              className="text-xs font-bold text-emerald-600 hover:text-emerald-700 underline flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
             >
-              <span>View All Users</span>
+              <span>View All</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
-                <tr>
-                  <th className="p-2.5">User</th>
-                  <th className="p-2.5">Full Mobile</th>
-                  <th className="p-2.5">Business Name</th>
-                  <th className="p-2.5">Subscription</th>
-                  <th className="p-2.5">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentUsers.map((u) => (
-                  <tr key={u._id} className="hover:bg-slate-50">
-                    <td className="p-2.5 font-bold text-slate-900">{u.ownerName}</td>
-                    <td className="p-2.5 font-mono text-slate-700">{u.mobile}</td>
-                    <td className="p-2.5 font-medium text-emerald-700">{u.businessName || 'Store Registered'}</td>
-                    <td className="p-2.5"><StatusBadge status={u.subscriptionStatus || 'ACTIVE'} /></td>
-                    <td className="p-2.5">
-                      <button
-                        onClick={() => navigate(`/admin/users/${u._id}`)}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer"
-                      >
-                        Profile →
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2.5">
+            {recentUsers.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No user registrations found.</p>
+            ) : (
+              recentUsers.slice(0, 5).map((u) => (
+                <div
+                  key={u._id}
+                  onClick={() => navigate(`/admin/users/${u._id}`)}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/60 cursor-pointer transition"
+                >
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-slate-900 block">{u.ownerName}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">{u.mobile} • {u.businessName || 'Business'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={u.subscriptionStatus || (u.isActive ? 'ACTIVE' : 'INACTIVE')} />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Compact Revenue Trend Chart (1 Col) */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-              <CreditCard className="w-4 h-4 text-emerald-600" /> Revenue Sparkline
-            </h3>
-            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              ₹{(stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}
-            </span>
+        {/* Revenue Analytics Chart */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Revenue Trajectory</h2>
+              <p className="text-xs text-slate-500 font-medium">Monthly collection trends</p>
+            </div>
+            <button
+              onClick={() => navigate('/admin/payments/analytics')}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
+            >
+              <span>Analytics</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueTrendData}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#059669" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#059669" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
-                <YAxis stroke="#94a3b8" fontSize={10} />
-                <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '10px', fontSize: '11px' }} />
-                <Area type="monotone" dataKey="revenue" stroke="#059669" fillOpacity={1} fill="url(#revGrad)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="h-60 w-full pt-2">
+            {revenueTrendData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                No revenue trend data available.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueTrendData}>
+                  <defs>
+                    <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#059669" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#059669" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(val) => `₹${val}`} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '11px' }}
+                    formatter={(val) => [`₹${val}`, 'Revenue']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#059669"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#revenueGrad)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>
 
-      {/* QUICK DEMO GRANT MODAL */}
+      {/* 5. QUICK DEMO GRANT MODAL */}
       {isDemoModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-5">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-5 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
                 <Sparkles className="w-5 h-5 text-emerald-600" />
-                <span>Give Demo Subscription</span>
+                <span>Grant Custom Demo Subscription</span>
               </h3>
-              <button onClick={() => setIsDemoModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button onClick={() => setIsDemoModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
             </div>
 
             {demoSuccessMsg && (
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
                 {demoSuccessMsg}
+              </div>
+            )}
+
+            {demoErrorMsg && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                {demoErrorMsg}
               </div>
             )}
 
@@ -394,30 +432,48 @@ export default function AdminDashboardPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Demo Duration</label>
-                <select
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Custom Demo Days (Positive Integer)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
                   value={demoDuration}
-                  onChange={(e) => setDemoDuration(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-emerald-600"
-                >
-                  <option value="7">7 Days Demo</option>
-                  <option value="14">14 Days Demo</option>
-                  <option value="30">30 Days Demo</option>
-                </select>
+                  onChange={(e) => {
+                    setDemoErrorMsg('');
+                    setDemoDuration(e.target.value);
+                  }}
+                  required
+                  placeholder="e.g. 14, 30, 45"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-600"
+                />
+                <div className="flex gap-2 mt-2">
+                  {[7, 14, 30, 45, 60].map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => setDemoDuration(String(days))}
+                      className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer"
+                    >
+                      {days}d
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="pt-2 flex items-center justify-end space-x-3">
                 <button
                   type="button"
                   onClick={() => setIsDemoModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingDemo || !selectedUserForDemo}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition shadow-xs disabled:opacity-50"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingDemo ? 'Granting...' : 'Grant Demo Access'}
                 </button>

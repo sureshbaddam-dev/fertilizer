@@ -104,7 +104,7 @@ function ToastContainer({ toasts, onDismiss }) {
 
   return (
     <div
-      className="fixed top-4 right-4 z-[99999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-3 sm:px-0"
+      className="fixed top-4 right-4 z-[99999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-3 sm:px-0 print:hidden no-print"
       aria-live="polite"
     >
       {toasts.map((item) => (

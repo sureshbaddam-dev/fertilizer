@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Plus, Sprout } from 'lucide-react';
-import { getImageUrl } from '../../utils/imageUtils';
+import React from 'react';
+import { Plus } from 'lucide-react';
+import ProductAvatar from '../ui/ProductAvatar';
 
 export default function ProductCard({ product, onQuickAdd }) {
   const prodName = product.name || 'Product';
@@ -40,10 +40,7 @@ export default function ProductCard({ product, onQuickAdd }) {
     }
   }
 
-  const [hasImageError, setHasImageError] = useState(false);
-
   const rawImage = product.image || product.imageUrl || product.thumbnail;
-  const resolvedImageUrl = getImageUrl(rawImage);
 
   const handleClick = () => {
     if (onQuickAdd) {
@@ -69,23 +66,13 @@ export default function ProductCard({ product, onQuickAdd }) {
       )}
 
       {/* 1. PRODUCT IMAGE CONTAINER — EXPANDED VISUAL HERO AREA */}
-      <div className="relative w-full h-[118px] sm:h-[128px] flex items-center justify-center p-1 bg-slate-50/80 border-b border-slate-100 overflow-hidden shrink-0">
-        {hasImageError ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-center p-1 text-emerald-800">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center mb-0.5 shadow-2xs group-hover:scale-105 transition-transform">
-              <Sprout className="w-4.5 h-4.5 text-emerald-700" />
-            </div>
-            <span className="text-[8.5px] text-slate-400 font-medium">No Image</span>
-          </div>
-        ) : (
-          <img
-            src={resolvedImageUrl}
-            alt={prodName}
-            loading="lazy"
-            onError={() => setHasImageError(true)}
-            className="h-full w-full object-contain object-center transition-transform duration-300 group-hover:scale-105 p-0.5"
-          />
-        )}
+      <div className="relative w-full h-[118px] sm:h-[128px] flex items-center justify-center p-1.5 bg-slate-50/80 border-b border-slate-100 overflow-hidden shrink-0">
+        <ProductAvatar
+          src={rawImage}
+          name={prodName}
+          className="w-full h-full rounded-2xl"
+          textSize="text-3xl sm:text-4xl"
+        />
       </div>
 
       {/* 2. PRODUCT DETAILS CONTAINER — COMPACT DARK NAVY BOTTOM PANEL */}

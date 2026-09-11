@@ -89,10 +89,10 @@ export const adminController = {
 
   grantCustomDemoSubscription: async (req, res, next) => {
     try {
-      const { userId, demoDays = 7, reason = 'Customer Trial' } = req.body;
+      const { userId, demoDays, reason = 'Customer Trial' } = req.body;
       const sub = await adminService.grantCustomDemoSubscription({
         userId,
-        demoDays: Number(demoDays),
+        demoDays: demoDays !== undefined ? demoDays : undefined,
         reason,
         adminUser: req.adminUser,
         req,

@@ -5,6 +5,7 @@ import { User } from './user.model.js';
 import { ShopSettings } from '../settings/models/shopSettings.model.js';
 import { UserSubscription } from '../subscription/userSubscription.model.js';
 import { SubscriptionHistory } from '../admin/models/subscriptionHistory.model.js';
+import { getOrCreateSubscriptionSettings } from '../admin/services/admin.service.js';
 import { redisService } from '../../services/redis.service.js';
 import { emailService } from '../../services/email.service.js';
 import { logger } from '../../config/logger.config.js';
@@ -574,14 +575,29 @@ export const authService = {
       return existingSub;
     }
 
+    // Single persistent Source of Truth from MongoDB SubscriptionSettings
+    const subSettings = await getOrCreateSubscriptionSettings();
+    const isDemoAvailable = subSettings?.demoSettings?.isDemoAvailable ?? true;
+
+    // If Free Trial Availability is turned OFF by admin, do NOT create automatic trial for new registrations
+    if (!isDemoAvailable) {
+      logger.info(`[FreeTrial] Automatic trial creation skipped for user ${user._id} because Free Trial Availability is OFF in SubscriptionSettings.`);
+      return null;
+    }
+
+    const demoDays = Math.max(1, parseInt(subSettings?.demoSettings?.defaultDemoDays, 10) || 7);
+
     // Permanent Source of Truth: exact timestamp when user signed up / account was created
     const trialStartedAt = user.createdAt ? new Date(user.createdAt) : new Date();
-    const trialExpiresAt = new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000); // exactly 7 * 24 hours
+    const trialExpiresAt = new Date(trialStartedAt.getTime() + demoDays * 24 * 60 * 60 * 1000);
+
+    const planTitle = `Fertilizer ERP (${demoDays}-Day Trial)`;
+    const durationLabel = `${demoDays} Days Free Trial`;
 
     const sub = await UserSubscription.create({
       userId: user._id,
       planCode: 'FERTILIZER_ERP',
-      planName: 'Fertilizer ERP (7-Day Trial)',
+      planName: planTitle,
       status: 'ACTIVE',
       subscriptionStatus: 'TRIAL_ACTIVE',
       startDate: trialStartedAt,
@@ -602,9 +618,9 @@ export const authService = {
         userName: user.ownerName || 'Store Owner',
         userMobile: user.mobile || '',
         planCode: 'FERTILIZER_ERP',
-        planName: 'Fertilizer ERP (7-Day Trial)',
-        durationLabel: '7 Days Free Trial',
-        durationDays: 7,
+        planName: planTitle,
+        durationLabel,
+        durationDays: demoDays,
         startDate: trialStartedAt,
         expiryDate: trialExpiresAt,
         amountPaid: 0,

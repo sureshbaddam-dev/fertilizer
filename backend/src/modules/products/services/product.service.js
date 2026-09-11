@@ -1130,7 +1130,7 @@ export const productService = {
       name: productName,
       code: (data.code && typeof data.code === 'string') ? data.code.trim() : undefined,
       barcode: (data.barcode && typeof data.barcode === 'string') ? data.barcode.trim() : undefined,
-      image: (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '/assets/urea_bag.png',
+      image: (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '',
       brandId,
       categoryId: data.categoryId,
       defaultUnitId,
@@ -1195,7 +1195,7 @@ export const productService = {
     if (data.code !== undefined) payload.code = data.code?.trim() || undefined;
     if (data.barcode !== undefined) payload.barcode = data.barcode?.trim() || undefined;
     if (data.image !== undefined) {
-      const newImg = (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '/assets/urea_bag.png';
+      const newImg = (data.image && typeof data.image === 'string' && data.image.trim()) ? data.image.trim() : '';
       if (product.image && product.image !== newImg && product.image.includes('res.cloudinary.com')) {
         deleteFromCloudinary(product.image).catch(() => {});
       }

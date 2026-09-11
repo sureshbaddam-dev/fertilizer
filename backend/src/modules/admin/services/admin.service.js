@@ -3,27 +3,14 @@ import { User } from '../../auth/user.model.js';
 import { UserSubscription } from '../../subscription/userSubscription.model.js';
 import { SubscriptionPlan } from '../../subscription/subscriptionPlan.model.js';
 import { AdminAuditLog } from '../models/adminAuditLog.model.js';
-import { AdminBackup } from '../models/adminBackup.model.js';
 import { VisitorAnalytics } from '../models/visitorAnalytics.model.js';
-import {
-  getTopPagesBreakdown,
-  getRecentActivityTimeline,
-  getHourlyAnalyticsToday,
-  recordVisitorHit,
-} from '../middlewares/visitorTracking.middleware.js';
-import { AdminNotification } from '../models/adminNotification.model.js';
 import { SubscriptionHistory } from '../models/subscriptionHistory.model.js';
 import { SubscriptionSettings } from '../models/subscriptionSettings.model.js';
 import { SystemSetting } from '../models/systemSetting.model.js';
-
-import { Customer } from '../../customers/models/customer.model.js';
-import { Supplier } from '../../suppliers/models/supplier.model.js';
-import { Product } from '../../products/models/product.model.js';
-import { Purchase } from '../../purchases/models/purchase.model.js';
-import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { SupportTicket } from '../../support/supportTicket.model.js';
-import { pushNotificationService } from '../../notifications/services/pushNotification.service.js';
+import { AppError } from '../../../utils/appError.js';
+import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 
 export const logAdminAuditAction = async ({
   adminId,
@@ -77,8 +64,35 @@ export const getOrCreateSubscriptionSettings = async () => {
       demoSettings: {
         isDemoAvailable: true,
         defaultDemoDays: 7,
+        allowCustomAdminDemoGrants: true,
       },
     });
+  } else {
+    let modified = false;
+    if (!settings.demoSettings) {
+      settings.demoSettings = {
+        isDemoAvailable: true,
+        defaultDemoDays: 7,
+        allowCustomAdminDemoGrants: true,
+      };
+      modified = true;
+    } else {
+      if (typeof settings.demoSettings.isDemoAvailable !== 'boolean') {
+        settings.demoSettings.isDemoAvailable = true;
+        modified = true;
+      }
+      if (!settings.demoSettings.defaultDemoDays || isNaN(settings.demoSettings.defaultDemoDays) || settings.demoSettings.defaultDemoDays < 1) {
+        settings.demoSettings.defaultDemoDays = 7;
+        modified = true;
+      }
+      if (typeof settings.demoSettings.allowCustomAdminDemoGrants !== 'boolean') {
+        settings.demoSettings.allowCustomAdminDemoGrants = true;
+        modified = true;
+      }
+    }
+    if (modified) {
+      await settings.save();
+    }
   }
   return settings;
 };
@@ -116,9 +130,9 @@ export const adminService = {
       expiringSoon,
       expiredSubscriptions,
       revenueAgg,
-      monthlyRevenueAgg,
       totalBusinesses,
       todayVisitor,
+      openSupportTickets,
     ] = await Promise.all([
       User.countDocuments(merchantFilter),
       User.countDocuments({ ...merchantFilter, isActive: true }),
@@ -129,18 +143,25 @@ export const adminService = {
       UserSubscription.countDocuments({ $or: [{ status: 'EXPIRED' }, { expiryDate: { $lt: now } }] }),
       UserSubscription.aggregate([
         { $match: { paymentStatus: 'SUCCESS' } },
-        { $group: { _id: null, total: { $sum: '$amountPaid' } } },
-      ]),
-      UserSubscription.aggregate([
-        { $match: { paymentStatus: 'SUCCESS', createdAt: { $gte: startOfMonth } } },
-        { $group: { _id: null, total: { $sum: '$amountPaid' } } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$amountPaid' },
+            monthlyRevenue: {
+              $sum: {
+                $cond: [{ $gte: ['$createdAt', startOfMonth] }, '$amountPaid', 0],
+              },
+            },
+          },
+        },
       ]),
       ShopSettings.countDocuments(),
       VisitorAnalytics.findOne({ dateStr: todayStr }).lean(),
+      SupportTicket.countDocuments({ status: { $in: ['PENDING', 'OPEN'] } }),
     ]);
 
-    const totalRevenue = revenueAgg[0]?.total || 0;
-    const monthlyRevenue = monthlyRevenueAgg[0]?.total || 0;
+    const totalRevenue = revenueAgg[0]?.totalRevenue || 0;
+    const monthlyRevenue = revenueAgg[0]?.monthlyRevenue || 0;
     const totalWebsiteVisitors = todayVisitor?.totalHits || 0;
 
     return {
@@ -155,6 +176,7 @@ export const adminService = {
       monthlyRevenue,
       totalRevenue,
       totalBusinesses,
+      openSupportTickets,
     };
   },
 
@@ -488,15 +510,39 @@ export const adminService = {
     return sub;
   },
 
-  grantCustomDemoSubscription: async ({ userId, demoDays = 7, reason = 'Customer Trial', adminUser, req }) => {
+  grantCustomDemoSubscription: async ({ userId, demoDays, reason = 'Customer Trial', adminUser, req }) => {
+    const subSettings = await getOrCreateSubscriptionSettings();
+
+    // Check if Custom Admin Demo Grants are permitted
+    if (subSettings?.demoSettings?.allowCustomAdminDemoGrants === false) {
+      throw new AppError(
+        'Custom demo grants are currently disabled by administrator in Subscription Settings.',
+        HTTP_STATUS.FORBIDDEN
+      );
+    }
+
+    let finalDemoDays;
+    if (demoDays !== undefined && demoDays !== null && demoDays !== '') {
+      const numDays = Number(demoDays);
+      if (isNaN(numDays) || !Number.isInteger(numDays) || numDays < 1 || numDays > 365) {
+        throw new AppError(
+          'Custom demo days must be a positive whole integer between 1 and 365 days.',
+          HTTP_STATUS.BAD_REQUEST
+        );
+      }
+      finalDemoDays = numDays;
+    } else {
+      finalDemoDays = Math.max(1, parseInt(subSettings?.demoSettings?.defaultDemoDays, 10) || 7);
+    }
+
     const user = await User.findById(userId);
-    if (!user) throw new Error('User not found');
+    if (!user) throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
 
     const now = new Date();
     let sub = await UserSubscription.findOne({ userId });
 
     const baseDate = (sub && sub.status === 'ACTIVE' && sub.expiryDate > now) ? new Date(sub.expiryDate) : now;
-    const expiryDate = new Date(baseDate.getTime() + demoDays * 24 * 60 * 60 * 1000);
+    const expiryDate = new Date(baseDate.getTime() + finalDemoDays * 24 * 60 * 60 * 1000);
 
     let plan = await SubscriptionPlan.findOne({ code: 'FERTILIZER_ERP' });
     if (!plan) {
@@ -507,15 +553,17 @@ export const adminService = {
       });
     }
 
-    const durationLabel = `${demoDays} Days Demo`;
+    const durationLabel = `${finalDemoDays} Days Demo`;
 
     if (sub) {
       sub.planId = plan._id;
       sub.planCode = 'FERTILIZER_ERP';
-      sub.planName = 'Fertilizer ERP';
+      sub.planName = `Fertilizer ERP (${finalDemoDays}-Day Demo)`;
       sub.status = 'ACTIVE';
+      sub.subscriptionStatus = 'TRIAL_ACTIVE';
       sub.startDate = now;
       sub.expiryDate = expiryDate;
+      sub.trialExpiresAt = expiryDate;
       sub.amountPaid = 0;
       sub.paymentStatus = 'DEMO';
       sub.activatedByAdmin = true;
@@ -528,10 +576,13 @@ export const adminService = {
         userId: user._id,
         planId: plan._id,
         planCode: 'FERTILIZER_ERP',
-        planName: 'Fertilizer ERP',
+        planName: `Fertilizer ERP (${finalDemoDays}-Day Demo)`,
         status: 'ACTIVE',
+        subscriptionStatus: 'TRIAL_ACTIVE',
         startDate: now,
         expiryDate,
+        trialStartedAt: now,
+        trialExpiresAt: expiryDate,
         amountPaid: 0,
         paymentStatus: 'DEMO',
         activatedByAdmin: true,
@@ -543,12 +594,12 @@ export const adminService = {
 
     await SubscriptionHistory.create({
       userId: user._id,
-      userName: user.ownerName,
-      userMobile: user.mobile,
+      userName: user.ownerName || 'User',
+      userMobile: user.mobile || '',
       planCode: 'FERTILIZER_ERP',
-      planName: 'Fertilizer ERP',
+      planName: `Fertilizer ERP (${finalDemoDays}-Day Demo)`,
       durationLabel,
-      durationDays: demoDays,
+      durationDays: finalDemoDays,
       startDate: now,
       expiryDate,
       amountPaid: 0,
@@ -567,7 +618,8 @@ export const adminService = {
       targetType: 'SUBSCRIPTION',
       targetId: sub._id,
       targetName: user.ownerName,
-      details: `Granted ${demoDays} Days Demo subscription to ${user.ownerName} (${user.mobile}). Reason: ${reason}`,
+      details: `Granted ${finalDemoDays} Days Demo subscription to ${user.ownerName} (${user.mobile}). Reason: ${reason}`,
+      newValue: sub.toObject(),
       req,
     });
 
@@ -697,8 +749,50 @@ export const adminService = {
     let settings = await getOrCreateSubscriptionSettings();
     const oldSettings = settings.toObject();
 
-    if (updateData.durations) settings.durations = updateData.durations;
-    if (updateData.demoSettings) settings.demoSettings = updateData.demoSettings;
+    if (updateData.durations && Array.isArray(updateData.durations)) {
+      settings.durations = updateData.durations;
+    }
+
+    if (typeof updateData.isSubscriptionSystemActive === 'boolean') {
+      settings.isSubscriptionSystemActive = updateData.isSubscriptionSystemActive;
+    }
+
+    if (updateData.demoSettings && typeof updateData.demoSettings === 'object') {
+      const currentDemo = settings.demoSettings ? (settings.demoSettings.toObject ? settings.demoSettings.toObject() : { ...settings.demoSettings }) : {};
+
+      // 1. Free Trial Availability
+      if (typeof updateData.demoSettings.isDemoAvailable === 'boolean') {
+        currentDemo.isDemoAvailable = updateData.demoSettings.isDemoAvailable;
+      }
+
+      // 2. Default Demo Days
+      if (updateData.demoSettings.defaultDemoDays !== undefined) {
+        const rawDays = updateData.demoSettings.defaultDemoDays;
+        const numDays = Number(rawDays);
+        if (
+          rawDays === null ||
+          rawDays === '' ||
+          typeof rawDays === 'boolean' ||
+          isNaN(numDays) ||
+          !Number.isInteger(numDays) ||
+          numDays < 1 ||
+          numDays > 365
+        ) {
+          throw new AppError(
+            'Default Demo Days must be a positive whole number between 1 and 365 days. Decimals, zero, negative numbers, non-numeric values, and numbers greater than 365 are not allowed.',
+            HTTP_STATUS.BAD_REQUEST
+          );
+        }
+        currentDemo.defaultDemoDays = numDays;
+      }
+
+      // 3. Allow Custom Admin Demo Grants
+      if (typeof updateData.demoSettings.allowCustomAdminDemoGrants === 'boolean') {
+        currentDemo.allowCustomAdminDemoGrants = updateData.demoSettings.allowCustomAdminDemoGrants;
+      }
+
+      settings.demoSettings = currentDemo;
+    }
 
     await settings.save();
 
@@ -709,8 +803,8 @@ export const adminService = {
       action: 'UPDATE_SUBSCRIPTION_SETTINGS',
       targetType: 'SETTING',
       targetId: settings._id,
-      targetName: 'Subscription Pricing',
-      details: `Updated Fertilizer ERP plan duration pricing and demo settings.`,
+      targetName: 'Subscription Pricing & Free Trial Settings',
+      details: `Updated Fertilizer ERP plan pricing and trial settings (isDemoAvailable: ${settings.demoSettings?.isDemoAvailable}, defaultDemoDays: ${settings.demoSettings?.defaultDemoDays}, allowCustomAdminDemoGrants: ${settings.demoSettings?.allowCustomAdminDemoGrants}).`,
       oldValue: oldSettings,
       newValue: settings.toObject(),
       req,

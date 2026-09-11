@@ -119,18 +119,12 @@ export const subscriptionService = {
       sub.couponCode === 'DEMO' ||
       (sub.planCode === 'FERTILIZER_ERP' && Number(sub.amountPaid || 0) === 0);
 
-    // Trial timestamps (Exact 7 * 24 hours from creation)
+    // Trial timestamps (Dynamic from stored subscription document)
     let trialStartedAt = sub.trialStartedAt || sub.startDate || sub.createdAt || now;
-    let trialExpiresAt = sub.trialExpiresAt;
+    let trialExpiresAt = sub.trialExpiresAt || sub.expiryDate;
 
-    if (isTrial) {
-      if (!trialExpiresAt) {
-        if (sub.expiryDate) {
-          trialExpiresAt = sub.expiryDate;
-        } else {
-          trialExpiresAt = new Date(new Date(trialStartedAt).getTime() + 7 * 24 * 60 * 60 * 1000);
-        }
-      }
+    if (isTrial && !trialExpiresAt) {
+      trialExpiresAt = sub.expiryDate || trialStartedAt;
     }
 
     const effectiveExpiry = isTrial && trialExpiresAt ? new Date(trialExpiresAt) : (sub.expiryDate ? new Date(sub.expiryDate) : new Date(now));
@@ -726,7 +720,8 @@ export const subscriptionService = {
       throw new AppError(`Demo request is already ${demoReq.status}`, HTTP_STATUS.BAD_REQUEST);
     }
 
-    const demoDays = 7;
+    const subSettings = await getOrCreateSubscriptionSettings();
+    const demoDays = Math.max(1, parseInt(subSettings?.demoSettings?.defaultDemoDays, 10) || 7);
     await adminService.grantCustomDemoSubscription({
       userId: demoReq.userId,
       demoDays,

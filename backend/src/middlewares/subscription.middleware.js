@@ -19,7 +19,7 @@ export const requireActiveSubscription = asyncHandler(async (req, _res, next) =>
   if (!subResult || !subResult.hasActiveSubscription) {
     const isTrial = subResult?.isTrial;
     const msg = isTrial
-      ? 'Your 7-day free trial has expired. Please choose a subscription plan to continue.'
+      ? 'Your free trial has expired. Please choose a subscription plan to continue.'
       : 'Your subscription has expired. Please choose a subscription plan to continue.';
 
     const err = new AppError(msg, HTTP_STATUS.FORBIDDEN);

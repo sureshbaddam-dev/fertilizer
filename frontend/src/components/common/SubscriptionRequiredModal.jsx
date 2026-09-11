@@ -44,7 +44,7 @@ export default function SubscriptionRequiredModal({ isOpen, onClose, featureName
 
           {isExpired && isTrial ? (
             <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed max-w-xs mx-auto">
-              Your 7-day free trial has expired. Please choose a subscription plan to continue using <strong className="text-slate-900">{featureName}</strong>.
+              Your free trial has expired. Please choose a subscription plan to continue using <strong className="text-slate-900">{featureName}</strong>.
             </p>
           ) : (
             <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed max-w-xs mx-auto">

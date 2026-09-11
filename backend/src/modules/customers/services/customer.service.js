@@ -544,8 +544,6 @@ export const customerService = {
       inv.currentDue = invDue;
       inv.currentStatus = currentStatus;
 
-      const hasSeparatePaymentRecords = paymentInfo && paymentInfo.paymentRecords.length > 0;
-
       invoiceTransactions.push({
         id: invIdStr,
         date: new Date(inv.date || inv.createdAt).toLocaleDateString('en-IN', {
@@ -561,9 +559,12 @@ export const customerService = {
         rawDate: inv.date || inv.createdAt,
         refNo: inv.invoiceNumber,
         type: 'Invoice',
-        particulars: `Purchase - ${inv.items?.length || 1} Items`,
+        particulars: `Purchase - ${inv.items?.length || 1} Item${(inv.items && inv.items.length === 1) || !inv.items ? '' : 's'}`,
+        amount: invTotal,
+        paid: invPaid,
+        balance: invDue,
         debit: invTotal,
-        credit: hasSeparatePaymentRecords ? 0 : invPaid,
+        credit: invPaid,
         dueAmount: invDue,
         paymentMode: paymentModeVal,
         status: currentStatus,
@@ -573,36 +574,6 @@ export const customerService = {
         taxAmount: inv.taxAmount || 0,
         paidAmount: invPaid,
       });
-
-      if (hasSeparatePaymentRecords) {
-        paymentInfo.paymentRecords.forEach((p) => {
-          const pIdStr = (p._id || p.id).toString();
-          paymentTransactions.push({
-            id: pIdStr,
-            date: new Date(p.date || p.createdAt).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            }),
-            time: new Date(p.date || p.createdAt).toLocaleTimeString('en-IN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            }),
-            rawDate: p.date || p.createdAt,
-            refNo: p.refNo || `PAY-${pIdStr.slice(-6)}`,
-            type: 'Payment',
-            paymentType: p.paymentType || 'INVOICE_PAYMENT',
-            particulars: p.notes || `Payment on Bill #${inv.invoiceNumber}`,
-            debit: 0,
-            credit: Number(p.amount) || 0,
-            paymentMode: p.paymentMode || 'Cash',
-            notes: p.notes || '',
-            invoiceId: invIdStr,
-            invoiceNumber: inv.invoiceNumber,
-          });
-        });
-      }
     });
 
     otherPayments.forEach((p) => {
@@ -636,6 +607,9 @@ export const customerService = {
           type: pType === 'ADVANCE' ? 'Advance' : 'Payment',
           paymentType: pType,
           particulars: particularsText,
+          amount: 0,
+          paid: amt,
+          balance: 0,
           debit: 0,
           credit: amt,
           paymentMode: p.paymentMode || 'Cash',

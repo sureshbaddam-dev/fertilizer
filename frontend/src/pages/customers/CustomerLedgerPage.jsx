@@ -1305,11 +1305,11 @@ export default function CustomerLedgerPage() {
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-700 uppercase">
                         <th className="py-3 px-3.5">Date &amp; Time</th>
-                        <th className="py-3 px-3.5">Ref No / Type</th>
+                        <th className="py-3 px-3.5">Ref No</th>
                         <th className="py-3 px-4">Particulars</th>
-                        <th className="py-3 px-4 text-right">Debit (₹)</th>
-                        <th className="py-3 px-4 text-right">Credit (₹)</th>
-                        <th className="py-3 px-4 text-right">Balance (₹)</th>
+                        <th className="py-3 px-4 text-right">Amount</th>
+                        <th className="py-3 px-4 text-right">Paid</th>
+                        <th className="py-3 px-4 text-right">Balance</th>
                         <th className="py-3 px-3.5 text-center">Mode</th>
                         <th className="py-3 px-3 text-center">Action</th>
                       </tr>
@@ -1325,124 +1325,156 @@ export default function CustomerLedgerPage() {
                           </td>
                         </tr>
                       ) : paginatedTransactions.length > 0 ? (
-                        paginatedTransactions.map((tx, idx) => (
-                          <tr
-                            key={idx}
-                            onClick={() => handleRowClick(tx)}
-                            className="hover:bg-gray-50/80 transition-colors align-middle cursor-pointer"
-                          >
-                            <td className="py-3 px-3.5 whitespace-nowrap">
-                              <span className="font-bold text-gray-900 block leading-tight">{formatLedgerDate(tx.date, tx.rawDate || tx.rawDateObj)}</span>
-                              <span className="text-[10px] text-gray-500 font-mono block mt-0.5">{formatLedgerTime(tx.time, tx.rawDate || tx.rawDateObj)}</span>
-                            </td>
+                        paginatedTransactions.map((tx, idx) => {
+                          const isInvoice = tx.type === 'Invoice';
+                          const isOpening = tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE';
+                          const isPayment = tx.type === 'Payment' || tx.type === 'Advance';
 
-                            <td className="py-3 px-3.5 whitespace-nowrap">
-                              <span className="font-mono font-bold text-gray-900 block">{tx.refNo}</span>
-                              <span className="text-[10px] text-gray-500 block font-semibold">{tx.type}</span>
-                            </td>
+                          const txAmount = isInvoice
+                            ? Number(tx.amount !== undefined ? tx.amount : (tx.totalAmount !== undefined ? tx.totalAmount : (tx.debit || 0)))
+                            : isOpening
+                              ? Number(tx.amount !== undefined ? tx.amount : (tx.debit || 0))
+                              : null;
 
-                            <td className="py-2.5 px-4">
-                              {tx.type === 'Invoice' ? (
-                                <span className="font-bold text-gray-900 block leading-tight">
-                                  Purchase - {tx.items ? tx.items.length : 1} Items
+                          const txPaid = isInvoice
+                            ? Number(tx.paid !== undefined ? tx.paid : (tx.paidAmount !== undefined ? tx.paidAmount : (tx.credit || 0)))
+                            : isPayment
+                              ? Number(tx.paid !== undefined ? tx.paid : (tx.amount || tx.credit || 0))
+                              : 0;
+
+                          const txRunningBal = tx.runningBalance !== undefined ? tx.runningBalance : (tx.balance !== undefined ? tx.balance : 0);
+
+                          return (
+                            <tr
+                              key={idx}
+                              onClick={() => handleRowClick(tx)}
+                              className="hover:bg-gray-50/80 transition-colors align-middle cursor-pointer"
+                            >
+                              <td className="py-3 px-3.5 whitespace-nowrap">
+                                <span className="font-bold text-gray-900 block leading-tight">{formatLedgerDate(tx.date, tx.rawDate || tx.rawDateObj)}</span>
+                                <span className="text-[10px] text-gray-500 font-mono block mt-0.5">{formatLedgerTime(tx.time, tx.rawDate || tx.rawDateObj)}</span>
+                              </td>
+
+                              <td className="py-3 px-3.5 whitespace-nowrap">
+                                <span className="font-mono font-bold text-gray-900 block">{tx.refNo}</span>
+                                <span className="text-[10px] text-gray-500 block font-semibold">{tx.type}</span>
+                              </td>
+
+                              <td className="py-2.5 px-4">
+                                {isInvoice ? (
+                                  <span className="font-bold text-gray-900 block leading-tight">
+                                    {tx.items && tx.items.length > 1 ? `Purchase - ${tx.items.length} Items` : 'Purchase - 1 Item'}
+                                  </span>
+                                ) : isOpening ? (
+                                  <div>
+                                    <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || 'Customer Opening Balance'}</span>
+                                    {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || (tx.type === 'Advance' ? 'Advance Received' : 'Payment Received')}</span>
+                                    {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
+                                {txAmount !== null ? `₹${Math.round(txAmount).toLocaleString('en-IN')}` : '—'}
+                              </td>
+
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                                {`₹${Math.round(txPaid || 0).toLocaleString('en-IN')}`}
+                              </td>
+
+                              <td className="py-2.5 px-4 text-right font-mono whitespace-nowrap">
+                                {txRunningBal > 0 ? (
+                                  <span className="text-red-600 font-black">
+                                    ₹{Math.round(txRunningBal).toLocaleString('en-IN')}
+                                  </span>
+                                ) : txRunningBal < 0 ? (
+                                  <span className="text-emerald-700 font-black">
+                                    ₹{Math.round(Math.abs(txRunningBal)).toLocaleString('en-IN')} Cr
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-900 font-bold">
+                                    ₹0
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                                <span className="px-2.5 py-1 bg-gray-100 text-gray-800 border border-gray-200 rounded-md font-bold text-[10px]">
+                                  {tx.paymentMode || 'Cash'}
                                 </span>
-                              ) : tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE' ? (
-                                <div>
-                                  <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || 'Customer Opening Balance'}</span>
-                                  {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
-                                </div>
-                              ) : (
-                                <div>
-                                  <span className="font-bold text-gray-900 block leading-tight">{tx.particulars || 'Payment Received'}</span>
-                                  {tx.notes && <span className="text-[11px] text-gray-500 block">{tx.notes}</span>}
-                                </div>
-                              )}
-                            </td>
+                              </td>
 
-                            <td className="py-2.5 px-4 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
-                              {(tx.debit || 0) > 0 ? Math.round(tx.debit).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
-                            </td>
-
-                            <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                              {(tx.credit || 0) > 0 ? Math.round(tx.credit).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-'}
-                            </td>
-
-                            <td className="py-2.5 px-4 text-right whitespace-nowrap font-mono font-bold">
-                              {renderBalanceCell(tx)}
-                            </td>
-
-                            <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                              <span className="px-2.5 py-1 bg-gray-100 text-gray-800 border border-gray-200 rounded-md font-bold text-[10px]">
-                                {tx.paymentMode || 'Cash'}
-                              </span>
-                            </td>
-
-                            <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              {tx.type === 'Invoice' ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/invoices/${tx.refNo || tx.id}`);
-                                  }}
-                                  className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>Invoice</span>
-                                </button>
-                              ) : tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE' ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsEditCustomerOpen(true);
-                                  }}
-                                  className="p-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                                  title="Edit Opening Balance"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                  <span>Edit Opening</span>
-                                </button>
-                              ) : (
-                                <div className="flex items-center justify-center gap-1">
+                              <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                {isInvoice ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedReceiptPayment(tx);
+                                      navigate(`/invoices/${tx.refNo || tx.id}`);
                                     }}
-                                    className="p-1.5 bg-emerald-50 text-[#047857] hover:bg-emerald-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                                    title="View Receipt"
+                                    className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                                   >
                                     <Eye className="w-3.5 h-3.5" />
+                                    <span>Invoice</span>
                                   </button>
+                                ) : isOpening ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleOpenEditPayment(tx);
+                                      setIsEditCustomerOpen(true);
                                     }}
-                                    className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg cursor-pointer"
-                                    title="Edit Payment"
+                                    className="p-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                                    title="Edit Opening Balance"
                                   >
                                     <Edit3 className="w-3.5 h-3.5" />
+                                    <span>Edit Opening</span>
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDeletingPayment(tx);
-                                    }}
-                                    className="p-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg cursor-pointer"
-                                    title="Delete Payment"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))
+                                ) : (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedReceiptPayment(tx);
+                                      }}
+                                      className="p-1.5 bg-emerald-50 text-[#047857] hover:bg-emerald-100 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                                      title="View Receipt"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenEditPayment(tx);
+                                      }}
+                                      className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg cursor-pointer"
+                                      title="Edit Payment"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeletingPayment(tx);
+                                      }}
+                                      className="p-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg cursor-pointer"
+                                      title="Delete Payment"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                       ) : (
                         <tr>
                           <td colSpan={8} className="py-10 text-center text-gray-400 italic">
@@ -1465,11 +1497,27 @@ export default function CustomerLedgerPage() {
                     paginatedTransactions.map((tx, idx) => {
                       const isInvoice = tx.type === 'Invoice';
                       const isOpening = tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE';
+                      const isPayment = tx.type === 'Payment' || tx.type === 'Advance';
+
+                      const txAmount = isInvoice
+                        ? Number(tx.amount !== undefined ? tx.amount : (tx.totalAmount !== undefined ? tx.totalAmount : (tx.debit || 0)))
+                        : isOpening
+                          ? Number(tx.amount !== undefined ? tx.amount : (tx.debit || 0))
+                          : null;
+
+                      const txPaid = isInvoice
+                        ? Number(tx.paid !== undefined ? tx.paid : (tx.paidAmount !== undefined ? tx.paidAmount : (tx.credit || 0)))
+                        : isPayment
+                          ? Number(tx.paid !== undefined ? tx.paid : (tx.amount || tx.credit || 0))
+                          : 0;
+
+                      const txRunningBal = tx.runningBalance !== undefined ? tx.runningBalance : (tx.balance !== undefined ? tx.balance : 0);
+
                       const particularsText = isInvoice
-                        ? `Purchase - ${tx.items ? tx.items.length : 1} Item(s)`
+                        ? (tx.items && tx.items.length > 1 ? `Purchase - ${tx.items.length} Items` : 'Purchase - 1 Item')
                         : isOpening
                           ? (tx.particulars || 'Customer Opening Balance')
-                          : tx.particulars || 'Payment Received';
+                          : tx.particulars || (tx.type === 'Advance' ? 'Advance Received' : 'Payment Received');
 
                       return (
                         <div
@@ -1564,21 +1612,21 @@ export default function CustomerLedgerPage() {
                           {/* Financial Amounts Breakdown Grid */}
                           <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 grid grid-cols-3 gap-1 text-center font-mono">
                             <div>
-                              <span className="text-[9px] text-gray-400 font-semibold block uppercase">Debit (+)</span>
+                              <span className="text-[9px] text-gray-400 font-semibold block uppercase">Amount</span>
                               <span className="text-xs font-black text-gray-900 block">
-                                {(tx.debit || 0) > 0 ? `₹${Math.round(tx.debit).toLocaleString('en-IN')}` : '—'}
+                                {txAmount !== null ? `₹${Math.round(txAmount).toLocaleString('en-IN')}` : '—'}
                               </span>
                             </div>
                             <div>
-                              <span className="text-[9px] text-emerald-600 font-semibold block uppercase">Credit (-)</span>
+                              <span className="text-[9px] text-emerald-600 font-semibold block uppercase">Paid</span>
                               <span className="text-xs font-black text-[#047857] block">
-                                {(tx.credit || 0) > 0 ? `₹${Math.round(tx.credit).toLocaleString('en-IN')}` : '—'}
+                                {`₹${Math.round(txPaid || 0).toLocaleString('en-IN')}`}
                               </span>
                             </div>
                             <div>
                               <span className="text-[9px] text-purple-600 font-semibold block uppercase">Balance</span>
-                              <span className="text-xs font-black text-gray-900 block">
-                                {renderBalanceCell(tx)}
+                              <span className={`text-xs font-black block ${txRunningBal > 0 ? 'text-red-600' : txRunningBal < 0 ? 'text-emerald-700' : 'text-gray-900'}`}>
+                                {txRunningBal > 0 ? `₹${Math.round(txRunningBal).toLocaleString('en-IN')}` : txRunningBal < 0 ? `₹${Math.round(Math.abs(txRunningBal)).toLocaleString('en-IN')} Cr` : '₹0'}
                               </span>
                             </div>
                           </div>

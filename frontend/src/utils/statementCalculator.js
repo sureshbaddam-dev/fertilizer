@@ -103,26 +103,61 @@ export function calculateCustomerStatement({
     ? transactions.filter((tx) => tx && tx.type !== 'Opening Balance' && tx.type !== 'OPENING_BALANCE')
     : [];
 
+  // Identify all existing invoice numbers to safely filter out duplicate standalone payment rows for the same invoice
+  const invoiceNumbers = new Set(
+    rawList
+      .filter((tx) => tx && tx.type === 'Invoice')
+      .map((tx) => (tx.refNo || tx.invoiceNumber || '').trim())
+      .filter(Boolean)
+  );
+
+  const cleanList = rawList.filter((tx) => {
+    if (!tx) return false;
+    if (tx.type === 'Payment' || tx.paymentType === 'INVOICE_PAYMENT') {
+      if (tx.refNo?.startsWith('PAY-BILL-')) {
+        const invNum = tx.refNo.replace('PAY-BILL-', '').trim();
+        if (invoiceNumbers.has(invNum)) return false;
+      }
+      if (tx.invoiceNumber && invoiceNumbers.has(tx.invoiceNumber.trim())) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const normalizeTx = (tx) => {
+    const isInvoice = tx.type === 'Invoice';
+    const txDate = parseTxDate(tx);
+    const amount = isInvoice ? Number(tx.amount !== undefined ? tx.amount : (tx.totalAmount !== undefined ? tx.totalAmount : (tx.debit || 0))) : 0;
+    const paid = isInvoice
+      ? Number(tx.paid !== undefined ? tx.paid : (tx.paidAmount !== undefined ? tx.paidAmount : (tx.credit || 0)))
+      : Number(tx.paid !== undefined ? tx.paid : (tx.amount || tx.credit || 0));
+    const balance = isInvoice ? Math.max(0, amount - paid) : 0;
+    const debit = isInvoice ? amount : 0;
+    const credit = paid;
+
+    return {
+      ...tx,
+      rawDateObj: txDate,
+      amount,
+      paid,
+      balance,
+      debit,
+      credit,
+    };
+  };
+
   if (statementType === 'FULL') {
     let runningBal = 0;
     let totalPurchasesDebits = 0;
     let totalCredits = 0;
 
-    const fullTxs = rawList
+    const fullTxs = cleanList
       .map((tx) => {
-        const txDate = parseTxDate(tx);
-        const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
-        const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
-
-        totalPurchasesDebits += debit;
-        totalCredits += credit;
-
-        return {
-          ...tx,
-          rawDateObj: txDate,
-          debit,
-          credit,
-        };
+        const norm = normalizeTx(tx);
+        totalPurchasesDebits += norm.debit;
+        totalCredits += norm.credit;
+        return norm;
       })
       .sort(compareTxChronologicalAsc);
 
@@ -164,27 +199,18 @@ export function calculateCustomerStatement({
 
     const periodList = [];
 
-    rawList.filter(Boolean).forEach((tx) => {
-      const txDate = parseTxDate(tx);
-      const isOp = tx.type === 'Opening Balance' || tx.type === 'OPENING_BALANCE';
-      const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
-      const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
+    cleanList.forEach((tx) => {
+      const norm = normalizeTx(tx);
+      const txDate = norm.rawDateObj;
 
       if (!isNaN(txDate)) {
         if (txDate < start) {
-          priorDebits += debit;
-          priorCredits += credit;
+          priorDebits += norm.debit;
+          priorCredits += norm.credit;
         } else if (txDate >= start && txDate <= end) {
-          if (!isOp) {
-            periodPurchases += debit;
-          }
-          periodCredits += credit;
-          periodList.push({
-            ...tx,
-            rawDateObj: txDate,
-            debit,
-            credit,
-          });
+          periodPurchases += norm.debit;
+          periodCredits += norm.credit;
+          periodList.push(norm);
         }
       }
     });
@@ -239,24 +265,18 @@ export function calculateCustomerStatement({
 
   const monthList = [];
 
-  rawList.filter(Boolean).forEach((tx) => {
-    const txDate = parseTxDate(tx);
-    const debit = Number(tx.debit || (tx.type === 'Invoice' ? tx.totalAmount || 0 : 0));
-    const credit = Number(tx.credit || (tx.type === 'Payment' || tx.type === 'Advance' ? tx.amount || 0 : 0));
+  cleanList.forEach((tx) => {
+    const norm = normalizeTx(tx);
+    const txDate = norm.rawDateObj;
 
     if (!isNaN(txDate)) {
       if (txDate < startOfMonth) {
-        priorDebits += debit;
-        priorCredits += credit;
+        priorDebits += norm.debit;
+        priorCredits += norm.credit;
       } else if (txDate >= startOfMonth && txDate <= endOfMonth) {
-        monthPurchases += debit;
-        monthCredits += credit;
-        monthList.push({
-          ...tx,
-          rawDateObj: txDate,
-          debit,
-          credit,
-        });
+        monthPurchases += norm.debit;
+        monthCredits += norm.credit;
+        monthList.push(norm);
       }
     }
   });

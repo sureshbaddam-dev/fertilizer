@@ -466,14 +466,14 @@ export default function ShopSetupPage() {
                 Welcome to Vedixa!
               </h3>
               <p className="text-xs font-bold text-emerald-700 bg-emerald-50 py-1 px-3 rounded-full inline-block border border-emerald-200">
-                Your 7-Day Free Trial has started
+                {trialDetails?.durationLabel ? `Your ${trialDetails.durationLabel} has started` : 'Your Free Trial has started'}
               </p>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
               You have full access to all features of Vedixa ERP until{' '}
               <strong className="text-slate-900 font-bold">
-                {formatISTDate(trialDetails?.expiryDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))}
+                {formatISTDate(trialDetails?.expiryDate || trialDetails?.trialExpiresAt || new Date())}
               </strong>.
             </p>
 

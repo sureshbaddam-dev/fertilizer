@@ -27,6 +27,7 @@ const subscriptionSettingsSchema = new mongoose.Schema(
     demoSettings: {
       isDemoAvailable: { type: Boolean, default: true },
       defaultDemoDays: { type: Number, default: 7 },
+      allowCustomAdminDemoGrants: { type: Boolean, default: true },
     },
   },
   {

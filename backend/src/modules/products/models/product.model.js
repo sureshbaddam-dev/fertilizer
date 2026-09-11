@@ -28,7 +28,7 @@ const productSchema = new mongoose.Schema(
     image: {
       type: String,
       trim: true,
-      default: '/assets/urea_bag.png',
+      default: '',
     },
 
     brandId: {
@@ -112,9 +112,6 @@ productSchema.pre('validate', function (next) {
   }
   if (!this.defaultUnitId && this._doc?.unitId) {
     this.defaultUnitId = this._doc.unitId;
-  }
-  if (!this.image || typeof this.image !== 'string' || !this.image.trim()) {
-    this.image = '/assets/urea_bag.png';
   }
   if (typeof this.totalStock === 'number') {
     this.totalStock = Math.max(0, this.totalStock);
