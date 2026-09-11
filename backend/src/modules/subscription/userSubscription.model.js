@@ -28,6 +28,12 @@ const userSubscriptionSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true,
     },
+    subscriptionStatus: {
+      type: String,
+      enum: ['TRIAL_ACTIVE', 'TRIAL_EXPIRED', 'SUBSCRIPTION_ACTIVE', 'SUBSCRIPTION_EXPIRED', 'CANCELLED', 'INACTIVE'],
+      default: 'TRIAL_ACTIVE',
+      index: true,
+    },
     startDate: {
       type: Date,
       default: Date.now,
@@ -35,6 +41,15 @@ const userSubscriptionSchema = new mongoose.Schema(
     expiryDate: {
       type: Date,
       required: true,
+      index: true,
+    },
+    trialStartedAt: {
+      type: Date,
+      default: null,
+    },
+    trialExpiresAt: {
+      type: Date,
+      default: null,
       index: true,
     },
     discountTokensTotal: {

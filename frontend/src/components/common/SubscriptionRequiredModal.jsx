@@ -1,9 +1,20 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Lock, X } from 'lucide-react';
+import { subscriptionService } from '../../services/subscriptionService';
 
 export default function SubscriptionRequiredModal({ isOpen, onClose, featureName = 'this feature' }) {
   const navigate = useNavigate();
+  const { data: subRes } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: subscriptionService.getMySubscription,
+  });
+
+  const subData = subRes?.data || subRes || {};
+  const currentSub = subData?.subscription || null;
+  const isTrial = subData?.isTrial || (currentSub && (currentSub.paymentStatus === 'DEMO' || currentSub.couponCode === 'DEMO' || currentSub.planCode === 'FERTILIZER_ERP'));
+  const isExpired = subData?.isExpired || !subData?.hasActiveSubscription;
 
   if (!isOpen) return null;
 
@@ -28,12 +39,18 @@ export default function SubscriptionRequiredModal({ isOpen, onClose, featureName
         {/* TITLE & DYNAMIC CONCISE MESSAGE */}
         <div className="space-y-1.5 pt-1">
           <h2 className="text-xl sm:text-2xl font-black text-[#0f172a] tracking-tight">
-            Subscription Required
+            {isExpired && isTrial ? 'Free Trial Expired' : 'Subscription Required'}
           </h2>
 
-          <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed max-w-xs mx-auto">
-            Subscribe to continue using <strong className="text-slate-900">{featureName}</strong>.
-          </p>
+          {isExpired && isTrial ? (
+            <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed max-w-xs mx-auto">
+              Your 7-day free trial has expired. Please choose a subscription plan to continue using <strong className="text-slate-900">{featureName}</strong>.
+            </p>
+          ) : (
+            <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed max-w-xs mx-auto">
+              Access to <strong className="text-slate-900">{featureName}</strong> requires an active subscription plan.
+            </p>
+          )}
         </div>
 
         {/* ACTIONS */}

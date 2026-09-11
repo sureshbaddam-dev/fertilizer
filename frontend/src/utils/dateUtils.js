@@ -118,7 +118,7 @@ export function formatRelativeTimeIST(input, fallback = '—') {
 }
 
 /**
- * Calculates remaining days from now until expiryDate in IST.
+ * Calculates remaining days from now until expiryDate.
  * Returns 0 if expired or invalid.
  */
 export function calculateRemainingDays(expiryDate) {
@@ -129,4 +129,83 @@ export function calculateRemainingDays(expiryDate) {
   if (diffMs <= 0) return 0;
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
+
+/**
+ * Calculates remaining hours from now until expiryDate.
+ * Returns 0 if expired or invalid.
+ */
+export function calculateRemainingHours(expiryDate) {
+  const d = parseToDate(expiryDate);
+  if (!d) return 0;
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs <= 0) return 0;
+  return Math.floor(diffMs / (1000 * 60 * 60));
+}
+
+/**
+ * Generates an accurate, reactive countdown object for Free Trial display:
+ * - If > 24 hours remaining: shows "X DAYS LEFT" (e.g. "7 DAYS LEFT", "3 DAYS LEFT")
+ * - If < 24 hours remaining: shows "X HOURS LEFT" (e.g. "18 HOURS LEFT", "1 HOUR LEFT")
+ * - If expired: shows "EXPIRED"
+ */
+export function getTrialCountdown(expiryDate) {
+  const d = parseToDate(expiryDate);
+  if (!d) {
+    return {
+      isExpired: true,
+      text: 'EXPIRED',
+      badgeText: 'EXPIRED',
+      label: 'Expired',
+      days: 0,
+      hours: 0,
+      totalHours: 0,
+    };
+  }
+
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+
+  if (diffMs <= 0) {
+    return {
+      isExpired: true,
+      text: 'EXPIRED',
+      badgeText: 'EXPIRED',
+      label: 'Expired',
+      days: 0,
+      hours: 0,
+      totalHours: 0,
+    };
+  }
+
+  const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (totalHours < 24) {
+    const hrVal = Math.max(1, totalHours);
+    const hrText = hrVal === 1 ? '1 HOUR LEFT' : `${hrVal} HOURS LEFT`;
+    return {
+      isExpired: false,
+      text: hrText,
+      badgeText: hrText,
+      label: `${hrVal}h left`,
+      days: 0,
+      hours: hrVal,
+      totalHours,
+    };
+  }
+
+  const dayVal = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const dayText = dayVal === 1 ? '1 DAY LEFT' : `${dayVal} DAYS LEFT`;
+  return {
+    isExpired: false,
+    text: dayText,
+    badgeText: dayText,
+    label: `${dayVal}d left`,
+    days: dayVal,
+    hours: totalHours % 24,
+    totalHours,
+  };
+}
+
 

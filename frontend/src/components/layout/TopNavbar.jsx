@@ -13,7 +13,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import SubscriptionRequiredModal from '../common/SubscriptionRequiredModal';
 import { playNotificationChime } from '../../utils/soundEffects';
-import { formatRelativeTimeIST, formatISTDate, calculateRemainingDays } from '../../utils/dateUtils';
+import { formatRelativeTimeIST, formatISTDate, calculateRemainingDays, getTrialCountdown } from '../../utils/dateUtils';
 
 const NOTIF_CATEGORIES = ['All', 'Support Tickets', 'Admin Announcements'];
 
@@ -108,6 +108,7 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
   const currentSub = subData?.subscription || null;
   const isTrial = hasActiveSub && currentSub && (currentSub.paymentStatus === 'DEMO' || currentSub.couponCode === 'DEMO');
   const remainingDays = currentSub?.expiryDate ? calculateRemainingDays(currentSub.expiryDate) : 0;
+  const trialCountdown = currentSub?.expiryDate ? getTrialCountdown(currentSub.expiryDate) : null;
   const planName = isTrial
     ? 'Free Trial (7 Days)'
     : currentSub?.planId?.name || currentSub?.planName || (currentSub?.planCode ? currentSub.planCode.replace(/_/g, ' ') : '3 Months');
@@ -406,11 +407,11 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
                 type="button"
                 onClick={() => navigate('/subscription/plans')}
                 className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-[9px] text-[11px] font-extrabold transition-all cursor-pointer shadow-2xs"
-                title={`Free trial expires on ${expiryFormatted} (${remainingDays} days left). Click to upgrade.`}
+                title={`Free trial expires on ${expiryFormatted} (${trialCountdown?.text || ''}). Click to upgrade.`}
               >
                 <span>🎁 FREE TRIAL</span>
                 <span className="text-amber-600">·</span>
-                <span>{remainingDays} {remainingDays === 1 ? 'DAY' : 'DAYS'} LEFT</span>
+                <span>{trialCountdown?.text || `${remainingDays} DAYS LEFT`}</span>
               </button>
             )}
 

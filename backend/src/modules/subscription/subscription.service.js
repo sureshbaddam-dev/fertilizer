@@ -77,25 +77,154 @@ export const subscriptionService = {
     return config.plans;
   },
 
-  async getUserSubscription(userId) {
-    let sub = await UserSubscription.findOne({ userId }).populate('planId');
+  evaluateSubscription(sub, user = null, now = new Date()) {
     if (!sub) {
+      if (user && (user.role === 'admin' || user.role === 'superadmin' || user.role === 'SUPER_ADMIN' || user.role === 'ADMIN')) {
+        return {
+          hasActiveSubscription: true,
+          subscriptionStatus: 'SUBSCRIPTION_ACTIVE',
+          status: 'ACTIVE',
+          isTrial: false,
+          isExpired: false,
+          remainingDays: 9999,
+          remainingHours: 9999 * 24,
+          remainingMinutes: 9999 * 24 * 60,
+          trialStartedAt: null,
+          trialExpiresAt: null,
+          expiryDate: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
+          subscription: null,
+          serverTime: now,
+        };
+      }
+
       return {
         hasActiveSubscription: false,
+        subscriptionStatus: 'TRIAL_EXPIRED',
+        status: 'EXPIRED',
+        isTrial: true,
+        isExpired: true,
+        remainingDays: 0,
+        remainingHours: 0,
+        remainingMinutes: 0,
+        trialStartedAt: null,
+        trialExpiresAt: null,
+        expiryDate: null,
+        subscription: null,
+        serverTime: now,
+      };
+    }
+
+    const isTrial =
+      sub.paymentStatus === 'DEMO' ||
+      sub.couponCode === 'DEMO' ||
+      (sub.planCode === 'FERTILIZER_ERP' && Number(sub.amountPaid || 0) === 0);
+
+    // Trial timestamps (Exact 7 * 24 hours from creation)
+    let trialStartedAt = sub.trialStartedAt || sub.startDate || sub.createdAt || now;
+    let trialExpiresAt = sub.trialExpiresAt;
+
+    if (isTrial) {
+      if (!trialExpiresAt) {
+        if (sub.expiryDate) {
+          trialExpiresAt = sub.expiryDate;
+        } else {
+          trialExpiresAt = new Date(new Date(trialStartedAt).getTime() + 7 * 24 * 60 * 60 * 1000);
+        }
+      }
+    }
+
+    const effectiveExpiry = isTrial && trialExpiresAt ? new Date(trialExpiresAt) : (sub.expiryDate ? new Date(sub.expiryDate) : new Date(now));
+    const isExpired = now.getTime() >= effectiveExpiry.getTime();
+
+    let subscriptionStatus = 'TRIAL_ACTIVE';
+    let status = sub.status || 'ACTIVE';
+
+    if (sub.status === 'CANCELLED') {
+      subscriptionStatus = 'CANCELLED';
+      status = 'CANCELLED';
+    } else if (sub.status === 'INACTIVE') {
+      subscriptionStatus = 'INACTIVE';
+      status = 'INACTIVE';
+    } else if (isTrial) {
+      subscriptionStatus = isExpired ? 'TRIAL_EXPIRED' : 'TRIAL_ACTIVE';
+      status = isExpired ? 'EXPIRED' : 'ACTIVE';
+    } else {
+      subscriptionStatus = isExpired ? 'SUBSCRIPTION_EXPIRED' : 'SUBSCRIPTION_ACTIVE';
+      status = isExpired ? 'EXPIRED' : 'ACTIVE';
+    }
+
+    const hasActiveSubscription = !isExpired && status === 'ACTIVE';
+
+    const remainingMs = Math.max(0, effectiveExpiry.getTime() - now.getTime());
+    const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+    const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+    const remainingMinutes = Math.floor(remainingMs / (1000 * 60));
+
+    return {
+      hasActiveSubscription,
+      subscriptionStatus,
+      status,
+      isTrial,
+      isExpired,
+      trialStartedAt: isTrial ? trialStartedAt : sub.trialStartedAt,
+      trialExpiresAt: isTrial ? trialExpiresAt : sub.trialExpiresAt,
+      expiryDate: effectiveExpiry,
+      remainingDays,
+      remainingHours,
+      remainingMinutes,
+      remainingMs,
+      subscription: sub,
+      serverTime: now,
+    };
+  },
+
+  async getUserSubscription(userId) {
+    if (!userId) {
+      return {
+        hasActiveSubscription: false,
+        subscriptionStatus: 'TRIAL_EXPIRED',
         subscription: null,
       };
     }
 
-    const isExpired = sub.expiryDate && new Date(sub.expiryDate) < new Date();
-    if (isExpired && sub.status === 'ACTIVE') {
-      sub.status = 'EXPIRED';
-      await sub.save();
+    const { User } = await import('../auth/user.model.js');
+    const user = await User.findById(userId).lean().exec();
+    let sub = await UserSubscription.findOne({ userId }).populate('planId');
+
+    const now = new Date();
+    const evaluated = this.evaluateSubscription(sub, user, now);
+
+    // If sub exists, ensure DB consistency
+    if (sub) {
+      let needsSave = false;
+      if (sub.status !== evaluated.status) {
+        sub.status = evaluated.status;
+        needsSave = true;
+      }
+      if (sub.subscriptionStatus !== evaluated.subscriptionStatus) {
+        sub.subscriptionStatus = evaluated.subscriptionStatus;
+        needsSave = true;
+      }
+      if (evaluated.isTrial) {
+        if (!sub.trialStartedAt && evaluated.trialStartedAt) {
+          sub.trialStartedAt = evaluated.trialStartedAt;
+          needsSave = true;
+        }
+        if (!sub.trialExpiresAt && evaluated.trialExpiresAt) {
+          sub.trialExpiresAt = evaluated.trialExpiresAt;
+          needsSave = true;
+        }
+        if (sub.expiryDate && evaluated.expiryDate && sub.expiryDate.getTime() !== evaluated.expiryDate.getTime()) {
+          sub.expiryDate = evaluated.expiryDate;
+          needsSave = true;
+        }
+      }
+      if (needsSave) {
+        await sub.save();
+      }
     }
 
-    return {
-      hasActiveSubscription: sub.status === 'ACTIVE',
-      subscription: sub,
-    };
+    return evaluated;
   },
 
   async validateCoupon(couponCode, planPrice) {
@@ -262,6 +391,7 @@ export const subscriptionService = {
       sub.planCode = updatedOrder.planCode;
       sub.planName = updatedOrder.planName;
       sub.status = 'ACTIVE';
+      sub.subscriptionStatus = 'SUBSCRIPTION_ACTIVE';
       sub.startDate = startDate;
       sub.expiryDate = targetExpiryDate;
       sub.discountTokensTotal = (updatedOrder.months || 1) * 5;
@@ -281,6 +411,7 @@ export const subscriptionService = {
         planCode: updatedOrder.planCode,
         planName: updatedOrder.planName,
         status: 'ACTIVE',
+        subscriptionStatus: 'SUBSCRIPTION_ACTIVE',
         startDate,
         expiryDate: targetExpiryDate,
         discountTokensTotal: (updatedOrder.months || 1) * 5,
@@ -482,6 +613,7 @@ export const subscriptionService = {
       sub.planCode = plan.code;
       sub.planName = plan.name;
       sub.status = 'ACTIVE';
+      sub.subscriptionStatus = 'SUBSCRIPTION_ACTIVE';
       sub.startDate = startDate;
       sub.expiryDate = expiryDate;
       sub.discountTokensTotal = tokenCount;
@@ -498,6 +630,7 @@ export const subscriptionService = {
         planCode: plan.code,
         planName: plan.name,
         status: 'ACTIVE',
+        subscriptionStatus: 'SUBSCRIPTION_ACTIVE',
         startDate,
         expiryDate,
         discountTokensTotal: tokenCount,

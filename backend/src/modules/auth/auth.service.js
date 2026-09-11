@@ -156,6 +156,8 @@ export const authService = {
 
     logger.info(`[GoogleAuth] Created NEW user in MongoDB. _id: ${user._id}, email: ${user.email}`);
 
+    await this._provisionFreeTrialIfNew(user);
+
     return this._generateAuthResponse(user, false);
   },
 
@@ -449,6 +451,9 @@ export const authService = {
       throw createErr;
     }
 
+    // Provision 7-Day Free Trial immediately upon account creation
+    await this._provisionFreeTrialIfNew(user);
+
     const response = await this._generateAuthResponse(user, false);
     return {
       ...response,
@@ -569,16 +574,20 @@ export const authService = {
       return existingSub;
     }
 
-    const now = new Date();
-    const expiryDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // exactly 7 days
+    // Permanent Source of Truth: exact timestamp when user signed up / account was created
+    const trialStartedAt = user.createdAt ? new Date(user.createdAt) : new Date();
+    const trialExpiresAt = new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000); // exactly 7 * 24 hours
 
     const sub = await UserSubscription.create({
       userId: user._id,
       planCode: 'FERTILIZER_ERP',
-      planName: 'Fertilizer ERP',
+      planName: 'Fertilizer ERP (7-Day Trial)',
       status: 'ACTIVE',
-      startDate: now,
-      expiryDate,
+      subscriptionStatus: 'TRIAL_ACTIVE',
+      startDate: trialStartedAt,
+      expiryDate: trialExpiresAt,
+      trialStartedAt,
+      trialExpiresAt,
       amountPaid: 0,
       paymentStatus: 'DEMO',
       couponCode: 'DEMO',
@@ -593,11 +602,11 @@ export const authService = {
         userName: user.ownerName || 'Store Owner',
         userMobile: user.mobile || '',
         planCode: 'FERTILIZER_ERP',
-        planName: 'Fertilizer ERP',
+        planName: 'Fertilizer ERP (7-Day Trial)',
         durationLabel: '7 Days Free Trial',
         durationDays: 7,
-        startDate: now,
-        expiryDate,
+        startDate: trialStartedAt,
+        expiryDate: trialExpiresAt,
         amountPaid: 0,
         source: 'DEMO',
         paymentStatus: 'DEMO',
@@ -628,16 +637,12 @@ export const authService = {
 
     let subscription = null;
     try {
-      const subDoc = await UserSubscription.findOne({ userId: user._id });
-      if (subDoc) {
-        const isExpired = subDoc.expiryDate && new Date(subDoc.expiryDate) < new Date();
-        if (isExpired && subDoc.status === 'ACTIVE') {
-          subDoc.status = 'EXPIRED';
-          await subDoc.save();
-        }
-        subscription = subDoc;
-      }
-    } catch (_subErr) {}
+      const { subscriptionService } = await import('../subscription/subscription.service.js');
+      const subEval = await subscriptionService.getUserSubscription(user._id);
+      subscription = subEval?.subscription || subEval;
+    } catch (_subErr) {
+      logger.warn(`Failed to evaluate subscription during auth response: ${_subErr.message}`);
+    }
 
     const isProfileComplete = Boolean(
       user.isProfileComplete ||

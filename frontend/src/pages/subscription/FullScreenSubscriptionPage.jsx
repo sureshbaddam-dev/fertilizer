@@ -1,16 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, Star, LogOut, Info, AlertTriangle, Clock, Ticket } from 'lucide-react';
+import { CheckCircle2, Star, LogOut, Info, AlertTriangle, Ticket } from 'lucide-react';
 import { subscriptionService } from '../../services/subscriptionService';
-import { authService } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadRazorpaySDK } from '../../utils/loadExternalScript';
 import BrandLogo from '../../components/common/BrandLogo';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
-import { formatISTDate, calculateRemainingDays } from '../../utils/dateUtils';
+import { formatISTDate, calculateRemainingDays, getTrialCountdown } from '../../utils/dateUtils';
 
 export default function FullScreenSubscriptionPage() {
   const navigate = useNavigate();
@@ -105,9 +104,10 @@ export default function FullScreenSubscriptionPage() {
   const subData = subRes?.data || subRes || {};
   const currentSub = subData?.subscription || null;
   const hasActiveSub = subData?.hasActiveSubscription || false;
-  const isTrial = hasActiveSub && currentSub && (currentSub.paymentStatus === 'DEMO' || currentSub.couponCode === 'DEMO');
-  const isExpired = currentSub?.status === 'EXPIRED' || (currentSub?.expiryDate && new Date(currentSub.expiryDate) < new Date());
+  const isTrial = subData?.isTrial !== undefined ? subData.isTrial : (hasActiveSub && currentSub && (currentSub.paymentStatus === 'DEMO' || currentSub.couponCode === 'DEMO' || currentSub.planCode === 'FERTILIZER_ERP'));
+  const isExpired = subData?.isExpired !== undefined ? subData.isExpired : (currentSub?.status === 'EXPIRED' || (currentSub?.expiryDate && new Date(currentSub.expiryDate) < new Date()));
   const remainingDays = currentSub?.expiryDate ? calculateRemainingDays(currentSub.expiryDate) : 0;
+  const trialCountdown = currentSub?.expiryDate ? getTrialCountdown(currentSub.expiryDate) : null;
   const planDisplayName = isTrial ? '7-Day Free Trial' : currentSub?.planName || currentSub?.planCode || 'Plan';
 
   // Sign Out Handler
@@ -398,20 +398,23 @@ export default function FullScreenSubscriptionPage() {
           </h1>
 
           {/* DYNAMIC TRIAL / EXPIRY NOTICES */}
-          {isTrial && remainingDays <= 3 && remainingDays > 0 && (
+          {isTrial && !isExpired && currentSub?.expiryDate && (
             <div className="max-w-lg mx-auto mt-1 p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs font-semibold flex items-center justify-center gap-2">
               <span className="text-sm">⏳</span>
               <span>
-                Your 7-Day Free Trial expires in <strong>{remainingDays} {remainingDays === 1 ? 'day' : 'days'}</strong> ({formatISTDate(currentSub.expiryDate)}). Choose a plan to continue without interruption.
+                FREE TRIAL: <strong>{trialCountdown?.text || `${remainingDays} DAYS LEFT`}</strong> (Expires {formatISTDate(currentSub.expiryDate)}). Choose a plan to continue without interruption.
               </span>
             </div>
           )}
 
           {isExpired && (
-            <div className="max-w-lg mx-auto mt-1 p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs font-semibold flex items-center justify-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>
-                Your trial or subscription has expired. Please select a plan below to activate your account.
+            <div className="max-w-lg mx-auto mt-1 p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-xs font-semibold flex flex-col items-center justify-center gap-1 text-center shadow-2xs">
+              <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{isTrial ? 'Your 7-day free trial has expired.' : 'Your subscription has expired.'}</span>
+              </div>
+              <span className="text-slate-600 font-medium">
+                Please choose a subscription plan to continue.
               </span>
             </div>
           )}

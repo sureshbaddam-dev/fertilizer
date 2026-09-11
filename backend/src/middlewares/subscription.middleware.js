@@ -1,11 +1,11 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/appError.js';
 import { HTTP_STATUS } from '../common/httpStatuses.js';
-import { UserSubscription } from '../modules/subscription/userSubscription.model.js';
+import { subscriptionService } from '../modules/subscription/subscription.service.js';
 
 export const requireActiveSubscription = asyncHandler(async (req, _res, next) => {
   // 1. Bypass subscription check for Super Admin and Admin accounts
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN')) {
     return next();
   }
 
@@ -14,18 +14,18 @@ export const requireActiveSubscription = asyncHandler(async (req, _res, next) =>
   }
 
   const userId = req.user._id;
-  const sub = await UserSubscription.findOne({ userId });
+  const subResult = await subscriptionService.getUserSubscription(userId);
 
-  const hasActiveSub = sub && sub.status === 'ACTIVE' && sub.expiryDate && new Date(sub.expiryDate) >= new Date();
+  if (!subResult || !subResult.hasActiveSubscription) {
+    const isTrial = subResult?.isTrial;
+    const msg = isTrial
+      ? 'Your 7-day free trial has expired. Please choose a subscription plan to continue.'
+      : 'Your subscription has expired. Please choose a subscription plan to continue.';
 
-  if (!hasActiveSub) {
-    if (sub && sub.status === 'ACTIVE' && sub.expiryDate && new Date(sub.expiryDate) < new Date()) {
-      sub.status = 'EXPIRED';
-      await sub.save();
-    }
-    return next(
-      new AppError('Active subscription required to access this feature.', HTTP_STATUS.FORBIDDEN)
-    );
+    const err = new AppError(msg, HTTP_STATUS.FORBIDDEN);
+    err.code = isTrial ? 'TRIAL_EXPIRED' : 'SUBSCRIPTION_EXPIRED';
+    err.subscriptionStatus = subResult?.subscriptionStatus || (isTrial ? 'TRIAL_EXPIRED' : 'SUBSCRIPTION_EXPIRED');
+    return next(err);
   }
 
   next();
