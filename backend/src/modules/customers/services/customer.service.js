@@ -787,8 +787,8 @@ export const customerService = {
 
   async getSuggestions(userId) {
     if (!userId) throw new Error('userId is required');
-    const villages = await Customer.distinct('village', { userId, village: { $ne: null, $ne: '' } });
-    const mandals = await Customer.distinct('mandal', { userId, mandal: { $ne: null, $ne: '' } });
+    const villages = await Customer.distinct('village', { userId, village: { $nin: [null, ''] } });
+    const mandals = await Customer.distinct('mandal', { userId, mandal: { $nin: [null, ''] } });
     return {
       villages: villages.filter(Boolean).map((v) => v.trim()).sort(),
       mandals: mandals.filter(Boolean).map((m) => m.trim()).sort(),

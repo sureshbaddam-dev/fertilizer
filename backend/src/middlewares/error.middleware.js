@@ -8,7 +8,7 @@ function extractSourceLocation(stack) {
   const lines = stack.split('\n');
   for (const line of lines) {
     if (line.includes('src/') || line.includes('src\\')) {
-      const match = line.match(/(src[\\\/][^:\s]+):(\d+):(\d+)/);
+      const match = line.match(/(src[\\/][^:\s]+):(\d+):(\d+)/);
       if (match) {
         return `${match[1].replace(/\\/g, '/')}:${match[2]}`;
       }

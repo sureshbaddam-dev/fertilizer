@@ -229,7 +229,7 @@ export const productService = {
 
       // Parallelize lookups for matching Brands, Categories, and Batches
       const [matchingBrands, matchingCategories, matchingBatches] = await Promise.all([
-        companyRepository.findAll({ userId, name: searchRegex }),
+        Brand.find({ userId, name: searchRegex }).lean().exec(),
         categoryRepository.findAll({ userId, name: searchRegex }),
         ProductBatch.find({ userId, batchNumber: searchRegex, isActive: true }).lean().exec(),
       ]);
@@ -254,7 +254,7 @@ export const productService = {
       filter.brandId = brandId;
     } else if (query.brand && query.brand !== 'ALL' && query.brand !== 'All Brands') {
       const brandRegex = new RegExp(`^${query.brand.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-      const matchingBrands = await companyRepository.findAll({ userId, name: brandRegex });
+      const matchingBrands = await Brand.find({ userId, name: brandRegex }).lean().exec();
       const bIds = matchingBrands.map((b) => b._id);
       if (bIds.length > 0) filter.brandId = { $in: bIds };
     }
@@ -515,6 +515,7 @@ export const productService = {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError(`Invalid Product ID format: '${id}'`, HTTP_STATUS.BAD_REQUEST);
     }
+    const userObjId = new mongoose.Types.ObjectId(userId);
 
     const productDoc = await Product.findOne({ _id: id, userId })
       .populate('brandId', 'name shortName logo')
@@ -1036,10 +1037,7 @@ export const productService = {
     if (!mongoose.Types.ObjectId.isValid(brandId)) {
       throw new AppError(`Invalid Brand ID format: '${brandId}'`, HTTP_STATUS.BAD_REQUEST);
     }
-    let brandDoc = await Brand.findOne({ _id: brandId, userId });
-    if (!brandDoc) {
-      brandDoc = await Company.findOne({ _id: brandId, userId });
-    }
+    const brandDoc = await Brand.findOne({ _id: brandId, userId });
     if (!brandDoc) {
       throw new AppError('Selected Brand not found or access denied', HTTP_STATUS.BAD_REQUEST);
     }
@@ -1202,15 +1200,16 @@ export const productService = {
       payload.image = newImg;
     }
 
+    let brandDoc = null;
+    let categoryDoc = null;
+    let unitDoc = null;
+
     const brandId = data.brandId || data.companyId;
     if (brandId) {
       if (!mongoose.Types.ObjectId.isValid(brandId)) {
         throw new AppError(`Invalid Brand ID format: '${brandId}'`, HTTP_STATUS.BAD_REQUEST);
       }
-      let brandDoc = await Brand.findOne({ _id: brandId, userId });
-      if (!brandDoc) {
-        brandDoc = await Company.findOne({ _id: brandId, userId });
-      }
+      brandDoc = await Brand.findOne({ _id: brandId, userId });
       if (!brandDoc) {
         throw new AppError('Selected Brand not found or access denied', HTTP_STATUS.BAD_REQUEST);
       }
@@ -1221,7 +1220,7 @@ export const productService = {
       if (!mongoose.Types.ObjectId.isValid(data.categoryId)) {
         throw new AppError(`Invalid Category ID format: '${data.categoryId}'`, HTTP_STATUS.BAD_REQUEST);
       }
-      const categoryDoc = await Category.findOne({ _id: data.categoryId, userId });
+      categoryDoc = await Category.findOne({ _id: data.categoryId, userId });
       if (!categoryDoc) {
         throw new AppError('Selected Category not found or access denied', HTTP_STATUS.BAD_REQUEST);
       }
@@ -1233,7 +1232,7 @@ export const productService = {
       if (!mongoose.Types.ObjectId.isValid(defaultUnitId)) {
         throw new AppError(`Invalid Unit ID format: '${defaultUnitId}'`, HTTP_STATUS.BAD_REQUEST);
       }
-      const unitDoc = await Unit.findOne({ _id: defaultUnitId, userId });
+      unitDoc = await Unit.findOne({ _id: defaultUnitId, userId });
       if (!unitDoc) {
         throw new AppError('Selected Unit not found or access denied', HTTP_STATUS.BAD_REQUEST);
       }

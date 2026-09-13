@@ -4,6 +4,8 @@ import { ProtectedRoute, PublicOnlyRoute } from './ProtectedRoute';
 import SubscriptionGuard from '../components/common/SubscriptionGuard';
 import AuthLayout from '../layouts/AuthLayout';
 import MainLayout from '../layouts/MainLayout';
+import RouteErrorPage from '../pages/error/RouteErrorPage';
+import NotFoundPage from '../pages/error/NotFoundPage';
 
 // Eagerly loaded initial entry route
 import LoginPage from '../pages/auth/LoginPage';
@@ -51,41 +53,50 @@ const SupportPage = lazy(() => import('../pages/support/SupportPage'));
 const FullScreenSubscriptionPage = lazy(() => import('../pages/subscription/FullScreenSubscriptionPage'));
 
 import VedixaWorkspaceLoader from '../components/common/VedixaWorkspaceLoader';
+import ErrorBoundary from '../components/common/ErrorBoundary';
 
 const PageLoader = () => (
   <VedixaWorkspaceLoader compact={true} message="Loading module..." subtext="" />
 );
 
 const withSuspense = (Component) => (
-  <Suspense fallback={<PageLoader />}>
-    <Component />
-  </Suspense>
+  <ErrorBoundary>
+    <Suspense fallback={<PageLoader />}>
+      <Component />
+    </Suspense>
+  </ErrorBoundary>
 );
 
 export const appRouter = createBrowserRouter([
   {
     path: '/terms-and-conditions',
     element: withSuspense(TermsAndConditionsPage),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/legal/terms-and-conditions',
     element: <Navigate to="/terms-and-conditions" replace />,
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/privacy-policy',
     element: withSuspense(PrivacyPolicyPage),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/legal/privacy-policy',
     element: <Navigate to="/privacy-policy" replace />,
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/refund-cancellation-policy',
     element: withSuspense(RefundCancellationPolicyPage),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/legal/refund-cancellation-policy',
     element: <Navigate to="/refund-cancellation-policy" replace />,
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/subscription/plans',
@@ -94,6 +105,7 @@ export const appRouter = createBrowserRouter([
         {withSuspense(FullScreenSubscriptionPage)}
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/subscription',
@@ -102,16 +114,18 @@ export const appRouter = createBrowserRouter([
         {withSuspense(FullScreenSubscriptionPage)}
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/',
     element: <AuthLayout />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         index: true,
         element: (
           <PublicOnlyRoute>
-            <LoginPage />
+            {withSuspense(LoginPage)}
           </PublicOnlyRoute>
         ),
       },
@@ -119,7 +133,7 @@ export const appRouter = createBrowserRouter([
         path: 'login',
         element: (
           <PublicOnlyRoute>
-            <LoginPage />
+            {withSuspense(LoginPage)}
           </PublicOnlyRoute>
         ),
       },
@@ -148,6 +162,7 @@ export const appRouter = createBrowserRouter([
         <MainLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteErrorPage />,
     children: [
       // UNRESTRICTED ROUTES (Always accessible to logged-in users)
       { path: 'dashboard', element: withSuspense(HomePage) },
@@ -254,6 +269,7 @@ export const appRouter = createBrowserRouter([
       {
         path: 'settings',
         element: withSuspense(SettingsHubLayout),
+        errorElement: <RouteErrorPage compact={true} />,
         children: [
           { path: 'user-profile', element: withSuspense(UserProfilePage) },
           { path: 'shop-discount', element: withSuspense(ShopDiscountPage) },
@@ -271,5 +287,11 @@ export const appRouter = createBrowserRouter([
         ],
       },
     ],
+  },
+  // Catch-all 404 handler for unknown routes
+  {
+    path: '*',
+    element: <NotFoundPage />,
+    errorElement: <RouteErrorPage />,
   },
 ]);

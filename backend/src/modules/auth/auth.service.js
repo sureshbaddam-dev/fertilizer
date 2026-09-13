@@ -19,7 +19,7 @@ const OTP_EXPIRY_SECONDS = 300; // 5 minutes
 export const authService = {
   normalizeIndianMobile(phone) {
     if (!phone) return '';
-    let cleaned = phone.toString().trim().replace(/[\s\-\(\)]/g, '');
+    let cleaned = phone.toString().trim().replace(/[\s\-()]/g, '');
     if (cleaned.startsWith('+91')) {
       cleaned = cleaned.substring(3);
     } else if (cleaned.startsWith('91') && cleaned.length === 12) {
@@ -649,7 +649,9 @@ export const authService = {
       if (shopSettings && shopSettings.shopName) {
         shopName = shopSettings.shopName;
       }
-    } catch (_e) {}
+    } catch (_e) {
+      logger.debug(`Could not fetch shopSettings for auth response: ${_e?.message}`);
+    }
 
     let subscription = null;
     try {

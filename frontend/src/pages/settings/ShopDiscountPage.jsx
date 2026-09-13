@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Save, CheckCircle2, Percent, IndianRupee } from 'lucide-react';
+import { Tag, Save, CheckCircle2, Percent, IndianRupee, AlertCircle } from 'lucide-react';
 import { settingService } from '../../services/settingService';
 import { toast } from '../../contexts/ToastContext';
 
@@ -19,6 +19,9 @@ export default function ShopDiscountPage() {
   const [discountValue, setDiscountValue] = useState(0);
   const [notes, setNotes] = useState('');
 
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveErrorMsg, setSaveErrorMsg] = useState('');
+
   useEffect(() => {
     if (discountData) {
       setIsEnabled(Boolean(discountData.isEnabled));
@@ -31,17 +34,25 @@ export default function ShopDiscountPage() {
   const updateDiscountMutation = useMutation({
     mutationFn: (data) => settingService.updateShopDiscount(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['shop-discount']);
-      queryClient.invalidateQueries(['dashboard-summary']);
+      queryClient.invalidateQueries({ queryKey: ['shop-discount'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       toast.success('Shop discount settings updated successfully');
+      setSaveSuccess(true);
+      setSaveErrorMsg('');
+      setTimeout(() => setSaveSuccess(false), 5000);
     },
     onError: (err) => {
-      toast.error('Failed to update shop discount settings', { description: err?.response?.data?.message || err?.message });
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update shop discount settings';
+      toast.error('Failed to update shop discount settings', { description: msg });
+      setSaveErrorMsg(msg);
+      setSaveSuccess(false);
     },
   });
 
   const handleSave = (e) => {
     e.preventDefault();
+    setSaveSuccess(false);
+    setSaveErrorMsg('');
     updateDiscountMutation.mutate({
       isEnabled,
       discountType,
@@ -52,7 +63,7 @@ export default function ShopDiscountPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 font-sans">
         <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
         <p className="mt-2 text-xs font-semibold text-slate-500">Loading Shop Discount Settings...</p>
       </div>
@@ -69,6 +80,7 @@ export default function ShopDiscountPage() {
           </div>
           <div>
             <h2 className="text-base font-extrabold text-gray-900">Shop Discount Configuration</h2>
+            <p className="text-xs text-slate-500 font-medium">Apply automated store-wide percentage or fixed discounts on customer bills.</p>
           </div>
         </div>
 
@@ -83,9 +95,16 @@ export default function ShopDiscountPage() {
       </div>
 
       {saveSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold">
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>Shop Discount settings saved successfully! All new bills will immediately use these settings.</span>
+        </div>
+      )}
+
+      {saveErrorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{saveErrorMsg}</span>
         </div>
       )}
 

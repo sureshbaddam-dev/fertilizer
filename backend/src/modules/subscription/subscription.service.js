@@ -454,7 +454,9 @@ export const subscriptionService = {
     if (updatedOrder.couponCode) {
       try {
         await Coupon.updateOne({ code: updatedOrder.couponCode }, { $inc: { usedCount: 1 } });
-      } catch (_cErr) {}
+      } catch (_cErr) {
+        logger.debug(`Could not update coupon count: ${_cErr?.message}`);
+      }
     }
 
     logger.info(`✅ Successfully fulfilled subscription payment for User ${updatedOrder.userId} (Order: ${updatedOrder.razorpayOrderId}, Plan: ${updatedOrder.planCode})`);
@@ -696,7 +698,9 @@ export const subscriptionService = {
         subject: `New Free Demo Request (${normPlan.replace('_', ' ')})`,
         isReadByAdmin: false,
       });
-    } catch (_notifErr) {}
+    } catch (_notifErr) {
+      logger.debug(`Could not create SupportNotification for demo request: ${_notifErr?.message}`);
+    }
 
     return demoReq;
   },

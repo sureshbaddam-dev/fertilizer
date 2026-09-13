@@ -94,7 +94,9 @@ export function useWebPush() {
       if (existingSub) {
         try {
           await existingSub.unsubscribe();
-        } catch (_e) {}
+        } catch (_e) {
+          // stale subscription cleanup can be ignored
+        }
       }
 
       const convertedKey = urlBase64ToUint8Array(publicKey);
@@ -109,8 +111,6 @@ export function useWebPush() {
 
       setIsSubscribed(true);
       return subscription;
-    } catch (err) {
-      throw err;
     } finally {
       setIsLoading(false);
     }

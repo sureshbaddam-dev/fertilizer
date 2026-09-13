@@ -373,7 +373,7 @@ export const supportService = {
           });
           console.log(`🔔 Sent request status notification to user ${ticket.userId}: "${notifMsg}"`);
           pushNotificationService.sendPushToUser(ticket.userId, {
-            title: `Help Request ${statusLabel}`,
+            title: notifTitle || 'Help Request Updated',
             body: notifMsg,
             url: '/support',
           }).catch(() => {});

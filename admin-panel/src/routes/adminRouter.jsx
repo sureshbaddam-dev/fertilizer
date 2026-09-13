@@ -19,19 +19,30 @@ import AdminSupportTicketsPage from '../pages/Support/AdminSupportTicketsPage';
 import AdminsManagementPage from '../pages/Admins/AdminsManagementPage';
 import AuditLogsPage from '../pages/AuditLogs/AuditLogsPage';
 import SystemSettingsPage from '../pages/Settings/SystemSettingsPage';
+import AdminRouteErrorPage from '../pages/Error/AdminRouteErrorPage';
+import AdminErrorBoundary from '../components/common/AdminErrorBoundary';
+
+const wrapAdminRoute = (Component) => (
+  <AdminErrorBoundary>
+    <Component />
+  </AdminErrorBoundary>
+);
 
 export const adminRouter = createBrowserRouter([
   {
     path: '/',
-    element: <AdminLoginPage />,
+    element: wrapAdminRoute(AdminLoginPage),
+    errorElement: <AdminRouteErrorPage />,
   },
   {
     path: '/login',
-    element: <AdminLoginPage />,
+    element: wrapAdminRoute(AdminLoginPage),
+    errorElement: <AdminRouteErrorPage />,
   },
   {
     path: '/admin/login',
-    element: <AdminLoginPage />,
+    element: wrapAdminRoute(AdminLoginPage),
+    errorElement: <AdminRouteErrorPage />,
   },
   {
     path: '/admin',
@@ -40,29 +51,31 @@ export const adminRouter = createBrowserRouter([
         <AdminLayout />
       </AdminProtectedRoute>
     ),
+    errorElement: <AdminRouteErrorPage />,
     children: [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
-      { path: 'dashboard', element: <AdminDashboardPage /> },
-      { path: 'users', element: <UsersListPage /> },
-      { path: 'users/:userId', element: <UserDetailsPage /> },
-      { path: 'subscriptions', element: <SubscriptionOverviewPage /> },
-      { path: 'subscriptions/settings', element: <SubscriptionSettingsPage /> },
-      { path: 'subscriptions/history', element: <SubscriptionHistoryPage /> },
-      { path: 'payments', element: <TransactionsPage /> },
-      { path: 'revenue', element: <RevenueAnalyticsPage /> },
-      { path: 'payments/revenue', element: <RevenueAnalyticsPage /> },
-      { path: 'analytics/visitors', element: <WebsiteAnalyticsPage /> },
-      { path: 'backups', element: <BackupsPage /> },
-      { path: 'reports', element: <AdminReportsPage /> },
-      { path: 'notifications', element: <SendNotificationPage /> },
-      { path: 'support', element: <AdminSupportTicketsPage /> },
-      { path: 'admins', element: <AdminsManagementPage /> },
-      { path: 'audit-logs', element: <AuditLogsPage /> },
-      { path: 'settings', element: <SystemSettingsPage /> },
+      { path: 'dashboard', element: wrapAdminRoute(AdminDashboardPage) },
+      { path: 'users', element: wrapAdminRoute(UsersListPage) },
+      { path: 'users/:userId', element: wrapAdminRoute(UserDetailsPage) },
+      { path: 'subscriptions', element: wrapAdminRoute(SubscriptionOverviewPage) },
+      { path: 'subscriptions/settings', element: wrapAdminRoute(SubscriptionSettingsPage) },
+      { path: 'subscriptions/history', element: wrapAdminRoute(SubscriptionHistoryPage) },
+      { path: 'payments', element: wrapAdminRoute(TransactionsPage) },
+      { path: 'revenue', element: wrapAdminRoute(RevenueAnalyticsPage) },
+      { path: 'payments/revenue', element: wrapAdminRoute(RevenueAnalyticsPage) },
+      { path: 'analytics/visitors', element: wrapAdminRoute(WebsiteAnalyticsPage) },
+      { path: 'backups', element: wrapAdminRoute(BackupsPage) },
+      { path: 'reports', element: wrapAdminRoute(AdminReportsPage) },
+      { path: 'notifications', element: wrapAdminRoute(SendNotificationPage) },
+      { path: 'support', element: wrapAdminRoute(AdminSupportTicketsPage) },
+      { path: 'admins', element: wrapAdminRoute(AdminsManagementPage) },
+      { path: 'audit-logs', element: wrapAdminRoute(AuditLogsPage) },
+      { path: 'settings', element: wrapAdminRoute(SystemSettingsPage) },
     ],
   },
   {
     path: '*',
-    element: <Navigate to="/" replace />,
+    element: <AdminRouteErrorPage />,
+    errorElement: <AdminRouteErrorPage />,
   },
 ]);

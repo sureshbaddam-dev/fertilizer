@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Receipt, Save, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Receipt, Save, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from '../../contexts/ToastContext';
@@ -16,6 +16,9 @@ export default function TaxesGstPage() {
   const [gstNumber, setGstNumber] = useState('');
   const [taxInclusive, setTaxInclusive] = useState(true);
 
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveErrorMsg, setSaveErrorMsg] = useState('');
+
   useEffect(() => {
     if (shopSettings) {
       setIsGstEnabled(shopSettings.isGstEnabled !== false);
@@ -29,16 +32,25 @@ export default function TaxesGstPage() {
   const updateSettingsMutation = useMutation({
     mutationFn: (data) => settingService.updateSettings(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['shop-settings']);
+      queryClient.invalidateQueries({ queryKey: ['shop-settings-global'] });
+      queryClient.invalidateQueries({ queryKey: ['shop-settings-profile'] });
       toast.success('GST & Tax settings saved successfully');
+      setSaveSuccess(true);
+      setSaveErrorMsg('');
+      setTimeout(() => setSaveSuccess(false), 5000);
     },
     onError: (err) => {
-      toast.error('Failed to update GST settings', { description: err?.response?.data?.message || err?.message });
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update GST settings';
+      toast.error('Failed to update GST settings', { description: msg });
+      setSaveErrorMsg(msg);
+      setSaveSuccess(false);
     },
   });
 
   const handleSave = (e) => {
     e.preventDefault();
+    setSaveSuccess(false);
+    setSaveErrorMsg('');
     updateSettingsMutation.mutate({
       isGstEnabled,
       gstType,
@@ -50,7 +62,7 @@ export default function TaxesGstPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 font-sans">
         <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
         <p className="mt-2 text-xs font-semibold text-slate-500">Loading GST Settings...</p>
       </div>
@@ -67,6 +79,7 @@ export default function TaxesGstPage() {
           </div>
           <div>
             <h2 className="text-base font-extrabold text-gray-900">GST &amp; Tax Configuration</h2>
+            <p className="text-xs text-slate-500 font-medium">Configure store tax calculation rates, GSTIN, and tax billing modes.</p>
           </div>
         </div>
 
@@ -81,9 +94,16 @@ export default function TaxesGstPage() {
       </div>
 
       {saveSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold">
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>GST &amp; Tax settings saved successfully! All new bills will automatically use these settings.</span>
+        </div>
+      )}
+
+      {saveErrorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-fadeIn">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{saveErrorMsg}</span>
         </div>
       )}
 

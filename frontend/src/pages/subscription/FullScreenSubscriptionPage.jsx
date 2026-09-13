@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Star, LogOut, Info, AlertTriangle, Ticket } from 'lucide-react';
+import { authService } from '../../services/authService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadRazorpaySDK } from '../../utils/loadExternalScript';
@@ -14,7 +15,7 @@ import { formatISTDate, calculateRemainingDays, getTrialCountdown } from '../../
 export default function FullScreenSubscriptionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { logout: authLogout } = useAuth();
+  const { user: authUser, logout: authLogout } = useAuth();
 
   // State for checkout modal, coupon drawer, & messages
   const [checkoutPlan, setCheckoutPlan] = useState(null);
@@ -32,7 +33,7 @@ export default function FullScreenSubscriptionPage() {
   const isInitializingPaymentRef = useRef(false);
   const rzpInstanceRef = useRef(null);
   const [isVerifyingStatus, setIsVerifyingStatus] = useState(false);
-  const currentUser = authService.getCurrentUser() || {};
+  const currentUser = authUser || authService.getCurrentUser() || {};
 
   // Check pending order status (e.g. after return from PhonePe / mobile UPI app)
   const checkPendingOrderStatus = async (orderId, isSilent = false) => {

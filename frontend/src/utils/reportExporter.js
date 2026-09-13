@@ -31,7 +31,9 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
   // VEDIXA Top-Right Branding System ([VEDIXA LOGO] + VEDIXA text underneath)
   try {
     doc.addImage(VEDIXA_LOGO_BASE64, 'PNG', 188, 3, 12, 12);
-  } catch (err) {}
+  } catch (err) {
+    console.warn('Could not render logo in report:', err);
+  }
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
@@ -43,7 +45,7 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
   doc.setFont('helvetica', 'bold');
   doc.text('1. Key Financial Summary', 14, 33);
 
-  const overall = biData?.overallBusiness || {};
+  const overall = biData?.overallBusiness || biData?.overall || {};
   const salesData = biData?.sales || {};
   const purchaseData = biData?.purchases || {};
 
@@ -115,8 +117,18 @@ export const exportReportToPDF = async (biData, dateRangeText = 'All Time', repo
     styles: { fontSize: 9, cellPadding: 3 },
   });
 
-  // Save PDF
-  const filename = `${reportTitle.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  // Footer on all pages
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(148, 163, 184);
+    doc.text(`VEDIXA ERP • Executive Business Intelligence Report • Page ${i} of ${pageCount}`, 14, 288);
+    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 196, 288, { align: 'right' });
+  }
+
+  const filename = `Executive_Report_${dateRangeText.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pdf`;
   doc.save(filename);
 };
 
@@ -127,6 +139,7 @@ export const exportReportToExcel = async (biData, dateRangeText = 'All Time', re
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
 
+  const overall = biData?.overall || biData?.overallBusiness || biData?.summary || biData?.kpi || {};
   const sales = biData?.sales || {};
   const purchases = biData?.purchases || {};
   const stock = biData?.stock || {};

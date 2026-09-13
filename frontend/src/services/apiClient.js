@@ -113,7 +113,9 @@ apiClient.interceptors.response.use(
           try {
             const { authService } = await import('./authService');
             authService.handleForceLogout();
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore force logout load errors
+          }
         }
         return Promise.reject({
           success: false,

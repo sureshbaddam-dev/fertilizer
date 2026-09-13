@@ -48,7 +48,9 @@ export const redisService = {
       if (client && client.status === 'ready') {
         await client.del(key);
       }
-    } catch (_error) {}
+    } catch (_error) {
+      // Memory store fallback will delete the key below
+    }
     memoryStore.delete(key);
     return true;
   },

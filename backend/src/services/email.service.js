@@ -152,7 +152,9 @@ export const emailService = {
         try {
           const parsed = JSON.parse(errText);
           sanitizedReason = parsed.message || parsed.code || errText;
-        } catch (_e) {}
+        } catch (_e) {
+          // errText is already assigned as sanitizedReason fallback
+        }
         logger.error(`[Brevo API] Brevo REST API returned HTTP ${response.status}: ${sanitizedReason}`);
         throw new Error(`Brevo API Error (${response.status}): ${sanitizedReason}`);
       }

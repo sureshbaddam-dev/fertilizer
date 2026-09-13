@@ -40,7 +40,7 @@ export const completeOnboardingRules = [
     .trim()
     .customSanitizer((val) => {
       if (!val) return '';
-      let cleaned = val.toString().replace(/[\s\-\(\)]/g, '');
+      let cleaned = val.toString().replace(/[\s\-()]/g, '');
       if (cleaned.startsWith('+91')) cleaned = cleaned.substring(3);
       if (cleaned.startsWith('91') && cleaned.length === 12) cleaned = cleaned.substring(2);
       if (cleaned.startsWith('0') && cleaned.length === 11) cleaned = cleaned.substring(1);

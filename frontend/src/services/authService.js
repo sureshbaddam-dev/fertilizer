@@ -9,7 +9,9 @@ const notifyListeners = () => {
   listeners.forEach((fn) => {
     try {
       fn();
-    } catch (_e) {}
+    } catch (_e) {
+      // ignore individual listener failure
+    }
   });
 };
 
@@ -33,7 +35,9 @@ const saveTokens = (data) => {
     queryClient.invalidateQueries(['shop-settings-global']);
     queryClient.invalidateQueries(['shop-settings-profile']);
     queryClient.invalidateQueries(['my-subscription']);
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore cache invalidation errors on background save
+  }
 };
 
 const clearTokens = () => {

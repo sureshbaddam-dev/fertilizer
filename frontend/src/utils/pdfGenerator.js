@@ -1,5 +1,6 @@
 import { getItemUnitPrice } from './pricing';
 import { formatCustomerLedgerAddress } from './statementCalculator';
+import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
 
 async function getJsPdf() {
   const { default: jsPDF } = await import('jspdf');
@@ -43,24 +44,24 @@ export function drawPdfDocumentHeader(doc, shopSettings = {}) {
   doc.text(shopName, textLeftX, 13);
 
   // Shop Address & Contact Info
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(70, 70, 70);
+  doc.setTextColor(71, 85, 105);
 
-  let currentY = 18;
+  let currentY = 17;
   if (address) {
-    const splitAddr = doc.splitTextToSize(address, 125);
-    doc.text(splitAddr[0], textLeftX, currentY);
-    currentY += 4.5;
+    const addressLines = doc.splitTextToSize(address, 110);
+    doc.text(addressLines.slice(0, 2), textLeftX, currentY);
+    currentY += addressLines.slice(0, 2).length * 3.5;
   }
 
-  const metaParts = [];
-  if (mobile) metaParts.push(`Phone: ${mobile}`);
-  if (gstin && gstin !== '-') metaParts.push(`GSTIN: ${gstin}`);
-  if (email) metaParts.push(`Email: ${email}`);
+  const contactParts = [];
+  if (mobile) contactParts.push(`Ph: ${mobile}`);
+  if (gstin) contactParts.push(`GSTIN: ${gstin}`);
+  if (email) contactParts.push(`Email: ${email}`);
 
-  if (metaParts.length > 0) {
-    doc.text(metaParts.join(' | '), textLeftX, currentY);
+  if (contactParts.length > 0) {
+    doc.text(contactParts.join(' | '), textLeftX, currentY);
   }
 
   // 2. TOP-RIGHT: VEDIXA BRANDING SYSTEM ([VEDIXA LOGO] + VEDIXA text directly underneath)
@@ -83,18 +84,12 @@ export function drawPdfDocumentHeader(doc, shopSettings = {}) {
   doc.text('VEDIXA', vedixaLogoX + (vedixaLogoWidth / 2), vedixaLogoY + vedixaLogoHeight + 3.5, { align: 'center' });
 
   // 3. GREEN DIVIDER LINE
-  doc.setLineWidth(0.6);
   doc.setDrawColor(4, 120, 87);
+  doc.setLineWidth(0.8);
   doc.line(8, 28, pdfWidth - 8, 28);
 }
 
 /**
- * Single Unified Vector jsPDF Generator for Customer Ledger Statement.
- * Generated programmatically directly from API/DB objects.
- * Used identically for:
- * 1. Download PDF
- * 2. In-Page Native Browser Print (via hidden iframe)
- * 3. WhatsApp Preview Modal & Attachment
  */
 export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = [], totalsArg = {}, periodStrArg = 'Last 30 Days') {
   const { jsPDF, autoTable } = await getJsPdf();
@@ -113,6 +108,7 @@ export async function buildLedgerPdfDoc(custArg, shopSettingsArg = {}, txsArg = 
     shopSettings = txsArg && typeof txsArg === 'object' && !Array.isArray(txsArg) ? txsArg : {};
   }
 
+  const shopName = (shopSettings?.shopName || shopSettings?.name || 'Agri Solutions Store').trim();
   const custName = customer?.name || customer?.customerName || 'Valued Customer';
   const custMobile = customer?.mobile || customer?.phone || 'N/A';
   const custVillage = customer?.village || customer?.area || '';

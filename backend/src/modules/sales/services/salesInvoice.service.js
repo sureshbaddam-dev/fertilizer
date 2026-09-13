@@ -9,7 +9,7 @@ import { StockLedger } from '../../purchases/models/stockLedger.model.js';
 import { logger } from '../../../config/logger.config.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
-import { calculateInvoicePaymentStatus, normalizeMoney } from '../../../utils/pricingUtils.js';
+import { calculateInvoicePaymentStatus, normalizeMoney, MONEY_TOLERANCE } from '../../../utils/pricingUtils.js';
 
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 
