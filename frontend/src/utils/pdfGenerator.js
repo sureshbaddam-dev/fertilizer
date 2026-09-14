@@ -658,12 +658,6 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     format: 'a4',
   });
 
-  const shopName = shopSettings.shopName || shopSettings.businessName || shopSettings.name || 'Agri Solutions Store';
-  const address = buildFullShopAddress(shopSettings);
-  const mobile = shopSettings.mobile || shopSettings.phone || '-';
-  const gstin = shopSettings.gstNumber || shopSettings.gstin || '-';
-  const email = shopSettings.email || '';
-
   const invoiceNo = invoice.invoiceNumber || invoice.refNo || invoice.id || invoice._id || 'INV-2026-1001';
   const rawDate = invoice.date || invoice.createdAt || new Date();
   const invoiceDate = typeof rawDate === 'string' && rawDate.includes('T')
@@ -796,11 +790,12 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
 
   const subtotal = Number(invoice.subtotal || invoice.subTotal || invoice.totalAmount || 0);
   const discountVal = Number(invoice.discountAmount || invoice.discount || 0);
+  const taxAmount = Number(invoice.taxAmount || 0);
   const grandTotal = Number(invoice.grandTotal || invoice.totalAmount || invoice.total || (subtotal - discountVal));
   const paidAmount = Number(invoice.paidAmount || invoice.paid || (statusStr === 'PAID' ? grandTotal : 0));
   const dueAmount = Number(invoice.dueAmount || invoice.due || Math.max(0, grandTotal - paidAmount));
 
-  const summaryRows = 4 + (discountVal > 0 ? 1 : 0);
+  const summaryRows = 4 + (discountVal > 0 ? 1 : 0) + (taxAmount > 0 ? 1 : 0);
   const summaryHeight = 8 + summaryRows * 5;
 
   doc.setFillColor(248, 250, 248);
@@ -828,6 +823,14 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     doc.text('Discount:', 114, currentLineY);
     doc.setTextColor(220, 38, 38);
     doc.text(`- ${formatCurrency(discountVal)}`, 198, currentLineY, { align: 'right' });
+  }
+
+  if (taxAmount > 0) {
+    currentLineY += 5;
+    doc.setTextColor(71, 85, 105);
+    doc.text('Tax Amount:', 114, currentLineY);
+    doc.setTextColor(15, 23, 42);
+    doc.text(formatCurrency(taxAmount), 198, currentLineY, { align: 'right' });
   }
 
   currentLineY += 5;

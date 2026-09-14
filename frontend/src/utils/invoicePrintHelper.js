@@ -1,11 +1,10 @@
 import { getItemUnitPrice } from './pricing';
 import { buildFullShopAddress } from './pdfGenerator';
 import { authService } from '../services/authService';
-import vedixaLogoImg from '../assets/vedixa_logo.png';
 
 /**
  * Builds a clean, professional, print-ready HTML string for an A4 Tax Invoice.
- * 100% pure HTML & CSS document — NO canvas, NO screenshots, NO images-of-DOM.
+ * 100% pure HTML & CSS document matching the official VEDIXA Tax Invoice design.
  */
 export function buildInvoiceHtml(invoice, shopSettings = {}) {
   if (!invoice) return '';
@@ -19,30 +18,22 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
     authUser.shopName ||
     authUser.businessName ||
     authUser.ownerName ||
-    'VEDIXA AGRI SOLUTIONS';
+    'Dhanvantari Fertilizers';
 
-  const fullShopAddress = buildFullShopAddress(shopSettings) || 'Main Road, Market Yard, Andhra Pradesh';
-  const shopGST = shopSettings.gstNumber || shopSettings.gstin || shopSettings.gstNo || '-';
+  const fullShopAddress = buildFullShopAddress(shopSettings) || '';
   const shopPhone =
     shopSettings.whatsappNumber ||
     shopSettings.mobile ||
     shopSettings.phone ||
-    '-';
+    authUser.mobile ||
+    '';
   const shopEmail = shopSettings.email || authUser.email || '';
-  const logoSrc = vedixaLogoImg;
+  const shopGST = shopSettings.gstNumber || shopSettings.gstin || shopSettings.gstNo || '';
 
   const rawDate = invoice.date || invoice.createdAt || new Date();
   const invoiceDateStr = typeof rawDate === 'string' && rawDate.includes('T')
     ? new Date(rawDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
     : String(rawDate);
-
-  const invoiceTimeStr = invoice.createdAt || invoice.date
-    ? new Date(invoice.createdAt || invoice.date).toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-      })
-    : '';
 
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const subtotal = Number(invoice.subtotal || invoice.subTotal || invoice.totalAmount || 0);
@@ -57,15 +48,20 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
     (currentDue <= 0 ? 'PAID' : currentPaid > 0 ? 'PARTIAL' : 'DUE')
   ).toUpperCase();
 
-  const statusBg = currentStatus === 'PAID' ? '#ecfdf5' : currentStatus === 'PARTIAL' ? '#eff6ff' : '#fffbeb';
-  const statusColor = currentStatus === 'PAID' ? '#047857' : currentStatus === 'PARTIAL' ? '#1d4ed8' : '#b45309';
-  const statusBorder = currentStatus === 'PAID' ? '#a7f3d0' : currentStatus === 'PARTIAL' ? '#bfdbfe' : '#fde68a';
+  const customerName = invoice.customerName || invoice.customer?.name || 'Walk-in Customer';
+  const customerPhone = invoice.customerMobile || invoice.customer?.mobile || invoice.customer?.phone || 'N/A';
+  const customerAddr = invoice.customerAddress || invoice.customer?.village || invoice.customer?.address || 'N/A';
+  const customerGstin = invoice.customer?.gstin || '';
+  const invoiceNo = invoice.invoiceNumber || invoice.refNo || 'INV-001';
+  const paymentMode = invoice.paymentMode || invoice.paymentMethod || 'Cash';
 
   const rawSubtotal = items.reduce(
     (sum, it) => sum + Number(it.quantity || it.qty || 1) * getItemUnitPrice(it),
     0
   );
   const billDisc = Number(invoice.discountAmount || invoice.discount || 0);
+
+  const formatCurrency = (val) => `Rs. ${Math.round(Number(val || 0)).toLocaleString('en-IN')}`;
 
   const itemRowsHtml = items.map((item, idx) => {
     const pName = item.productName || item.product?.name || item.name || 'Agri Item';
@@ -75,7 +71,7 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
       item.unitName ||
       item.unitId?.shortName ||
       item.product?.defaultUnitId?.shortName ||
-      'Bag';
+      'bot';
     const rate = getItemUnitPrice(item);
     const itemGross = qty * rate;
     const disc = Number(item.discountAmount || item.discount || 0);
@@ -87,24 +83,19 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
         : 0;
     const rowTotal = Math.max(0, itemGross - effectiveDisc);
 
+    const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+
     return `
-      <tr style="border-bottom: 1px solid #e5e7eb;">
-        <td style="padding: 6px 4px; text-align: center; color: #64748b; font-family: monospace;">${idx + 1}</td>
-        <td style="padding: 6px 8px; text-align: left; font-weight: 700; color: #0f172a;">${pName}</td>
-        <td style="padding: 6px 4px; text-align: center; font-weight: 700; color: #1e293b; font-family: monospace; white-space: nowrap;">${qty} ${unit}</td>
-        <td style="padding: 6px 8px; text-align: right; color: #1e293b; font-family: monospace; white-space: nowrap;">₹ ${Math.round(rate).toLocaleString('en-IN')}</td>
-        <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #047857; font-family: monospace; white-space: nowrap;">${effectiveDisc > 0 ? `₹ ${Math.round(effectiveDisc).toLocaleString('en-IN')}` : '₹ 0'}</td>
-        <td style="padding: 6px 8px; text-align: right; font-weight: 800; color: #0f172a; font-family: monospace; white-space: nowrap;">₹ ${Math.round(rowTotal).toLocaleString('en-IN')}</td>
+      <tr style="background-color: ${rowBg}; border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 8px 10px; text-align: center; color: #475569;">${idx + 1}</td>
+        <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #0f172a;">${pName}</td>
+        <td style="padding: 8px 10px; text-align: center; color: #1e293b; white-space: nowrap;">${qty} ${unit}</td>
+        <td style="padding: 8px 10px; text-align: center; font-weight: 700; color: #0f172a; white-space: nowrap;">${formatCurrency(rate)}</td>
+        <td style="padding: 8px 10px; text-align: center; color: #475569; white-space: nowrap;">${effectiveDisc > 0 ? formatCurrency(effectiveDisc) : 'Rs. 0'}</td>
+        <td style="padding: 8px 14px; text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap;">${formatCurrency(rowTotal)}</td>
       </tr>
     `;
   }).join('');
-
-  const customerName = invoice.customerName || invoice.customer?.name || 'General Customer';
-  const customerPhone = invoice.customerMobile || invoice.customer?.mobile || invoice.customer?.phone || 'N/A';
-  const customerAddr = invoice.customerAddress || invoice.customer?.village || invoice.customer?.address || '—';
-  const customerGstin = invoice.customer?.gstin || '';
-  const invoiceNo = invoice.invoiceNumber || invoice.refNo || 'INV';
-  const paymentMode = invoice.paymentMode || invoice.paymentMethod || 'Cash';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -114,7 +105,7 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
   <style>
     @page {
       size: A4 portrait;
-      margin: 8mm 10mm;
+      margin: 12mm 14mm 12mm 14mm;
     }
     * {
       box-sizing: border-box;
@@ -124,9 +115,9 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
       print-color-adjust: exact !important;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-size: 11px;
-      line-height: 1.35;
+      line-height: 1.4;
       color: #0f172a;
       background: #ffffff;
       padding: 0;
@@ -136,266 +127,243 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
     }
     .invoice-card {
       background: #ffffff;
-      padding: 16px 20px;
+      padding: 4px 6px;
       width: 100%;
     }
     .header-row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding-bottom: 12px;
-      border-bottom: 2px solid #047857;
-      gap: 16px;
-    }
-    .brand-box {
-      display: flex;
-      align-items: center;
-    }
-    .brand-logo {
-      height: 64px;
-      max-height: 72px;
-      width: auto;
-      max-width: 170px;
-      object-fit: contain;
+      align-items: flex-start;
+      padding-bottom: 6px;
     }
     .shop-details {
-      text-align: right;
-      max-width: 380px;
+      max-width: 480px;
     }
     .shop-name {
-      font-size: 15px;
-      font-weight: 900;
-      color: #0f172a;
-      text-transform: uppercase;
+      font-size: 18px;
+      font-weight: 800;
+      color: #047857;
       line-height: 1.2;
-      margin-bottom: 2px;
+      margin-bottom: 3px;
     }
     .shop-addr {
-      font-size: 10px;
+      font-size: 10.5px;
       color: #475569;
       line-height: 1.35;
       margin-bottom: 2px;
     }
     .shop-meta {
-      font-size: 10px;
-      color: #334155;
-      font-family: monospace;
+      font-size: 10.5px;
+      color: #475569;
       line-height: 1.35;
     }
-    .title-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #f8fafc;
-      padding: 6px 12px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      margin-top: 10px;
-    }
-    .title-text {
+    .brand-title {
       font-size: 13px;
       font-weight: 900;
       color: #047857;
       letter-spacing: 0.05em;
       text-transform: uppercase;
+      padding-top: 2px;
     }
-    .title-sub {
-      font-size: 9.5px;
-      color: #94a3b8;
-      font-family: monospace;
-      margin-left: 8px;
+    .green-divider {
+      height: 2px;
+      background: #047857;
+      width: 100%;
+      margin: 4px 0 10px 0;
     }
-    .status-pill {
-      font-size: 9.5px;
-      font-weight: 800;
-      padding: 2px 10px;
-      border-radius: 9999px;
+    .title-row {
+      margin-bottom: 8px;
+    }
+    .invoice-title {
+      font-size: 12.5px;
+      font-weight: 900;
+      color: #0f172a;
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      background: ${statusBg};
-      color: ${statusColor};
-      border: 1px solid ${statusBorder};
     }
     .info-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      background: #f8fafc;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      margin-top: 10px;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+      font-size: 11px;
+      margin-bottom: 12px;
     }
-    .info-label {
-      font-size: 9px;
-      font-weight: 800;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      display: block;
-      margin-bottom: 2px;
-    }
-    .customer-name {
-      font-size: 13px;
-      font-weight: 900;
-      color: #0f172a;
-      display: block;
+    .info-item {
+      display: flex;
       margin-bottom: 3px;
     }
-    .info-line {
-      font-size: 10.5px;
+    .info-label {
       color: #334155;
-      line-height: 1.35;
+      width: 120px;
+      flex-shrink: 0;
+    }
+    .info-label-right {
+      color: #334155;
+      width: 100px;
+      flex-shrink: 0;
+    }
+    .info-val {
+      color: #0f172a;
+    }
+    .info-val.bold {
+      font-weight: 700;
+    }
+    .info-val.green-bold {
+      font-weight: 700;
+      color: #047857;
     }
     .table-container {
-      margin-top: 10px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      overflow: hidden;
+      margin-top: 6px;
+      width: 100%;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 10.5px;
     }
-    thead {
-      background: #f1f5f9;
-      border-bottom: 1px solid #cbd5e1;
+    thead tr {
+      background-color: #047857 !important;
+      color: #ffffff !important;
     }
     th {
-      padding: 7px 8px;
-      font-size: 9.5px;
-      font-weight: 900;
-      color: #1e293b;
+      padding: 8px 10px;
+      font-size: 10px;
+      font-weight: 800;
+      color: #ffffff;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .bottom-section {
+    .summary-section {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      margin-top: 10px;
+      justify-content: flex-end;
+      margin-top: 12px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    .notes-box {
-      flex: 1;
-      max-width: 320px;
-    }
-    .notes-card {
+    .summary-card {
+      width: 260px;
       background: #f8fafc;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      margin-bottom: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 10.5px;
     }
-    .terms-text {
+    .summary-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #047857;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+      padding-bottom: 3px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px;
+      color: #334155;
+    }
+    .summary-row.grand-total {
+      color: #0f172a;
+      font-weight: 700;
+      padding-top: 2px;
+    }
+    .summary-row.paid {
+      color: #047857;
+      font-weight: 700;
+    }
+    .summary-row.due {
+      font-weight: 700;
+      padding-top: 2px;
+    }
+    .footer-section {
+      margin-top: 40px;
+      text-align: center;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .thank-you-text {
+      font-size: 12px;
+      font-weight: 700;
+      color: #047857;
+      margin-bottom: 3px;
+    }
+    .powered-by-text {
       font-size: 9px;
       color: #94a3b8;
-      line-height: 1.4;
-    }
-    .totals-box {
-      width: 250px;
-      background: #f8fafc;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid #cbd5e1;
-      font-family: monospace;
-      font-size: 11px;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      color: #475569;
-      margin-bottom: 4px;
-    }
-    .totals-row.grand-total {
-      font-size: 13px;
-      font-weight: 900;
-      color: #0f172a;
-      padding: 6px 0;
-      border-top: 1.5px solid #cbd5e1;
-      border-bottom: 1.5px solid #cbd5e1;
-      margin: 6px 0;
-    }
-    .footer-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      padding-top: 12px;
-      margin-top: 12px;
-      border-top: 1px solid #cbd5e1;
-      font-size: 9.5px;
-      color: #64748b;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .signature-area {
-      text-align: right;
-      font-family: monospace;
-    }
-    .signature-line {
-      border-bottom: 1px solid #64748b;
-      width: 150px;
-      margin: 28px 0 3px auto;
     }
   </style>
 </head>
 <body>
   <div class="invoice-card">
     
-    <!-- 1. Header: VEDIXA Logo (Left) & Shop Details (Right) -->
+    <!-- 1. Header: Shop Details (Left) & VEDIXA (Right) -->
     <div class="header-row">
-      <div class="brand-box">
-        <img src="${logoSrc}" alt="VEDIXA" class="brand-logo" />
-      </div>
       <div class="shop-details">
         <h1 class="shop-name">${shopDisplayName}</h1>
         ${fullShopAddress ? `<p class="shop-addr">${fullShopAddress}</p>` : ''}
-        ${shopGST && shopGST !== '-' ? `<div class="shop-meta"><strong>GSTIN:</strong> ${shopGST}</div>` : ''}
-        ${shopEmail ? `<div class="shop-meta"><strong>Email:</strong> ${shopEmail}</div>` : ''}
-        ${shopPhone && shopPhone !== '-' ? `<div class="shop-meta"><strong>Phone:</strong> ${shopPhone}</div>` : ''}
+        <div class="shop-meta">
+          ${shopPhone ? `Phone: ${shopPhone}` : ''}
+          ${shopPhone && shopEmail ? ' | ' : ''}
+          ${shopEmail ? `Email: ${shopEmail}` : ''}
+          ${shopGST ? ` | GSTIN: ${shopGST}` : ''}
+        </div>
       </div>
+      <div class="brand-title">VEDIXA</div>
     </div>
 
-    <!-- 2. TAX INVOICE Title Bar -->
-    <div class="title-bar">
-      <div>
-        <span class="title-text">TAX INVOICE</span>
-        <span class="title-sub">Original for Recipient</span>
-      </div>
-      <div class="status-pill">${currentStatus}</div>
+    <!-- Green divider line -->
+    <div class="green-divider"></div>
+
+    <!-- 2. TAX INVOICE Title -->
+    <div class="title-row">
+      <h2 class="invoice-title">TAX INVOICE</h2>
     </div>
 
-    <!-- 3. Customer & Invoice Info Grid -->
+    <!-- 3. Customer & Invoice Details -->
     <div class="info-grid">
       <!-- Left: Customer -->
       <div>
-        <span class="info-label">Billed To Customer</span>
-        <span class="customer-name">${customerName}</span>
-        <div class="info-line">📞 <strong>Phone:</strong> ${customerPhone}</div>
-        <div class="info-line">📍 <strong>Address:</strong> ${customerAddr}</div>
-        ${customerGstin ? `<div class="info-line">🏷️ <strong>GSTIN:</strong> ${customerGstin}</div>` : ''}
+        <div class="info-item">
+          <span class="info-label">Customer Name :</span>
+          <span class="info-val bold">${customerName}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Customer Phone :</span>
+          <span class="info-val">${customerPhone}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Customer Address:</span>
+          <span class="info-val">${customerAddr}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">Invoice Date :</span>
+          <span class="info-val">${invoiceDateStr}</span>
+        </div>
+        ${customerGstin ? `
+          <div class="info-item">
+            <span class="info-label">Customer GSTIN :</span>
+            <span class="info-val">${customerGstin}</span>
+          </div>
+        ` : ''}
       </div>
 
       <!-- Right: Invoice Metadata -->
-      <div style="text-align: right; font-family: monospace;">
-        <div style="font-size: 12px; margin-bottom: 3px;">
-          <span style="color: #64748b; font-family: sans-serif; font-size: 9.5px; font-weight: 700;">INVOICE NO:</span>
-          <strong style="color: #047857; font-size: 13px;">${invoiceNo}</strong>
+      <div>
+        <div class="info-item">
+          <span class="info-label-right">Invoice No :</span>
+          <span class="info-val green-bold">${invoiceNo}</span>
         </div>
-        <div class="info-line">
-          <span style="color: #64748b; font-family: sans-serif; font-size: 9.5px;">Date:</span>
-          <strong>${invoiceDateStr} ${invoiceTimeStr ? `• ${invoiceTimeStr}` : ''}</strong>
+        <div class="info-item">
+          <span class="info-label-right">Payment Mode:</span>
+          <span class="info-val">${paymentMode}</span>
         </div>
-        <div class="info-line">
-          <span style="color: #64748b; font-family: sans-serif; font-size: 9.5px;">Payment Mode:</span>
-          <strong>${paymentMode}</strong>
-        </div>
-        <div class="info-line">
-          <span style="color: #64748b; font-family: sans-serif; font-size: 9.5px;">Outstanding Due:</span>
-          <strong style="color: ${currentDue <= 0 ? '#047857' : '#dc2626'}; font-size: 11.5px;">₹ ${Math.round(currentDue).toLocaleString('en-IN')}</strong>
+        <div class="info-item">
+          <span class="info-label-right">Status :</span>
+          <span class="info-val bold" style="color: ${currentStatus === 'PAID' ? '#047857' : currentStatus === 'DUE' ? '#dc2626' : '#d97706'};">
+            ${currentStatus}
+          </span>
         </div>
       </div>
     </div>
@@ -405,12 +373,12 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
       <table>
         <thead>
           <tr>
-            <th style="width: 5%; text-align: center;">#</th>
-            <th style="width: 38%; text-align: left;">Product Description</th>
-            <th style="width: 14%; text-align: center;">Qty / Unit</th>
-            <th style="width: 14%; text-align: right;">Rate (₹)</th>
-            <th style="width: 12%; text-align: right;">Discount (₹)</th>
-            <th style="width: 17%; text-align: right;">Total Amount (₹)</th>
+            <th style="width: 6%; text-align: center;">#</th>
+            <th style="width: 36%; text-align: center;">PRODUCT DESCRIPTION</th>
+            <th style="width: 14%; text-align: center;">QTY / UNIT</th>
+            <th style="width: 14%; text-align: center;">RATE</th>
+            <th style="width: 14%; text-align: center;">DISCOUNT</th>
+            <th style="width: 16%; text-align: right;">TOTAL AMOUNT</th>
           </tr>
         </thead>
         <tbody>
@@ -419,64 +387,51 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
       </table>
     </div>
 
-    <!-- 5. Totals Section & Notes -->
-    <div class="bottom-section">
-      <div class="notes-box">
-        ${invoice.notes ? `
-          <div class="notes-card">
-            <span style="font-size: 9px; font-weight: 800; color: #475569; text-transform: uppercase; display: block;">Notes / Remarks:</span>
-            <p style="font-size: 10px; color: #475569; font-style: italic; margin-top: 2px;">${invoice.notes}</p>
-          </div>
-        ` : ''}
-        <div class="terms-text">
-          <p>• Goods once sold cannot be returned after 7 days.</p>
-          <p>• Certified genuine agri inputs from licensed distributors.</p>
-        </div>
-      </div>
-
-      <div class="totals-box">
-        <div class="totals-row">
+    <!-- 5. Statement Summary Section -->
+    <div class="summary-section">
+      <div class="summary-card">
+        <div class="summary-title">STATEMENT SUMMARY</div>
+        
+        <div class="summary-row">
           <span>Subtotal:</span>
-          <span style="font-weight: 700; color: #0f172a;">₹ ${Math.round(subtotal).toLocaleString('en-IN')}</span>
+          <span style="font-weight: 700; color: #0f172a;">${formatCurrency(subtotal)}</span>
         </div>
+
         ${discountAmount > 0 ? `
-          <div class="totals-row" style="color: #047857;">
-            <span>Total Discount:</span>
-            <span style="font-weight: 700;">- ₹ ${Math.round(discountAmount).toLocaleString('en-IN')}</span>
+          <div class="summary-row" style="color: #dc2626;">
+            <span>Discount:</span>
+            <span style="font-weight: 700;">- ${formatCurrency(discountAmount)}</span>
           </div>
         ` : ''}
+
         ${taxAmount > 0 ? `
-          <div class="totals-row">
-            <span>GST Tax:</span>
-            <span style="font-weight: 700; color: #0f172a;">₹ ${Math.round(taxAmount).toLocaleString('en-IN')}</span>
+          <div class="summary-row">
+            <span>Tax Amount:</span>
+            <span style="font-weight: 700; color: #0f172a;">${formatCurrency(taxAmount)}</span>
           </div>
         ` : ''}
-        <div class="totals-row grand-total">
-          <span>Invoice Total:</span>
-          <span style="color: #047857; font-size: 14px;">₹ ${Math.round(grandTotal).toLocaleString('en-IN')}</span>
+
+        <div class="summary-row grand-total">
+          <span style="font-weight: 700;">Grand Total:</span>
+          <span style="font-weight: 700; color: #0f172a;">${formatCurrency(grandTotal)}</span>
         </div>
-        <div class="totals-row" style="color: #047857; font-weight: 700;">
-          <span>Paid Amount:</span>
-          <span>₹ ${Math.round(currentPaid).toLocaleString('en-IN')}</span>
+
+        <div class="summary-row paid">
+          <span style="font-weight: 700; color: #047857;">Paid Amount:</span>
+          <span style="font-weight: 700; color: #047857;">${formatCurrency(currentPaid)}</span>
         </div>
-        <div class="totals-row" style="color: ${currentDue > 0 ? '#dc2626' : '#047857'}; font-weight: 700; padding-top: 3px; border-top: 1px solid #e2e8f0;">
-          <span>Invoice Due:</span>
-          <span>₹ ${Math.round(currentDue).toLocaleString('en-IN')}</span>
+
+        <div class="summary-row due">
+          <span style="font-weight: 700; color: #475569;">Due Amount:</span>
+          <span style="font-weight: 700; color: ${currentDue > 0 ? '#dc2626' : '#047857'};">${formatCurrency(currentDue)}</span>
         </div>
       </div>
     </div>
 
-    <!-- 6. Footer & Signatory Area -->
-    <div class="footer-row">
-      <div>
-        <p style="font-weight: 800; color: #0f172a; font-size: 10.5px; margin-bottom: 2px;">Thank you for your business!</p>
-        <p style="color: #94a3b8; font-size: 8.5px;">Computer Generated Tax Invoice • Powered by VEDIXA ERP</p>
-      </div>
-      <div class="signature-area">
-        <div style="font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase;">For ${shopDisplayName}</div>
-        <div class="signature-line"></div>
-        <span style="font-size: 8.5px; font-weight: 700; color: #475569; display: block;">Authorized Signatory</span>
-      </div>
+    <!-- 6. Footer -->
+    <div class="footer-section">
+      <p class="thank-you-text">Thank You For Your Business! Visit Again.</p>
+      <p class="powered-by-text">This is a Computer Generated Tax Invoice • Powered by VEDIXA ERP</p>
     </div>
 
   </div>
@@ -517,7 +472,7 @@ export async function printInvoiceHtml(invoice, shopSettings = {}) {
     doc.write(htmlContent);
     doc.close();
 
-    // Give iframe resources (images & fonts) a moment to render before triggering print dialog
+    // Give iframe resources a moment to render before triggering print dialog
     setTimeout(() => {
       try {
         iframe.contentWindow.focus();
@@ -530,3 +485,4 @@ export async function printInvoiceHtml(invoice, shopSettings = {}) {
     }, 150);
   });
 }
+

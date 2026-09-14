@@ -28,7 +28,12 @@ import { formatISTTime, formatCurrentISTDateHeader } from '../utils/adminDateUti
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
   const [openSubmenus, setOpenSubmenus] = useState({
     leads: location.pathname.startsWith('/admin/leads') || location.pathname.startsWith('/admin/analytics'),
   });
@@ -53,12 +58,15 @@ export default function AdminLayout() {
     return () => clearInterval(interval);
   }, []);
 
-  // Update expanded submenu state when route changes
+  // Update expanded submenu state and auto-close mobile drawer when route changes
   useEffect(() => {
     setOpenSubmenus((prev) => ({
       ...prev,
       leads: (location.pathname.startsWith('/admin/leads') || location.pathname.startsWith('/admin/analytics')) ? true : prev.leads,
     }));
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   }, [location.pathname]);
 
   const toggleSubmenu = (key) => {
@@ -90,6 +98,12 @@ export default function AdminLayout() {
     setIsNotifDropdownOpen(false);
     fetchUnreadNotifications();
     navigate('/admin/support');
+  };
+
+  const closeMobileSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   };
 
   // Grouped Navigation Structure as per spec
@@ -142,19 +156,20 @@ export default function AdminLayout() {
   const currentFullPath = location.pathname + location.search;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans antialiased overflow-x-hidden w-full max-w-full">
       {/* Mobile Sidebar Overlay Backdrop */}
       {isSidebarOpen && (
         <div
           onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden transition-opacity"
+          aria-label="Close sidebar overlay"
         />
       )}
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-20'
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
+          isSidebarOpen ? 'translate-x-0 shadow-2xl lg:shadow-none' : '-translate-x-full lg:translate-x-0 lg:w-20'
         }`}
       >
         {/* Sidebar Header: VEDIXA Logo & VEDIXA Admin */}
@@ -167,8 +182,9 @@ export default function AdminLayout() {
             </div>
           </div>
           <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="lg:hidden p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+            aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
@@ -201,7 +217,7 @@ export default function AdminLayout() {
                         }`}
                         title={!isSidebarOpen ? item.label : undefined}
                       >
-                        <div className="flex items-center space-x-2.5">
+                        <div className="flex items-center space-x-2.5 min-w-0">
                           <Icon className={`w-4 h-4 shrink-0 stroke-[2] ${isParentActive ? 'text-emerald-600' : 'text-slate-400'}`} />
                           <span className={`${!isSidebarOpen && 'lg:hidden'} truncate`}>{item.label}</span>
                         </div>
@@ -222,6 +238,7 @@ export default function AdminLayout() {
                               <NavLink
                                 key={subIdx}
                                 to={sub.path}
+                                onClick={closeMobileSidebar}
                                 className={`block h-8 px-2.5 leading-8 rounded-md text-[11px] font-medium transition ${
                                   isSubActive
                                     ? 'bg-emerald-50/80 text-emerald-700 font-bold'
@@ -242,6 +259,7 @@ export default function AdminLayout() {
                   <NavLink
                     key={itemIdx}
                     to={item.path}
+                    onClick={closeMobileSidebar}
                     end={item.path === '/admin/dashboard'}
                     className={({ isActive }) =>
                       `h-10 flex items-center justify-between px-2.5 rounded-lg text-xs font-semibold transition ${
@@ -290,18 +308,19 @@ export default function AdminLayout() {
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* TOP HEADER */}
-        <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 shrink-0">
-          <div className="flex items-center space-x-4">
+        <header className="h-14 bg-white border-b border-slate-200 px-3 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shrink-0 w-full max-w-full">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              className="text-slate-500 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition cursor-pointer shrink-0"
+              aria-label="Toggle navigation menu"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="relative hidden md:block w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+            <div className="relative hidden md:block w-56 lg:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search users, mobile, leads..."
@@ -310,13 +329,14 @@ export default function AdminLayout() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
             {/* Live Support Notifications Bell */}
             <div className="relative">
               <button
                 onClick={() => setIsNotifDropdownOpen(!isNotifDropdownOpen)}
                 className="relative p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
                 title="Notifications"
+                aria-label="Support notifications"
               >
                 <Bell className="w-4 h-4 stroke-[2]" />
                 {unreadNotifications.length > 0 && (
@@ -328,68 +348,77 @@ export default function AdminLayout() {
 
               {/* Notification Dropdown Menu */}
               {isNotifDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2">
-                  <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-slate-800">Support Notifications</h4>
-                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                      {unreadNotifications.length} Unread
-                    </span>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-                    {unreadNotifications.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-xs text-slate-400 font-medium">
-                        No pending support notifications
-                      </p>
-                    ) : (
-                      unreadNotifications.map((notif) => (
-                        <div
-                          key={notif._id}
-                          onClick={() => handleNotificationClick(notif)}
-                          className="px-4 py-3 hover:bg-slate-50 cursor-pointer transition flex items-start space-x-3"
-                        >
-                          <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate">{notif.subject}</p>
-                            <p className="text-[11px] text-slate-500 truncate">From: {notif.userName} ({notif.userMobile})</p>
-                            <span className="text-[10px] text-slate-400 flex items-center space-x-1 mt-1">
-                              <Clock className="w-3 h-3" />
-                              <span>{formatISTTime(notif.createdAt)}</span>
-                            </span>
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsNotifDropdownOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] max-w-sm sm:w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2">
+                    <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-800">Support Notifications</h4>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                        {unreadNotifications.length} Unread
+                      </span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      {unreadNotifications.length === 0 ? (
+                        <p className="px-4 py-6 text-center text-xs text-slate-400 font-medium">
+                          No pending support notifications
+                        </p>
+                      ) : (
+                        unreadNotifications.map((notif) => (
+                          <div
+                            key={notif._id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className="px-4 py-3 hover:bg-slate-50 cursor-pointer transition flex items-start space-x-3"
+                          >
+                            <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{notif.subject}</p>
+                              <p className="text-[11px] text-slate-500 truncate">From: {notif.userName} ({notif.userMobile})</p>
+                              <span className="text-[10px] text-slate-400 flex items-center space-x-1 mt-1">
+                                <Clock className="w-3 h-3" />
+                                <span>{formatISTTime(notif.createdAt)}</span>
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
+                    <div className="px-4 py-2 border-t border-slate-100 text-center">
+                      <button
+                        onClick={() => { setIsNotifDropdownOpen(false); navigate('/admin/support'); }}
+                        className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
+                      >
+                        View Support Tickets →
+                      </button>
+                    </div>
                   </div>
-                  <div className="px-4 py-2 border-t border-slate-100 text-center">
-                    <button
-                      onClick={() => { setIsNotifDropdownOpen(false); navigate('/admin/support'); }}
-                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 underline"
-                    >
-                      View Support Tickets →
-                    </button>
-                  </div>
-                </div>
+                </>
               )}
             </div>
 
-            {/* Date Pill */}
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-medium text-slate-600">
+            {/* Date Pill (Desktop) */}
+            <div className="hidden lg:flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-medium text-slate-600">
               <span>{formatCurrentISTDateHeader()}</span>
             </div>
 
             {/* Admin Profile & Logout */}
-            <div className="flex items-center space-x-2 border-l border-slate-200 pl-3">
-              <div className="w-7 h-7 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center">
-                S
+            <div className="flex items-center space-x-2 border-l border-slate-200 pl-2 sm:pl-3">
+              <div className="w-7 h-7 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
+                {(currentUser?.ownerName || currentUser?.name || 'S').charAt(0).toUpperCase()}
               </div>
               <div className="hidden sm:block">
-                <p className="text-xs font-bold text-slate-800 leading-tight">Super Admin</p>
+                <p className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">
+                  {currentUser?.ownerName || currentUser?.name || 'Super Admin'}
+                </p>
                 <p className="text-[10px] text-emerald-600 font-semibold">Active Session</p>
               </div>
               <button
                 onClick={() => setIsLogoutModalOpen(true)}
                 title="Logout"
-                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition ml-1 cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition ml-0.5 cursor-pointer shrink-0"
+                aria-label="Logout"
               >
                 <LogOut className="w-4 h-4 stroke-[2]" />
               </button>
@@ -398,7 +427,7 @@ export default function AdminLayout() {
         </header>
 
         {/* PAGE BODY */}
-        <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+        <main className="flex-1 p-3 sm:p-4 md:p-6 max-w-7xl w-full min-w-0 mx-auto space-y-4 sm:space-y-6">
           <Outlet />
         </main>
       </div>
@@ -406,9 +435,9 @@ export default function AdminLayout() {
       {/* LOGOUT CONFIRMATION MODAL */}
       {isLogoutModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 font-sans">
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl p-5 sm:p-6 max-w-sm w-full space-y-4">
             <div className="flex items-center space-x-3 text-red-600 border-b border-slate-100 pb-3">
-              <div className="p-2.5 bg-red-50 rounded-2xl border border-red-100">
+              <div className="p-2.5 bg-red-50 rounded-2xl border border-red-100 shrink-0">
                 <LogOut className="w-5 h-5 stroke-[2]" />
               </div>
               <div>
