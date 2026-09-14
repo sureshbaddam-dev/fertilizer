@@ -191,13 +191,13 @@ export default function TopNavbar({ onToggleSidebar, onOpenNewBill, onQuickAddPr
 
   const searchResults = searchData?.data?.products || searchData?.products || [];
 
-  // Full System Notifications Query (Polls live every 15 seconds)
+  // Full System Notifications Query (Polls live every 60 seconds with 30s cache)
   const { data: notifData } = useQuery({
     queryKey: ['dashboard-notifications'],
     queryFn: () => dashboardService.getNotifications(),
-    staleTime: 10 * 1000,
-    refetchInterval: 15 * 1000,
-    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Extract notifications array accurately from API response data

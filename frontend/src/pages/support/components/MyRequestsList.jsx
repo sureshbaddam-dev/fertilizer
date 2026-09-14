@@ -18,7 +18,9 @@ export default function MyRequestsList({ onSelectRequest, onRaiseRequest }) {
   const { data: ticketsRes, isLoading } = useQuery({
     queryKey: ['user-requests'],
     queryFn: () => supportService.getUserTickets(),
-    refetchInterval: 15000,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
   });
 
   const allTickets = ticketsRes?.data?.tickets || ticketsRes?.tickets || [];

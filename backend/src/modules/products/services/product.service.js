@@ -3,20 +3,16 @@ import { Product } from '../models/product.model.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { ProductBatch } from '../models/productBatch.model.js';
 import { categoryRepository } from '../../masters/repositories/category.repository.js';
-import { unitRepository } from '../../masters/repositories/unit.repository.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
 import { normalizeMoney } from '../../../utils/pricingUtils.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
-import { Purchase } from '../../purchases/models/purchase.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { StockLedger } from '../../purchases/models/stockLedger.model.js';
 import { Category } from '../../masters/models/category.model.js';
 import { Brand } from '../../masters/models/brand.model.js';
 import { Unit } from '../../masters/models/unit.model.js';
-import { Supplier } from '../../suppliers/models/supplier.model.js';
-import { PurchaseReturn } from '../../purchases/models/purchaseReturn.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { cloudinaryProductImageService } from './cloudinaryProductImage.service.js';
 import { deleteFromCloudinary } from '../../../utils/cloudinary.utils.js';
@@ -273,7 +269,14 @@ export const productService = {
     }
     if (query.isActive !== undefined) {
       filter.isActive = query.isActive === 'true' || query.isActive === true;
-    } else if (query.includeInactive !== 'true' && query.includeDeleted !== 'true') {
+    } else if (
+      query.includeInactive === 'true' ||
+      query.includeDeleted === 'true' ||
+      query.forInventory === 'true' ||
+      query.inventory === 'true'
+    ) {
+      // Do not restrict isActive: return all products (active and archived) for complete inventory/stock management
+    } else {
       filter.isActive = true;
     }
 
@@ -2002,6 +2005,7 @@ export const productService = {
     const newBatch = await ProductBatch.create({
       userId,
       productId: product._id,
+      productName: product.name,
       purchaseId: null,
       supplierId: supplierId && mongoose.Types.ObjectId.isValid(supplierId) ? supplierId : null,
       batchNumber: finalBatchNumber,
@@ -2112,7 +2116,8 @@ export const productService = {
         _id: b._id,
         batchNumber: b.batchNumber,
         productId: b.productId?._id || b.productId,
-        productName: b.productId?.name || 'Unknown Product',
+        productName: b.productId?.name || b.productName || 'Unknown Product',
+        productIsActive: b.productId?.isActive !== false,
         productImage: b.productId?.image || '',
         category: b.productId?.categoryId?.name || 'General',
         brand: b.productId?.brandId?.name || '',

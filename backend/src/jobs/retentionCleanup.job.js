@@ -1,4 +1,6 @@
 import { Product } from '../modules/products/models/product.model.js';
+import { ProductBatch } from '../modules/products/models/productBatch.model.js';
+import { StockLedger } from '../modules/purchases/models/stockLedger.model.js';
 import { Supplier } from '../modules/suppliers/models/supplier.model.js';
 import { SupplierLedger } from '../modules/suppliers/models/supplierLedger.model.js';
 import { Purchase } from '../modules/purchases/models/purchase.model.js';
@@ -8,7 +10,7 @@ import { logger } from '../config/logger.config.js';
 
 /**
  * 90-Day Product Soft-Delete Retention & Safety Cleanup Job
- * Safely purges soft-deleted products older than 90 days ONLY if they contain no historical sales or purchase records.
+ * Safely purges soft-deleted products older than 90 days ONLY if they contain no historical sales, purchase, stock, batch, or ledger records.
  */
 export async function cleanupSoftDeletedProductsOlderThan90Days() {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -27,9 +29,11 @@ export async function cleanupSoftDeletedProductsOlderThan90Days() {
   for (const prod of eligibleProducts) {
     const hasSales = await SalesInvoice.exists({ 'items.productId': prod._id });
     const hasPurchases = await PurchaseItem.exists({ productId: prod._id });
+    const hasBatches = await ProductBatch.exists({ productId: prod._id, isDeleted: { $ne: true } });
+    const hasStockLedger = await StockLedger.exists({ productId: prod._id });
 
-    if (hasSales || hasPurchases) {
-      logger.info(`ℹ️ Soft-deleted Product '${prod.name}' [${prod._id}] is >90 days old but retained to preserve financial/accounting history.`);
+    if (hasSales || hasPurchases || hasBatches || hasStockLedger || (prod.totalStock && prod.totalStock > 0)) {
+      logger.info(`ℹ️ Soft-deleted Product '${prod.name}' [${prod._id}] is >90 days old but retained to preserve inventory/financial/accounting history.`);
       continue;
     }
 

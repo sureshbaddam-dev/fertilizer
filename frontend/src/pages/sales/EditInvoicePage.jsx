@@ -40,7 +40,8 @@ export default function EditInvoicePage() {
     queryKey: ['sales-invoice-details', invoiceId],
     queryFn: () => invoiceService.getInvoiceById(invoiceId),
     enabled: Boolean(invoiceId),
-    staleTime: 0,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const invoice = useMemo(() => {

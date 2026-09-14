@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import { Supplier } from '../models/supplier.model.js';
-import { supplierRepository } from '../repositories/supplier.repository.js';
 import { SupplierLedger } from '../models/supplierLedger.model.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
 import { AppError } from '../../../utils/appError.js';

@@ -20,6 +20,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { toast } from '../../contexts/ToastContext';
 import { exportInvoiceHistoryToExcel } from '../../utils/excelExporter';
 import Button from '../../components/ui/Button';
+import { useDebounce } from '../../hooks/useDebounce';
 
 export default function BillsHistoryPage() {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ export default function BillsHistoryPage() {
 
   // Search Query
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
 
   // Filter Drawer Open State
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
@@ -59,11 +61,11 @@ export default function BillsHistoryPage() {
 
   // Fetch Invoices & Stats from MongoDB API
   const { data: apiResponse, isLoading } = useQuery({
-    queryKey: ['invoices', activeTab, searchQuery, appliedFilters, page, limit],
+    queryKey: ['invoices', activeTab, debouncedSearch, appliedFilters, page, limit],
     queryFn: () =>
       invoiceService.getInvoices({
         status: activeTab,
-        search: searchQuery,
+        search: debouncedSearch,
         dateFrom: appliedFilters.dateFrom,
         dateTo: appliedFilters.dateTo,
         customer: appliedFilters.customer,
@@ -73,6 +75,8 @@ export default function BillsHistoryPage() {
         page,
         limit,
       }),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const invoices = apiResponse?.data?.invoices || [];

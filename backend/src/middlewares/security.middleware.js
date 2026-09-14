@@ -49,25 +49,55 @@ export const configureSecurityMiddlewares = (app) => {
     next();
   });
 
-  // Rate Limiting
-  const limiter = rateLimit({
+  // Rate Limiting Tier 1: Auth & Sensitive Security Endpoints (Strict protection against brute-force)
+  const authLimiter = rateLimit({
     windowMs: envConfig.rateLimit.windowMs,
-    max: envConfig.rateLimit.max,
+    max: envConfig.rateLimit.maxAuth || 30,
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => {
-      // Always skip OPTIONS preflight CORS requests
       if (req.method === 'OPTIONS') return true;
-      // Skip rate limiting in development mode
-      if (envConfig.env === 'development') {
-        return true;
-      }
+      if (envConfig.env === 'development') return true;
       return false;
     },
-    handler: (_req, _res, next) => {
-      next(new AppError('Too many requests, please try again later.', HTTP_STATUS.TOO_MANY_REQUESTS));
+    handler: (_req, res) => {
+      return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+        success: false,
+        message: 'Too many authentication attempts. Please try again after 15 minutes.',
+        statusCode: HTTP_STATUS.TOO_MANY_REQUESTS,
+      });
     },
   });
 
-  app.use(`${envConfig.apiPrefix}/`, limiter);
+  // Rate Limiting Tier 2: General Authenticated ERP API (Generous threshold for ERP multi-tab & reporting usage)
+  const generalApiLimiter = rateLimit({
+    windowMs: envConfig.rateLimit.windowMs,
+    max: envConfig.rateLimit.max || 2000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+      if (req.method === 'OPTIONS') return true;
+      if (req.path === '/health' || req.path === '/ping' || req.path.endsWith('/health')) return true;
+      if (envConfig.env === 'development') return true;
+      return false;
+    },
+    handler: (_req, res) => {
+      return res.status(HTTP_STATUS.TOO_MANY_REQUESTS).json({
+        success: false,
+        message: 'API rate limit exceeded. Please slow down requests.',
+        statusCode: HTTP_STATUS.TOO_MANY_REQUESTS,
+      });
+    },
+  });
+
+  // Apply Auth limiter to auth sensitive routes
+  app.use(`${envConfig.apiPrefix}/auth/login`, authLimiter);
+  app.use(`${envConfig.apiPrefix}/auth/signup`, authLimiter);
+  app.use(`${envConfig.apiPrefix}/auth/forgot-password`, authLimiter);
+  app.use(`${envConfig.apiPrefix}/auth/reset-password`, authLimiter);
+  app.use(`${envConfig.apiPrefix}/auth/verify-signup-otp`, authLimiter);
+  app.use(`${envConfig.apiPrefix}/admin/auth/login`, authLimiter);
+
+  // Apply General API limiter to all other API endpoints
+  app.use(`${envConfig.apiPrefix}/`, generalApiLimiter);
 };

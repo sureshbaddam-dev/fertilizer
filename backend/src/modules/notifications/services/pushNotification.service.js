@@ -120,7 +120,6 @@ export const pushNotificationService = {
 
     let query = {};
     const { UserSubscription } = await import('../../subscription/userSubscription.model.js');
-    const { User } = await import('../../auth/user.model.js');
 
     if (targetAudience === 'SELECTED_USERS' || targetAudience === 'SPECIFIC_USER') {
       if (!targetUserIds || targetUserIds.length === 0) return;

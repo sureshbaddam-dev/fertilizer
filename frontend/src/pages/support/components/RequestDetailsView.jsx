@@ -30,7 +30,9 @@ export default function RequestDetailsView({ requestId, onBack, onRaiseRequest }
     queryKey: ['request-details', requestId],
     queryFn: () => supportService.getTicketById(requestId),
     enabled: !!requestId,
-    refetchInterval: 10000,
+    staleTime: 15000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: false,
   });
 
   const request = reqRes?.data?.ticket || reqRes?.ticket || reqRes?.data;

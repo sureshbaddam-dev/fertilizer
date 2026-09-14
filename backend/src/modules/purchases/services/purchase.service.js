@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { purchaseRepository } from '../repositories/purchase.repository.js';
 import { productRepository } from '../../products/repositories/product.repository.js';
-import { supplierRepository } from '../../suppliers/repositories/supplier.repository.js';
 import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
 import { Supplier } from '../../suppliers/models/supplier.model.js';
 import { Product } from '../../products/models/product.model.js';
@@ -152,8 +151,6 @@ export const purchaseService = {
         const itemSellingPrice = normalizeMoney(item.sellingPrice || 0);
 
         let batchNumber = (item.batchNumber || '').trim();
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const datePrefix = `BATCH-${dateStr}-`;
 
         // Authoritative backend batch sequence [SHOP_LETTER]B[YY][MM][SERIAL]:
         if (!batchNumber || batchNumber.toUpperCase().startsWith('BATCH-') || batchNumber.toUpperCase().startsWith('AUTO')) {

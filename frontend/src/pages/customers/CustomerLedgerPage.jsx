@@ -532,8 +532,8 @@ export default function CustomerLedgerPage() {
     queryKey: ['customer-ledger-profile', customerId],
     queryFn: () => (customerId ? customerService.getCustomerById(customerId) : null),
     enabled: Boolean(customerId),
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const apiResponse = customerApiData?.data?.data || customerApiData?.data || customerApiData || {};

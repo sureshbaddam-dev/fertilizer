@@ -1,5 +1,4 @@
 import { getRedisClient } from '../config/redis.config.js';
-import { logger } from '../config/logger.config.js';
 
 const memoryStore = new Map();
 

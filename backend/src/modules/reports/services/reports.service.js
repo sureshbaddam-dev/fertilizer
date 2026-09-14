@@ -1,12 +1,10 @@
 import mongoose from 'mongoose';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { Purchase } from '../../purchases/models/purchase.model.js';
-import { Product } from '../../products/models/product.model.js';
 import { Supplier } from '../../suppliers/models/supplier.model.js';
 import { Customer } from '../../customers/models/customer.model.js';
 import { CustomerPayment } from '../../customers/models/customerPayment.model.js';
 import { ProductBatch } from '../../products/models/productBatch.model.js';
-import { SupplierLedger } from '../../suppliers/models/supplierLedger.model.js';
 import { StockLedger } from '../../purchases/models/stockLedger.model.js';
 import { productService } from '../../products/services/product.service.js';
 
@@ -57,6 +55,10 @@ export const reportsService = {
       status: { $ne: 'Cancelled' },
     };
 
+    if (periodStartDate && periodEndDate) {
+      salesMatch.createdAt = { $gte: periodStartDate, $lte: periodEndDate };
+    }
+
     if (filters.customer && filters.customer !== 'ALL') {
       if (mongoose.Types.ObjectId.isValid(filters.customer)) {
         salesMatch.customerId = new mongoose.Types.ObjectId(filters.customer);
@@ -74,6 +76,10 @@ export const reportsService = {
       userId: userObjId,
       status: { $ne: 'Cancelled' },
     };
+
+    if (periodStartDate && periodEndDate) {
+      purchaseMatch.purchaseDate = { $gte: periodStartDate, $lte: periodEndDate };
+    }
 
     if (filters.supplier && filters.supplier !== 'ALL') {
       if (mongoose.Types.ObjectId.isValid(filters.supplier)) {
@@ -461,7 +467,7 @@ export const reportsService = {
       ]),
 
       // 3. Product Inventory from Authoritative Product Service
-      productService.getAllProducts({}, userId),
+      productService.getAllProducts({ includeInactive: 'true' }, userId),
 
       // 4. Customer MongoDB Aggregation Pipeline
       Customer.aggregate([
@@ -587,7 +593,6 @@ export const reportsService = {
     const yearlySales = Math.round(totalInvoicesCount > 0 ? (salesDataObj.yearlySales?.[0]?.total || 0) : 0);
     const totalSalesVal = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalSalesVal || 0) : 0);
     const totalSalesPaid = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalPaid || 0) : 0);
-    const totalSalesDue = Math.round(totalInvoicesCount > 0 ? (salesDataObj.totalSales?.[0]?.totalDue || 0) : 0);
 
     const todayPurchase = Math.round(purchaseDataObj.todayPurchase?.[0]?.total || 0);
     const weeklyPurchase = Math.round(purchaseDataObj.weeklyPurchase?.[0]?.total || 0);

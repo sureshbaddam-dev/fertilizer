@@ -74,6 +74,7 @@ export default function OpeningStockListModal({ isOpen, onClose }) {
       toast.success('Opening stock updated successfully');
       queryClient.invalidateQueries({ queryKey: ['opening-stock-list-modal'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['bi-analytics'] });
       queryClient.invalidateQueries({ queryKey: ['product-history'] });
       setEditingItem(null);
@@ -90,6 +91,7 @@ export default function OpeningStockListModal({ isOpen, onClose }) {
       toast.success('Opening stock batch deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['opening-stock-list-modal'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['bi-analytics'] });
       queryClient.invalidateQueries({ queryKey: ['product-history'] });
       setDeletingItem(null);

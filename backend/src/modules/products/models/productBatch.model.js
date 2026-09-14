@@ -15,6 +15,11 @@ const productBatchSchema = new mongoose.Schema(
       required: [true, 'Product ID is required'],
       index: true,
     },
+    productName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     purchaseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Purchase',

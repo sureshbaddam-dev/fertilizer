@@ -24,6 +24,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import Button from '../../components/ui/Button';
 import PageLayout from '../../components/ui/PageHeaderContainer';
 import { toast } from '../../contexts/ToastContext';
+import { useDebounce } from '../../hooks/useDebounce';
 
 // Delete Confirmation Modal Component
 function DeleteCustomerModal({ isOpen, onClose, customer, onDeleteSuccess }) {
@@ -221,6 +222,7 @@ export default function CustomerListPage() {
 
   // Search & Pagination State
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -236,8 +238,8 @@ export default function CustomerListPage() {
 
   // Fetch Customers dynamically from MongoDB
   const { data: apiData, isLoading } = useQuery({
-    queryKey: ['customers-list-page', searchQuery],
-    queryFn: () => customerService.getCustomers({ search: searchQuery }),
+    queryKey: ['customers-list-page', debouncedSearch],
+    queryFn: () => customerService.getCustomers({ search: debouncedSearch }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

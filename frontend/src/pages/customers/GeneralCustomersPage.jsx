@@ -24,10 +24,12 @@ import { invoiceService } from '../../services/invoiceService';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { generateGeneralCustomersPdf, printGeneralCustomersPdf } from '../../utils/pdfGenerator';
+import { useDebounce } from '../../hooks/useDebounce';
 
 export default function GeneralCustomersPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL' | 'DUE' | 'NO_DUE' | 'RECENT' | 'HIGH_VALUE'
 
   // Consume Shop Profile Settings from Shared Context
@@ -40,8 +42,8 @@ export default function GeneralCustomersPage() {
 
   // Fetch Customers dynamically from MongoDB API (General Customers ONLY)
   const { data: customersApi, isLoading: isCustomersLoading } = useQuery({
-    queryKey: ['general-customers-list', searchQuery],
-    queryFn: () => customerService.getGeneralCustomers({ search: searchQuery }),
+    queryKey: ['general-customers-list', debouncedSearch],
+    queryFn: () => customerService.getGeneralCustomers({ search: debouncedSearch }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });

@@ -43,10 +43,10 @@ export default function InventoryPage() {
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
 
-  // Fetch Products for Live Stock Data
+  // Fetch Products for Live Stock Data (Include all products with stock, even if catalog-archived)
   const { data: productsApi, isLoading } = useQuery({
     queryKey: ['products-inventory'],
-    queryFn: () => productService.getProducts({ limit: 200 }),
+    queryFn: () => productService.getProducts({ limit: 200, includeInactive: true }),
     staleTime: 30 * 1000,
   });
 

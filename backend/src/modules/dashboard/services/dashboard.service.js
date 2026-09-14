@@ -2,10 +2,7 @@ import mongoose from 'mongoose';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { Product } from '../../products/models/product.model.js';
 import { Category } from '../../masters/models/category.model.js';
-import { Brand } from '../../masters/models/brand.model.js';
-import { Customer } from '../../customers/models/customer.model.js';
 import { shopDiscountService } from '../../settings/services/shopDiscount.service.js';
-import { reportsService } from '../../reports/services/reports.service.js';
 
 export const dashboardService = {
   async getDashboardSummary(userId) {

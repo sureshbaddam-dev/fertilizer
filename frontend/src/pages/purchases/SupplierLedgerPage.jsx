@@ -79,6 +79,8 @@ export default function SupplierLedgerPage() {
         transactionType: activeTab === 'Purchases' ? 'PURCHASE' : activeTab === 'Payments' ? 'PAYMENT' : activeTab === 'Returns' ? 'RETURNS' : 'ALL',
       }),
     enabled: Boolean(supplierId),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const supplier = ledgerApiData?.data?.supplier || {};

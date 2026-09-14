@@ -14,7 +14,6 @@ import { Product } from '../../products/models/product.model.js';
 import { Purchase } from '../../purchases/models/purchase.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { UserSubscription } from '../../subscription/userSubscription.model.js';
-import { SubscriptionPlan } from '../../subscription/subscriptionPlan.model.js';
 import { SupportTicket } from '../../support/supportTicket.model.js';
 import { SystemSetting } from '../models/systemSetting.model.js';
 import { SubscriptionHistory } from '../models/subscriptionHistory.model.js';

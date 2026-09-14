@@ -6,7 +6,6 @@ import { User } from '../auth/user.model.js';
 import { AppError } from '../../utils/appError.js';
 import { HTTP_STATUS } from '../../common/httpStatuses.js';
 import { razorpayService } from './razorpay.service.js';
-import { SubscriptionSettings } from '../admin/models/subscriptionSettings.model.js';
 import { SystemSetting } from '../admin/models/systemSetting.model.js';
 import { getOrCreateSubscriptionSettings } from '../admin/services/admin.service.js';
 import { SubscriptionHistory } from '../admin/models/subscriptionHistory.model.js';

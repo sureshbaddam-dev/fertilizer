@@ -36,7 +36,8 @@ export const envConfig = {
   },
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+    maxAuth: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '30', 10),
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '2000', 10),
   },
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',
