@@ -15,7 +15,7 @@ export default function BrandLogo({
         width="192"
         height="96"
         loading="eager"
-        fetchpriority={isLcp ? "high" : undefined}
+        fetchPriority={isLcp ? "high" : undefined}
         className={`block h-[96px] w-auto object-contain select-none ${imgClassName}`}
         style={style}
         draggable={false}

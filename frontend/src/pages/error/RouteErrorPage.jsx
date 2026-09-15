@@ -74,18 +74,6 @@ export default function RouteErrorPage({ compact = false }) {
             <span>Dashboard</span>
           </button>
         </div>
-        {isDev && error && (
-          <div className="w-full text-left pt-3 border-t border-slate-100">
-            <details className="text-xs bg-rose-50/80 border border-rose-200 rounded-xl p-2.5 text-rose-900">
-              <summary className="font-bold cursor-pointer select-none">
-                Developer Diagnostics (Dev Only)
-              </summary>
-              <pre className="mt-2 text-[10px] font-mono whitespace-pre-wrap break-all overflow-x-auto p-2 bg-white rounded border border-rose-200">
-                {error?.stack || error?.message || String(error)}
-              </pre>
-            </details>
-          </div>
-        )}
       </div>
     );
   }
@@ -165,20 +153,6 @@ export default function RouteErrorPage({ compact = false }) {
             </>
           )}
         </div>
-
-        {/* Developer Diagnostics (Dev Only) */}
-        {isDev && error && (
-          <div className="w-full text-left pt-4 border-t border-slate-100">
-            <details className="text-xs bg-rose-50/80 border border-rose-200 rounded-xl p-3 text-rose-900">
-              <summary className="font-bold cursor-pointer select-none">
-                Developer Diagnostics (Dev Only)
-              </summary>
-              <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap break-all overflow-x-auto p-2 bg-white/80 rounded border border-rose-200">
-                {error?.stack || error?.message || (typeof error === 'object' ? JSON.stringify(error, null, 2) : String(error))}
-              </pre>
-            </details>
-          </div>
-        )}
 
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest pt-2">
           VEDIXA Enterprise ERP

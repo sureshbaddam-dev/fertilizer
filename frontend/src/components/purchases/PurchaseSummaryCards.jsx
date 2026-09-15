@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, TrendingUp, Clock, Lightbulb, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Calculator, TrendingUp, Clock, Lightbulb, CheckCircle2, ArrowRight, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function PurchaseSummaryCards({

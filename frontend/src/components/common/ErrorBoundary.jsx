@@ -95,22 +95,6 @@ export class ErrorBoundary extends React.Component {
               </button>
             </div>
 
-            {/* Developer Details (Visible only in local development) */}
-            {isDev && this.state.error && (
-              <div className="w-full text-left pt-4 border-t border-slate-100">
-                <details className="text-xs bg-rose-50/80 border border-rose-200 rounded-xl p-3 text-rose-900">
-                  <summary className="font-bold cursor-pointer select-none">
-                    Developer Diagnostics (Dev Only)
-                  </summary>
-                  <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap break-all overflow-x-auto p-2 bg-white/80 rounded border border-rose-200">
-                    {this.state.error?.toString()}
-                    {'\n\nComponent Stack:\n'}
-                    {this.state.errorInfo?.componentStack}
-                  </pre>
-                </details>
-              </div>
-            )}
-
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest pt-2">
               VEDIXA Enterprise ERP
             </p>
