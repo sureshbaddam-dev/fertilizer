@@ -265,10 +265,38 @@ export const dashboardService = {
 
     categoriesWithCount.sort((a, b) => b.prodCount - a.prodCount);
 
+    // Calculate Yesterday metrics for growth comparison
     const rawYesterdaySales = yesterdayInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
-    const salesGrowth = rawYesterdaySales > 0
-      ? Math.round(((rawTodaySales - rawYesterdaySales) / rawYesterdaySales) * 100)
-      : rawTodaySales > 0 ? 100 : 0;
+    const yesterdayBillsCount = yesterdayInvoices.length;
+    const yesterdayActiveCustomersSet = new Set(
+      yesterdayInvoices
+        .map((inv) => (inv.customerId ? inv.customerId.toString() : inv.customerName ? inv.customerName.trim() : null))
+        .filter(Boolean)
+    );
+    const yesterdayActiveCustomersCount = yesterdayActiveCustomersSet.size;
+    const rawYesterdayPendingPayments = yesterdayInvoices.reduce((sum, inv) => {
+      const total = Number(inv.totalAmount !== undefined ? inv.totalAmount : (inv.grandTotal ?? inv.subtotal ?? 0));
+      const paid = Number(inv.paidAmount || 0);
+      const due = inv.dueAmount !== undefined ? Number(inv.dueAmount) : Math.max(0, total - paid);
+      return sum + (due > 0 ? due : 0);
+    }, 0);
+
+    const calculateGrowth = (current, previous) => {
+      const cur = Number(current) || 0;
+      const prev = Number(previous) || 0;
+      if (prev > 0) {
+        return Math.round(((cur - prev) / prev) * 100);
+      }
+      if (cur > 0 && prev === 0) {
+        return 100;
+      }
+      return 0;
+    };
+
+    const salesGrowth = calculateGrowth(rawTodaySales, rawYesterdaySales);
+    const billsGrowth = calculateGrowth(totalBillsCount, yesterdayBillsCount);
+    const customerGrowth = calculateGrowth(activeCustomersCount, yesterdayActiveCustomersCount);
+    const pendingGrowth = calculateGrowth(rawPendingPayments, rawYesterdayPendingPayments);
 
     return {
       todaySummary: {
@@ -279,9 +307,9 @@ export const dashboardService = {
         pendingPayments: `₹ ${rawPendingPayments.toLocaleString('en-IN')}`,
         rawPendingPayments,
         salesGrowth,
-        billsGrowth: 0,
-        customerGrowth: 0,
-        pendingGrowth: 0,
+        billsGrowth,
+        customerGrowth,
+        pendingGrowth,
         todayDate: formattedTodayDate,
       },
       recentBills,

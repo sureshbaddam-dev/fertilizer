@@ -30,19 +30,20 @@ export default function TodaySummary({ summaryData }) {
   const pendingGrowth = summary?.pendingGrowth !== undefined ? summary.pendingGrowth : 0;
 
   const renderTrend = (val) => {
-    if (val > 0) {
+    const num = Math.round(Number(val) || 0);
+    if (num > 0) {
       return (
         <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
           <TrendingUp className="w-3 h-3" />
-          <span>+{val}%</span>
+          <span>+{num}%</span>
         </div>
       );
     }
-    if (val < 0) {
+    if (num < 0) {
       return (
         <div className="flex items-center gap-1 text-[10px] font-bold text-red-500">
           <TrendingDown className="w-3 h-3" />
-          <span>{val}%</span>
+          <span>{num}%</span>
         </div>
       );
     }
