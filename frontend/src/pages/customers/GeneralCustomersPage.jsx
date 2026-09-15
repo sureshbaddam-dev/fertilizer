@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { customerService } from '../../services/customerService';
 import { invoiceService } from '../../services/invoiceService';
-import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { generateGeneralCustomersPdf, printGeneralCustomersPdf } from '../../utils/pdfGenerator';
 import { useDebounce } from '../../hooks/useDebounce';

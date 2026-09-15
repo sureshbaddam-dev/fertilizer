@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Download, Users, Sparkles, DollarSign, TrendingUp } from 'lucide-react';
+import { BarChart3, Download, Users, Sparkles, DollarSign } from 'lucide-react';
 import { adminApiService } from '../../services/adminApiService';
 
 export default function ReportsPage() {

@@ -76,10 +76,10 @@ export default function ProductsPage() {
 
   // Sync fetched single product data to selectedViewProduct
   useEffect(() => {
-    if (singleProductRes && selectedViewProduct?._id !== singleProductRes._id) {
+    if (singleProductRes) {
       setSelectedViewProduct(singleProductRes);
     }
-  }, [singleProductRes, selectedViewProduct?._id]);
+  }, [singleProductRes]);
 
   const displayProductsList = productsApiData?.data?.products || [];
 
@@ -241,12 +241,15 @@ export default function ProductsPage() {
     onSuccess: (res) => {
       const updated = res.data?.product || res.data || displayProduct;
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      if (selectedProductId) {
-        queryClient.invalidateQueries({ queryKey: ['product-details', selectedProductId] });
-      }
+      queryClient.invalidateQueries({ queryKey: ['product-details'] });
+      queryClient.invalidateQueries({ queryKey: ['product-detail-drawer'] });
       setSelectedViewProduct(updated);
       setIsEditingProduct(false);
       setLiveDraftValues(null);
+      toast.success('Product updated successfully');
+    },
+    onError: (err) => {
+      toast.error('Failed to update product', { description: err?.response?.data?.message || err?.message });
     },
   });
 

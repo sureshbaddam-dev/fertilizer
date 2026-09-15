@@ -1,6 +1,6 @@
-import { apiClient } from './apiClient';
-import { queryClient } from '../utils/queryClient';
-import { normalizeUser } from '../utils/imageUtils';
+import { apiClient } from './apiClient.js';
+import { queryClient } from '../utils/queryClient.js';
+import { normalizeUser } from '../utils/imageUtils.js';
 
 let listeners = [];
 let isInitializing = true;

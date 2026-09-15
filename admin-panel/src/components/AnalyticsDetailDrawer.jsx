@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Eye, Users, UserCheck, BarChart3, Activity, Clock, Layers, ArrowUpRight, TrendingUp } from 'lucide-react';
+import { X, Eye, Users, UserCheck, BarChart3, Activity, Clock, Layers } from 'lucide-react';
 import {
   AreaChart,
   Area,

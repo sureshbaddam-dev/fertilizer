@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, Shield, Key, Save } from 'lucide-react';
+import { Lock, Save } from 'lucide-react';
 
 export default function SecurityPage() {
   return (

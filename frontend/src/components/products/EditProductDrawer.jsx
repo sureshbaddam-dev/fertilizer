@@ -3,6 +3,7 @@ import { ArrowLeft, Check, X, ChevronDown } from 'lucide-react';
 import ImageUpload from '../ui/ImageUpload';
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
 import { toInputValue } from '../../utils/imageUtils';
+import { isConfigured } from '../../utils/pricing';
 import { toast } from '../../contexts/ToastContext';
 
 export default function EditProductDrawer({
@@ -105,9 +106,9 @@ export default function EditProductDrawer({
         hsnCode: product.hsnCode || '',
         trackExpiry: product.trackExpiry ? 'Yes' : 'No',
         notes: product.notes || '',
-        discount: product.discount !== undefined && product.discount !== null && product.discount !== '' && Number(product.discount) !== 0 ? String(product.discount) : '',
+        discount: isConfigured(product.discount) ? String(product.discount) : '0',
         discountType: product.discountType || 'Percentage',
-        gstRate: product.gstRate !== undefined && product.gstRate !== null && product.gstRate !== '' ? String(product.gstRate) : '0',
+        gstRate: isConfigured(product.gstRate) ? String(product.gstRate) : '0',
       });
 
       const initialBatch = stockAvailableBatches[0] || rawBatches[0] || null;
@@ -123,20 +124,20 @@ export default function EditProductDrawer({
         const gstVal = initialBatch.gstRate;
 
         setBatchFormData({
-          purchasePrice: pPrice && Number(pPrice) !== 0 ? String(pPrice) : '',
-          sellingPrice: sPrice && Number(sPrice) !== 0 ? String(sPrice) : '',
-          mrp: mrpVal && Number(mrpVal) !== 0 ? String(mrpVal) : '',
-          discount: discVal !== undefined && discVal !== null && discVal !== '' && Number(discVal) !== 0 ? String(discVal) : '',
+          purchasePrice: isConfigured(pPrice) && Number(pPrice) !== 0 ? String(pPrice) : (isConfigured(pPrice) ? '0' : ''),
+          sellingPrice: isConfigured(sPrice) && Number(sPrice) !== 0 ? String(sPrice) : (isConfigured(sPrice) ? '0' : ''),
+          mrp: isConfigured(mrpVal) && Number(mrpVal) !== 0 ? String(mrpVal) : (isConfigured(mrpVal) ? '0' : ''),
+          discount: isConfigured(discVal) ? String(discVal) : '',
           discountType: discTypeVal,
-          gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' ? String(gstVal) : '0',
+          gstRate: isConfigured(gstVal) ? String(gstVal) : '',
           currentStock: Number(initialBatch.currentStock ?? initialBatch.quantityRemaining ?? product.currentStock ?? 0),
         });
       } else {
         setSelectedBatchId('');
         setBatchFormData({
-          purchasePrice: product.defaultPurchaseRate && Number(product.defaultPurchaseRate) !== 0 ? String(product.defaultPurchaseRate) : '',
-          sellingPrice: product.defaultSellingPrice && Number(product.defaultSellingPrice) !== 0 ? String(product.defaultSellingPrice) : '',
-          mrp: product.defaultMrp && Number(product.defaultMrp) !== 0 ? String(product.defaultMrp) : '',
+          purchasePrice: isConfigured(product.defaultPurchaseRate) && Number(product.defaultPurchaseRate) !== 0 ? String(product.defaultPurchaseRate) : '',
+          sellingPrice: isConfigured(product.defaultSellingPrice) && Number(product.defaultSellingPrice) !== 0 ? String(product.defaultSellingPrice) : '',
+          mrp: isConfigured(product.defaultMrp) && Number(product.defaultMrp) !== 0 ? String(product.defaultMrp) : '',
           discount: '',
           discountType: 'Percentage',
           gstRate: '',
@@ -159,12 +160,12 @@ export default function EditProductDrawer({
       const gstVal = target.gstRate;
 
       setBatchFormData({
-        purchasePrice: pPrice && Number(pPrice) !== 0 ? String(pPrice) : '',
-        sellingPrice: sPrice && Number(sPrice) !== 0 ? String(sPrice) : '',
-        mrp: mrpVal && Number(mrpVal) !== 0 ? String(mrpVal) : '',
-        discount: discVal !== undefined && discVal !== null && discVal !== '' && Number(discVal) !== 0 ? String(discVal) : '',
+        purchasePrice: isConfigured(pPrice) && Number(pPrice) !== 0 ? String(pPrice) : (isConfigured(pPrice) ? '0' : ''),
+        sellingPrice: isConfigured(sPrice) && Number(sPrice) !== 0 ? String(sPrice) : (isConfigured(sPrice) ? '0' : ''),
+        mrp: isConfigured(mrpVal) && Number(mrpVal) !== 0 ? String(mrpVal) : (isConfigured(mrpVal) ? '0' : ''),
+        discount: isConfigured(discVal) ? String(discVal) : '',
         discountType: discTypeVal,
-        gstRate: gstVal !== undefined && gstVal !== null && gstVal !== '' ? String(gstVal) : '0',
+        gstRate: isConfigured(gstVal) ? String(gstVal) : '',
         currentStock: Number(target.currentStock ?? target.quantityRemaining ?? 0),
       });
     }
@@ -225,13 +226,13 @@ export default function EditProductDrawer({
         // Selected batch information
         selectedBatchId: selectedBatchObj?._id || selectedBatchObj?.id,
         selectedBatchNumber: selectedBatchObj?.batchNumber,
-        purchasePrice: !batchFormData.purchasePrice || batchFormData.purchasePrice === '0' ? 0 : Number(batchFormData.purchasePrice),
-        purchaseRate: !batchFormData.purchasePrice || batchFormData.purchasePrice === '0' ? 0 : Number(batchFormData.purchasePrice),
-        sellingPrice: !batchFormData.sellingPrice || batchFormData.sellingPrice === '0' ? 0 : Number(batchFormData.sellingPrice),
-        mrp: !batchFormData.mrp || batchFormData.mrp === '0' ? 0 : Number(batchFormData.mrp),
-        batchDiscount: batchFormData.discount === '' || batchFormData.discount === undefined || batchFormData.discount === null ? 0 : Number(batchFormData.discount),
+        purchasePrice: !batchFormData.purchasePrice ? undefined : Number(batchFormData.purchasePrice),
+        purchaseRate: !batchFormData.purchasePrice ? undefined : Number(batchFormData.purchasePrice),
+        sellingPrice: !batchFormData.sellingPrice ? undefined : Number(batchFormData.sellingPrice),
+        mrp: !batchFormData.mrp ? undefined : Number(batchFormData.mrp),
+        batchDiscount: batchFormData.discount === '' || batchFormData.discount === undefined || batchFormData.discount === null ? null : Number(batchFormData.discount),
         batchDiscountType: batchFormData.discountType || 'Percentage',
-        batchGstRate: batchFormData.gstRate === '' || batchFormData.gstRate === undefined || batchFormData.gstRate === null ? 0 : Number(batchFormData.gstRate),
+        batchGstRate: batchFormData.gstRate === '' || batchFormData.gstRate === undefined || batchFormData.gstRate === null ? null : Number(batchFormData.gstRate),
       });
     }
   };

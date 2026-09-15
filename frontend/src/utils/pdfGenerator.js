@@ -1,6 +1,6 @@
-import { getItemUnitPrice } from './pricing';
-import { formatCustomerLedgerAddress } from './statementCalculator';
-import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64';
+import { getItemUnitPrice, formatItemDiscount, normalizeMoney } from './pricing.js';
+import { formatCustomerLedgerAddress } from './statementCalculator.js';
+import { VEDIXA_LOGO_BASE64 } from './vedixaLogoBase64.js';
 
 async function getJsPdf() {
   const { default: jsPDF } = await import('jspdf');
@@ -721,7 +721,7 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   // 3. ITEMS TABLE (Printable width: 194mm, Margins 8mm left / 8mm right, Borderless, Alternating Colors, All Centered)
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const rawSubtotal = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty || 1) * getItemUnitPrice(it)), 0);
-  const billDiscount = Number(invoice.discountAmount || invoice.discount || 0);
+  const totalBillDiscount = Number(invoice.discountAmount || invoice.discount || 0);
 
   const tableRows = items.map((it, idx) => {
     const pName = it.productName || it.name || 'Agri Product';
@@ -731,18 +731,19 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     const itemGross = qty * rate;
 
     let disc = Number(it.discountAmount || it.discount || 0);
-    if (disc <= 0 && billDiscount > 0 && rawSubtotal > 0) {
-      disc = Math.round((itemGross / rawSubtotal) * billDiscount * 100) / 100;
+    if (disc <= 0 && totalBillDiscount > 0 && rawSubtotal > 0) {
+      disc = Math.round((itemGross / rawSubtotal) * totalBillDiscount * 100) / 100;
     }
 
     const total = Math.max(0, itemGross - disc);
+    const discountDisplay = formatItemDiscount(it, disc);
 
     return [
       idx + 1,
       pName,
       `${qty} ${unit}`,
       formatCurrency(rate),
-      disc > 0 ? formatCurrency(disc) : formatCurrency(0),
+      discountDisplay,
       formatCurrency(total),
     ];
   });
@@ -788,14 +789,21 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   // 4. STATEMENT SUMMARY CARD (Positioned dynamically below lastAutoTable.finalY + 5, X=110mm, width=92mm, right edge=202mm)
   const finalY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 110) + 5;
 
-  const subtotal = Number(invoice.subtotal || invoice.subTotal || invoice.totalAmount || 0);
-  const discountVal = Number(invoice.discountAmount || invoice.discount || 0);
+  const subtotal = Number(invoice.subtotal || rawSubtotal || invoice.subTotal || invoice.totalAmount || 0);
+  const productDiscount = Number(invoice.productDiscountAmount || 0);
+  const billDiscount = Number(invoice.billDiscountAmount || 0);
+  const discountVal = Number(invoice.discountAmount || (productDiscount + billDiscount) || invoice.discount || 0);
+  const taxableVal = Number(
+    invoice.taxableAmount !== undefined
+      ? invoice.taxableAmount
+      : Math.max(0, normalizeMoney(subtotal - discountVal))
+  );
   const taxAmount = Number(invoice.taxAmount || 0);
-  const grandTotal = Number(invoice.grandTotal || invoice.totalAmount || invoice.total || (subtotal - discountVal));
-  const paidAmount = Number(invoice.paidAmount || invoice.paid || (statusStr === 'PAID' ? grandTotal : 0));
-  const dueAmount = Number(invoice.dueAmount || invoice.due || Math.max(0, grandTotal - paidAmount));
+  const grandTotal = Number(invoice.grandTotal || invoice.totalAmount || invoice.total || (taxableVal + taxAmount));
+  const paidAmount = Number(invoice.paidAmount !== undefined ? invoice.paidAmount : (invoice.paid || (statusStr === 'PAID' ? grandTotal : 0)));
+  const dueAmount = Number(invoice.dueAmount !== undefined ? invoice.dueAmount : (invoice.due || Math.max(0, grandTotal - paidAmount)));
 
-  const summaryRows = 4 + (discountVal > 0 ? 1 : 0) + (taxAmount > 0 ? 1 : 0);
+  const summaryRows = 4 + (productDiscount > 0 ? 1 : 0) + (billDiscount > 0 ? 1 : (discountVal > 0 && productDiscount <= 0 ? 1 : 0)) + 1 + (taxAmount > 0 ? 1 : 0);
   const summaryHeight = 8 + summaryRows * 5;
 
   doc.setFillColor(248, 250, 248);
@@ -817,7 +825,13 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
   doc.setTextColor(15, 23, 42);
   doc.text(formatCurrency(subtotal), 198, currentLineY, { align: 'right' });
 
-  if (discountVal > 0) {
+  if (productDiscount > 0) {
+    currentLineY += 5;
+    doc.setTextColor(71, 85, 105);
+    doc.text('Product Discount:', 114, currentLineY);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`- ${formatCurrency(productDiscount)}`, 198, currentLineY, { align: 'right' });
+  } else if (discountVal > 0 && billDiscount <= 0) {
     currentLineY += 5;
     doc.setTextColor(71, 85, 105);
     doc.text('Discount:', 114, currentLineY);
@@ -825,12 +839,27 @@ export async function buildInvoicePdfDoc(invoice = {}, shopSettings = {}) {
     doc.text(`- ${formatCurrency(discountVal)}`, 198, currentLineY, { align: 'right' });
   }
 
+  if (billDiscount > 0) {
+    currentLineY += 5;
+    doc.setTextColor(71, 85, 105);
+    doc.text('Bill Discount:', 114, currentLineY);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`- ${formatCurrency(billDiscount)}`, 198, currentLineY, { align: 'right' });
+  }
+
+  currentLineY += 5;
+  doc.setTextColor(71, 85, 105);
+  doc.text('Taxable Amount:', 114, currentLineY);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatCurrency(taxableVal), 198, currentLineY, { align: 'right' });
+
   if (taxAmount > 0) {
     currentLineY += 5;
     doc.setTextColor(71, 85, 105);
-    doc.text('Tax Amount:', 114, currentLineY);
+    const gstRateDisplay = invoice.gstCalculation?.gstRateLabel || (invoice.gstRate ? `${invoice.gstRate}%` : '');
+    doc.text(gstRateDisplay ? `GST / Tax (${gstRateDisplay}):` : 'GST / Tax:', 114, currentLineY);
     doc.setTextColor(15, 23, 42);
-    doc.text(formatCurrency(taxAmount), 198, currentLineY, { align: 'right' });
+    doc.text(`+ ${formatCurrency(taxAmount)}`, 198, currentLineY, { align: 'right' });
   }
 
   currentLineY += 5;

@@ -16,13 +16,15 @@ import {
 } from 'lucide-react';
 import { invoiceService } from '../../services/invoiceService';
 import { productService } from '../../services/productService';
-import { getItemUnitPrice } from '../../utils/pricing';
+import { useSettings } from '../../contexts/SettingsContext';
+import { getItemUnitPrice, calculateInvoiceTotals, normalizeMoney, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../utils/pricing';
 import { toast } from '../../contexts/ToastContext';
 
 export default function EditInvoicePage() {
   const { invoiceId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { settings: shopSettings } = useSettings();
 
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
@@ -70,11 +72,19 @@ export default function EditInvoicePage() {
             productId: it.productId || it.product || it.id,
             productName: it.productName || it.name || 'Agri Product',
             quantity: qty,
-            unit: it.unit || 'Bag',
+            qty,
+            unit: it.unit || it.unitName || 'Bag',
             unitPrice: price,
+            price,
+            discount: it.discVal !== undefined ? it.discVal : (it.discount !== undefined ? it.discount : (it.discountPct || 0)),
+            discountType: it.discType || it.discountType || 'Percentage',
+            discountPct: Number(it.discountPct || 0),
             discountAmount: Number(it.discountAmount || 0),
             gstRate: Number(it.gstRate ?? 0),
+            gstAmount: Number(it.gstAmount || 0),
+            taxableAmount: Number(it.taxableAmount || 0),
             totalAmount: total,
+            lineTotal: total,
           };
         })
       );
@@ -121,7 +131,12 @@ export default function EditInvoicePage() {
   // Add Item to Bill with Auto-filled Details
   const handleAddItem = (prod) => {
     if (!prod) return;
-    const price = getItemUnitPrice(prod);
+    const rawBatches = prod.batches || [];
+    const activeBatch = rawBatches.find((b) => (b.currentStock > 0 || b.stock > 0)) || rawBatches[0] || null;
+    const price = getItemUnitPrice(prod, activeBatch);
+    const effDisc = resolveEffectiveDiscount(activeBatch, prod);
+    const effGst = resolveEffectiveGstRate(activeBatch, prod);
+
     const qty = 1;
     const total = qty * price;
     setItems((prev) => [
@@ -130,12 +145,16 @@ export default function EditInvoicePage() {
         id: `new-${Date.now()}-${prev.length}`,
         productId: prod._id || prod.id,
         productName: prod.name || prod.productName || 'Agri Product',
+        batchNumber: activeBatch?.batchNumber || '',
         quantity: qty,
         unit: prod.unit || 'Bag',
         unitPrice: price,
-        discountAmount: Number(prod.discountAmount || 0),
-        gstRate: Number(prod.gstRate ?? 0),
-        hsnCode: prod.hsnCode || '',
+        discount: effDisc.discount,
+        discountType: effDisc.discountType,
+        discountAmount: effDisc.discountType === 'Amount' ? effDisc.discount : normalizeMoney((price * effDisc.discount) / 100),
+        discountPct: effDisc.discountType === 'Percentage' ? effDisc.discount : 0,
+        gstRate: Number(effGst ?? 0),
+        hsnCode: prod.hsnCode || activeBatch?.hsnCode || '',
         totalAmount: total,
       },
     ]);
@@ -186,9 +205,24 @@ export default function EditInvoicePage() {
   };
 
   // Calculations
-  const subtotal = useMemo(() => items.reduce((acc, it) => acc + Number(it.totalAmount || 0), 0), [items]);
-  const discVal = Math.max(0, Number(discountAmount) || 0);
-  const grandTotal = Math.max(0, subtotal - discVal);
+  const invoiceCalculation = useMemo(() => {
+    return calculateInvoiceTotals({
+      items,
+      manualDiscountValue: discountAmount,
+      manualDiscountType: 'amount',
+      shopDiscountData: null,
+      isGstEnabled: shopSettings?.isGstEnabled !== false,
+      gstType: shopSettings?.gstType || 'CGST_SGST',
+      defaultGstRate: Number(shopSettings?.defaultGst ?? 0),
+    });
+  }, [items, discountAmount, shopSettings]);
+
+  const subtotal = invoiceCalculation.grossSubtotal;
+  const productDiscountTotal = invoiceCalculation.productDiscountTotal;
+  const billDiscountAmount = invoiceCalculation.billDiscountAmount;
+  const totalDiscount = invoiceCalculation.totalDiscount;
+  const taxAmount = invoiceCalculation.gstTotal;
+  const grandTotal = invoiceCalculation.grandTotal;
   const paidVal = Math.max(0, Number(paidAmount) || 0);
   const dueVal = Math.max(0, grandTotal - paidVal);
 
@@ -224,13 +258,16 @@ export default function EditInvoicePage() {
     }
     setErrorMsg('');
 
-    const formattedItems = items.map((it) => ({
+    const formattedItems = invoiceCalculation.items.map((it) => ({
       productId: it.productId,
       productName: it.productName,
       quantity: Number(it.quantity || 1),
       unitPrice: Number(it.unitPrice !== undefined && it.unitPrice !== null ? it.unitPrice : 0),
       discountAmount: Number(it.discountAmount || 0),
+      discountPct: Number(it.discountPct || 0),
       gstRate: Number(it.gstRate ?? 0),
+      gstAmount: Number(it.gstAmount || 0),
+      taxableAmount: Number(it.taxableAmount || 0),
       totalAmount: Number(it.totalAmount),
     }));
 
@@ -240,7 +277,8 @@ export default function EditInvoicePage() {
       customerAddress: customerAddress.trim(),
       items: formattedItems,
       subtotal,
-      discountAmount: discVal,
+      discountAmount: totalDiscount,
+      taxAmount,
       totalAmount: grandTotal,
       paidAmount: paidVal,
       dueAmount: dueVal,
@@ -643,6 +681,13 @@ export default function EditInvoicePage() {
               <span className="font-bold text-gray-900">₹ {subtotal.toLocaleString('en-IN')}</span>
             </div>
 
+            {productDiscountTotal > 0 && (
+              <div className="flex justify-between text-emerald-700">
+                <span>Product Discount:</span>
+                <span className="font-bold">- ₹ {productDiscountTotal.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-center text-gray-600">
               <span>Bill Discount (₹):</span>
               <input
@@ -652,6 +697,13 @@ export default function EditInvoicePage() {
                 className="w-24 text-right font-mono font-bold px-2 py-0.5 border border-gray-300 rounded-lg text-xs"
               />
             </div>
+
+            {taxAmount > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>GST / Tax:</span>
+                <span className="font-bold text-gray-900">+ ₹ {taxAmount.toLocaleString('en-IN')}</span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1 font-mono">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Archive, RefreshCw, X } from 'lucide-react';
+import { Archive, RefreshCw, X } from 'lucide-react';
 
 export default function ConfirmDialog({
   isOpen,

@@ -1,5 +1,5 @@
 import { adminService } from '../services/admin.service.js';
-import { sendSuccess, sendError } from '../../../common/apiResponse.js';
+import { sendSuccess } from '../../../common/apiResponse.js';
 
 export const adminController = {
   // 1. DASHBOARD & STATS

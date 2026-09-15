@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, X, Check, Search, AlertCircle, Info, Calendar, DollarSign, Tag, ShieldCheck, Plus } from 'lucide-react';
+import { Package, X, Check, Search, AlertCircle, ShieldCheck, Plus } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import QuickAddProductDrawer from '../purchases/QuickAddProductDrawer';
 import { productService } from '../../services/productService';

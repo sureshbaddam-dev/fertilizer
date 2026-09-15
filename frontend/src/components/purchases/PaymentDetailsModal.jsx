@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, CheckCircle2, DollarSign, Calendar, FileText, Trash2, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle2, DollarSign, Trash2, AlertTriangle } from 'lucide-react';
 import { supplierService } from '../../services/supplierService';
 import { toast } from '../../contexts/ToastContext';
 

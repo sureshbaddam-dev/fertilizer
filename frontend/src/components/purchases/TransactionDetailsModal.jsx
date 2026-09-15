@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, FileText, CheckCircle2, Clock, Calendar, Building, Package, CreditCard, Tag, Trash2, AlertTriangle, RotateCcw, Eye } from 'lucide-react';
+import { X, FileText, CheckCircle2, Clock, CreditCard, Trash2, AlertTriangle, Eye } from 'lucide-react';
 import { purchaseService } from '../../services/purchaseService';
 import { supplierService } from '../../services/supplierService';
 import { toast } from '../../contexts/ToastContext';
@@ -317,8 +317,8 @@ export default function TransactionDetailsModal({
                             <td className="py-2.5 px-3 font-mono text-gray-400">{idx + 1}</td>
                             <td className="py-2.5 px-3 font-bold text-gray-900">{prodName}</td>
                             <td className="py-2.5 px-3 text-center font-mono font-medium text-emerald-800">{qty}</td>
-                            <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap">₹ {rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900 whitespace-nowrap">₹ {total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap">₹ {Math.round(rate).toLocaleString('en-IN')}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900 whitespace-nowrap">₹ {Math.round(total).toLocaleString('en-IN')}</td>
                           </tr>
                         );
                       })
@@ -381,7 +381,7 @@ export default function TransactionDetailsModal({
                 </div>
                 <div className="text-right font-mono text-xs">
                   <span className="text-gray-500 font-sans text-[10px] block">Total Paid:</span>
-                  <span className="font-extrabold text-[#047857]">₹ {calcTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-extrabold text-[#047857]">₹ {Math.round(calcTotalPaid).toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -495,7 +495,7 @@ export default function TransactionDetailsModal({
                 </div>
               ) : (
                 <div className="p-3 text-center text-gray-400 italic bg-gray-50/50 border border-dashed border-gray-200 rounded-xl text-xs">
-                  No payments recorded against this purchase invoice yet. Outstanding: ₹ {calcDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  No payments recorded against this purchase invoice yet. Outstanding: ₹ {Math.round(calcDue).toLocaleString('en-IN')}
                 </div>
               )}
             </div>
@@ -522,7 +522,7 @@ export default function TransactionDetailsModal({
                   <div className="flex justify-between items-center text-gray-700">
                     <span>Bill Total (Invoice Amount)</span>
                     <span className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
-                      ₹ {totalInvAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(totalInvAmt).toLocaleString('en-IN')}
                     </span>
                   </div>
 
@@ -530,7 +530,7 @@ export default function TransactionDetailsModal({
                     <div className="flex justify-between items-center text-[#047857] font-semibold">
                       <span>Supplier Advance Used</span>
                       <span className="font-mono font-bold text-sm whitespace-nowrap">
-                        - ₹ {advanceUsed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        - ₹ {Math.round(advanceUsed).toLocaleString('en-IN')}
                       </span>
                     </div>
                   )}
@@ -538,7 +538,7 @@ export default function TransactionDetailsModal({
                   <div className="flex justify-between items-center text-gray-800 font-semibold">
                     <span>Amount Payable After Advance</span>
                     <span className="font-mono font-bold whitespace-nowrap">
-                      ₹ {Math.max(0, totalInvAmt - advanceUsed).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(Math.max(0, totalInvAmt - advanceUsed)).toLocaleString('en-IN')}
                     </span>
                   </div>
 
@@ -546,7 +546,7 @@ export default function TransactionDetailsModal({
                     <div className="flex justify-between items-center text-rose-700 font-medium">
                       <span>Returned / Adjusted</span>
                       <span className="font-mono font-bold whitespace-nowrap">
-                        - ₹ {returnAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        - ₹ {Math.round(returnAmt).toLocaleString('en-IN')}
                       </span>
                     </div>
                   )}
@@ -554,14 +554,14 @@ export default function TransactionDetailsModal({
                   <div className="flex justify-between items-center text-emerald-800 font-semibold">
                     <span>Paid Amount</span>
                     <span className="font-mono font-bold text-sm whitespace-nowrap">
-                      ₹ {effectivePaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(effectivePaid).toLocaleString('en-IN')}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-amber-800 font-semibold">
                     <span>Due Amount</span>
                     <span className={`font-mono font-bold whitespace-nowrap ${calcDue <= 0 ? 'text-[#047857]' : 'text-amber-800'}`}>
-                      ₹ {calcDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(calcDue).toLocaleString('en-IN')}
                     </span>
                   </div>
                 </>
@@ -572,7 +572,7 @@ export default function TransactionDetailsModal({
                   <div className="flex justify-between items-center text-rose-800 font-semibold">
                     <span>Return Value</span>
                     <span className="font-mono font-bold text-sm whitespace-nowrap">
-                      ₹ {returnAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(returnAmt).toLocaleString('en-IN')}
                     </span>
                   </div>
 
@@ -580,7 +580,7 @@ export default function TransactionDetailsModal({
                     <div className="flex justify-between items-center text-emerald-800 font-semibold">
                       <span>Refund Received ({transaction.paymentMode || 'Cash'})</span>
                       <span className="font-mono font-bold whitespace-nowrap">
-                        ₹ {Number(transaction.refundAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₹ {Math.round(Number(transaction.refundAmount)).toLocaleString('en-IN')}
                       </span>
                     </div>
                   )}
@@ -588,7 +588,7 @@ export default function TransactionDetailsModal({
                   <div className="flex justify-between items-center text-purple-800 font-semibold">
                     <span>Supplier Credit Created</span>
                     <span className="font-mono font-bold whitespace-nowrap">
-                      ₹ {Math.max(0, returnAmt - Number(transaction.refundAmount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(Math.max(0, returnAmt - Number(transaction.refundAmount || 0))).toLocaleString('en-IN')}
                     </span>
                   </div>
                 </>
@@ -598,7 +598,7 @@ export default function TransactionDetailsModal({
                 <div className="flex justify-between items-center text-emerald-800 font-semibold">
                   <span>Paid Amount</span>
                   <span className="font-mono font-bold text-sm whitespace-nowrap">
-                    ₹ {Number(transaction.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹ {Math.round(Number(transaction.paidAmount || 0)).toLocaleString('en-IN')}
                   </span>
                 </div>
               )}
@@ -607,7 +607,7 @@ export default function TransactionDetailsModal({
                 <div className="flex justify-between items-center text-sky-800 font-semibold">
                   <span>Refund Received ({transaction.paymentMode || 'Cash'})</span>
                   <span className="font-mono font-bold text-sm whitespace-nowrap">
-                    ₹ {Number(transaction.refundAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹ {Math.round(Number(transaction.refundAmount || 0)).toLocaleString('en-IN')}
                   </span>
                 </div>
               )}
@@ -616,8 +616,8 @@ export default function TransactionDetailsModal({
                 <span>Final Supplier Balance</span>
                 <span className={`font-mono text-sm whitespace-nowrap ${runningBal < 0 ? 'text-purple-700' : 'text-gray-900'}`}>
                   {runningBal < 0
-                    ? `-₹ ${Math.abs(runningBal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Advance)`
-                    : `₹ ${runningBal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    ? `-₹ ${Math.round(Math.abs(runningBal)).toLocaleString('en-IN')} (Advance)`
+                    : `₹ ${Math.round(runningBal).toLocaleString('en-IN')}`}
                 </span>
               </div>
             </div>
@@ -871,7 +871,7 @@ export default function TransactionDetailsModal({
               <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
                 <span className="text-gray-500 font-medium">Payment Amount</span>
                 <span className="font-mono font-extrabold text-[#047857] text-sm">
-                  ₹ {Number(viewingPayment.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(Number(viewingPayment.paidAmount || 0)).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1.5 border-b border-gray-100">

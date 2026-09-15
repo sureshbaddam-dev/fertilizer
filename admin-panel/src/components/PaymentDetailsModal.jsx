@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CreditCard, ExternalLink, Calendar, CheckCircle2, XCircle, User, Phone, ShieldCheck } from 'lucide-react';
+import { X, CreditCard, ExternalLink, Calendar, User, Phone, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from './StatusBadge';
 import { formatISTDateTime } from '../utils/adminDateUtils';

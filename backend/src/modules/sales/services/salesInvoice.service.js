@@ -9,7 +9,7 @@ import { StockLedger } from '../../purchases/models/stockLedger.model.js';
 import { logger } from '../../../config/logger.config.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
-import { calculateInvoicePaymentStatus, normalizeMoney, MONEY_TOLERANCE } from '../../../utils/pricingUtils.js';
+import { calculateInvoicePaymentStatus, normalizeMoney, MONEY_TOLERANCE, isConfigured, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../../utils/pricingUtils.js';
 
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 
@@ -369,42 +369,47 @@ export const salesInvoiceService = {
     }
 
 
-    // 2. Stock Validation & Item Snapshots (In-Memory Processing)
+    // 2. Stock Validation (Grouped per Product to Prevent Multi-Line Overselling)
     const tValidateStart = Date.now();
+    const requestedQtyByProduct = new Map();
     for (const item of items) {
-      const prodId = item.productId || item.id || item._id;
+      const pIdStr = (item.productId || item.id || item._id)?.toString();
       const qty = Number(item.qty || item.quantity || 0);
-      if (prodId && qty > 0) {
-        let prod = productMap.get(prodId?.toString());
-        if (!prod && typeof prodId === 'string') {
-          prod = await Product.findOne({
-            userId,
-            $or: [{ name: new RegExp(`^${prodId.trim()}$`, 'i') }, { code: prodId }],
-          }).populate('defaultUnitId').lean().exec();
-          if (prod) productMap.set(prod._id.toString(), prod);
-        }
+      if (pIdStr && qty > 0) {
+        requestedQtyByProduct.set(pIdStr, (requestedQtyByProduct.get(pIdStr) || 0) + qty);
+      }
+    }
 
-        if (!prod) {
-          throw new AppError(`Product with ID '${prodId}' not found`, HTTP_STATUS.BAD_REQUEST);
-        }
+    for (const [prodIdStr, totalRequestedQty] of requestedQtyByProduct.entries()) {
+      let prod = productMap.get(prodIdStr);
+      if (!prod && typeof prodIdStr === 'string') {
+        prod = await Product.findOne({
+          userId,
+          $or: [{ _id: prodIdStr }, { name: new RegExp(`^${prodIdStr.trim()}$`, 'i') }, { code: prodIdStr }],
+        }).populate('defaultUnitId').lean().exec();
+        if (prod) productMap.set(prod._id.toString(), prod);
+      }
 
-        const prodName = prod.name || item.name || item.productName || 'Product';
-        const unitName = prod.defaultUnitId?.shortName || item.unit || 'Bag';
-        const activeBatchesForStock = batchMap.get(prod._id.toString()) || [];
+      if (!prod) {
+        throw new AppError(`Product with ID '${prodIdStr}' not found`, HTTP_STATUS.BAD_REQUEST);
+      }
 
-        let availableStock = 0;
-        if (activeBatchesForStock.length > 0) {
-          availableStock = activeBatchesForStock.reduce((sum, b) => sum + Math.max(0, Number(b.currentStock || 0)), 0);
-        } else {
-          availableStock = Math.max(0, Number(prod.totalStock ?? prod.currentStock ?? 0));
-        }
+      const prodName = prod.name || 'Product';
+      const unitName = prod.defaultUnitId?.shortName || 'Bag';
+      const activeBatchesForStock = batchMap.get(prod._id.toString()) || [];
 
-        if (availableStock < qty) {
-          throw new AppError(
-            `Only ${availableStock} ${unitName}s available for "${prodName}". Requested: ${qty}.`,
-            HTTP_STATUS.BAD_REQUEST
-          );
-        }
+      let availableStock = 0;
+      if (activeBatchesForStock.length > 0) {
+        availableStock = activeBatchesForStock.reduce((sum, b) => sum + Math.max(0, Number(b.currentStock || 0)), 0);
+      } else {
+        availableStock = Math.max(0, Number(prod.totalStock ?? prod.currentStock ?? 0));
+      }
+
+      if (availableStock < totalRequestedQty) {
+        throw new AppError(
+          `Insufficient stock for "${prodName}". Available stock: ${availableStock} ${unitName}s, Total requested: ${totalRequestedQty}.`,
+          HTTP_STATUS.BAD_REQUEST
+        );
       }
     }
 
@@ -466,6 +471,9 @@ export const salesInvoiceService = {
             quantity: allocatedQty,
             purchaseRate: bPurchaseRate,
             sellingPrice: bSellingPrice,
+            discount: batch.discount !== undefined && batch.discount !== null && batch.discount !== '' ? batch.discount : undefined,
+            discountType: batch.discountType || undefined,
+            gstRate: batch.gstRate !== undefined && batch.gstRate !== null && batch.gstRate !== '' ? batch.gstRate : undefined,
           });
 
           totalLineCost += allocatedQty * bPurchaseRate;
@@ -482,21 +490,13 @@ export const salesInvoiceService = {
       }
 
       if (remainingToAllocate > 0) {
-        let fallbackCostRate = Number(i.purchaseCostRate || i.purchaseRate || prod?.defaultPurchaseRate || 0);
-        if (fallbackCostRate <= 0 && prod) {
-          const allBatchesForProd = batchMap.get(prod._id.toString()) || [];
-          const anyValidBatch = allBatchesForProd.find((b) => Number(b.purchaseRate || 0) > 0);
-          if (anyValidBatch) {
-            fallbackCostRate = Number(anyValidBatch.purchaseRate);
-          }
-        }
-        const fallbackSellingPrice = inputUnitPrice || Number(prod?.defaultSellingPrice || 0);
-        totalLineCost += remainingToAllocate * fallbackCostRate;
-        totalBatchSellingRevenue += remainingToAllocate * fallbackSellingPrice;
+        throw new AppError(
+          `Insufficient batch stock for "${pName}". Cannot allocate ${remainingToAllocate} ${uName}s.`,
+          HTTP_STATUS.BAD_REQUEST
+        );
       }
 
       const distinctSellingPrices = new Set(itemBatchAllocations.map((a) => a.sellingPrice));
-      const discountPct = Number(i.discountPct || i.discountPercent || 0);
 
       if (itemBatchAllocations.length > 1 && distinctSellingPrices.size > 1) {
         for (const alloc of itemBatchAllocations) {
@@ -504,14 +504,41 @@ export const salesInvoiceService = {
           const allocSellingPrice = alloc.sellingPrice;
           const allocCostRate = alloc.purchaseRate;
 
+          const allocDiscObj = isConfigured(i.discountPct) || isConfigured(i.discVal) || isConfigured(i.discountVal)
+            ? {
+                discount: Number(i.discountPct ?? i.discVal ?? i.discountVal),
+                discountType: i.discType || i.discountType || 'Percentage',
+              }
+            : resolveEffectiveDiscount(alloc, prod);
+
+          const allocDiscVal = allocDiscObj.discount;
+          const allocDiscType = allocDiscObj.discountType;
+          const isAllocAmountDisc = allocDiscType.toLowerCase() === 'amount' || allocDiscType === '₹';
+
           const allocGrossTotal = allocQty * allocSellingPrice;
-          const allocDiscountAmount = (allocGrossTotal * discountPct) / 100;
-          const allocTaxableAmount = Math.max(0, allocGrossTotal - allocDiscountAmount);
-          const hasItemGst = i.gstAmount !== undefined || i.taxableAmount !== undefined || Number(i.gstRate || 0) > 0;
-          const allocGstAmount = hasItemGst ? (allocTaxableAmount * gst) / 100 : 0;
-          const allocLineTotal = allocTaxableAmount + allocGstAmount;
+          let allocDiscountAmount = 0;
+          let allocDiscountPct = 0;
+
+          if (isAllocAmountDisc && allocDiscVal > 0) {
+            const unitDisc = allocDiscVal;
+            allocDiscountAmount = normalizeMoney(Math.min(allocGrossTotal, unitDisc <= allocSellingPrice ? allocQty * unitDisc : unitDisc));
+            allocDiscountPct = allocGrossTotal > 0 ? normalizeMoney((allocDiscountAmount / allocGrossTotal) * 100) : 0;
+          } else if (allocDiscVal > 0) {
+            allocDiscountPct = allocDiscVal;
+            allocDiscountAmount = normalizeMoney((allocGrossTotal * allocDiscVal) / 100);
+          } else if (isConfigured(i.discountAmount) && Number(i.discountAmount) > 0) {
+            allocDiscountAmount = normalizeMoney(Math.min(allocGrossTotal, Number(i.discountAmount)));
+            allocDiscountPct = allocGrossTotal > 0 ? normalizeMoney((allocDiscountAmount / allocGrossTotal) * 100) : 0;
+          }
+
+          const allocTaxableAmount = Math.max(0, normalizeMoney(allocGrossTotal - allocDiscountAmount));
+          const allocGstRate = isConfigured(i.gstRate) || isConfigured(i.gstPercent)
+            ? Number(i.gstRate ?? i.gstPercent)
+            : resolveEffectiveGstRate(alloc, prod);
+          const allocGstAmount = allocGstRate > 0 ? normalizeMoney((allocTaxableAmount * allocGstRate) / 100) : 0;
+          const allocLineTotal = normalizeMoney(allocTaxableAmount + allocGstAmount);
           const allocLineCost = allocQty * allocCostRate;
-          const allocLineProfit = allocTaxableAmount - allocLineCost;
+          const allocLineProfit = normalizeMoney(allocTaxableAmount - allocLineCost);
 
           itemSnapshots.push({
             productId: prod?._id || pId,
@@ -520,6 +547,7 @@ export const salesInvoiceService = {
             brandName: bName,
             categoryName: cName,
             unitName: uName,
+            unit: uName,
             hsnCode: hsn,
             image: prod?.image || i.image || '',
             batchNumber: alloc.batchNumber,
@@ -527,10 +555,15 @@ export const salesInvoiceService = {
             quantity: allocQty,
             unitPrice: allocSellingPrice,
             purchaseCostRate: allocCostRate,
-            discountPct,
+            discount: allocDiscVal,
+            discountType: allocDiscType,
+            discountPct: allocDiscountPct,
             discountAmount: allocDiscountAmount,
-            gstRate: hasItemGst ? gst : 0,
+            discVal: allocDiscVal,
+            discType: allocDiscType,
+            gstRate: allocGstRate,
             gstAmount: allocGstAmount,
+            taxAmount: allocGstAmount,
             taxableAmount: allocTaxableAmount,
             lineTotal: allocLineTotal,
             lineProfit: allocLineProfit,
@@ -546,12 +579,41 @@ export const salesInvoiceService = {
 
         const effectiveAverageCostRate = qty > 0 ? totalLineCost / qty : 0;
         const lineGrossTotal = qty * effectiveSellingUnitPrice;
-        const lineDiscountAmount = i.discountAmount !== undefined ? Number(i.discountAmount) : (lineGrossTotal * discountPct) / 100;
-        const lineTaxableAmount = i.taxableAmount !== undefined ? Number(i.taxableAmount) : Math.max(0, lineGrossTotal - lineDiscountAmount);
-        const hasItemGst = i.gstAmount !== undefined || i.taxableAmount !== undefined || Number(i.gstRate || 0) > 0;
-        const lineGstAmount = i.gstAmount !== undefined ? Number(i.gstAmount) : (hasItemGst ? (lineTaxableAmount * gst) / 100 : 0);
-        const itemLineTotal = i.lineTotal !== undefined ? Number(i.lineTotal) : (lineTaxableAmount + lineGstAmount);
-        const lineProfit = lineTaxableAmount - totalLineCost;
+
+        const primaryAlloc = itemBatchAllocations[0];
+        const effDiscObj = isConfigured(i.discountPct) || isConfigured(i.discVal) || isConfigured(i.discountVal)
+          ? {
+              discount: Number(i.discountPct ?? i.discVal ?? i.discountVal),
+              discountType: i.discType || i.discountType || 'Percentage',
+            }
+          : resolveEffectiveDiscount(primaryAlloc, prod);
+
+        const discVal = effDiscObj.discount;
+        const discType = effDiscObj.discountType;
+        const isAmountDisc = discType.toLowerCase() === 'amount' || discType === '₹';
+
+        let lineDiscountAmount = 0;
+        let discountPct = 0;
+
+        if (isAmountDisc && discVal > 0) {
+          const unitDisc = discVal;
+          lineDiscountAmount = normalizeMoney(Math.min(lineGrossTotal, unitDisc <= effectiveSellingUnitPrice ? qty * unitDisc : unitDisc));
+          discountPct = lineGrossTotal > 0 ? normalizeMoney((lineDiscountAmount / lineGrossTotal) * 100) : 0;
+        } else if (discVal > 0) {
+          discountPct = discVal;
+          lineDiscountAmount = normalizeMoney((lineGrossTotal * discVal) / 100);
+        } else if (isConfigured(i.discountAmount) && Number(i.discountAmount) > 0) {
+          lineDiscountAmount = normalizeMoney(Math.min(lineGrossTotal, Number(i.discountAmount)));
+          discountPct = lineGrossTotal > 0 ? normalizeMoney((lineDiscountAmount / lineGrossTotal) * 100) : 0;
+        }
+
+        const lineTaxableAmount = Math.max(0, normalizeMoney(lineGrossTotal - lineDiscountAmount));
+        const effectiveGstRate = isConfigured(i.gstRate) || isConfigured(i.gstPercent)
+          ? Number(i.gstRate ?? i.gstPercent)
+          : resolveEffectiveGstRate(primaryAlloc, prod);
+        const lineGstAmount = effectiveGstRate > 0 ? normalizeMoney((lineTaxableAmount * effectiveGstRate) / 100) : 0;
+        const itemLineTotal = normalizeMoney(lineTaxableAmount + lineGstAmount);
+        const lineProfit = normalizeMoney(lineTaxableAmount - totalLineCost);
 
         itemSnapshots.push({
           productId: prod?._id || pId,
@@ -560,6 +622,7 @@ export const salesInvoiceService = {
           brandName: bName,
           categoryName: cName,
           unitName: uName,
+          unit: uName,
           hsnCode: hsn,
           image: prod?.image || i.image || '',
           batchNumber: primaryBatchNumber,
@@ -567,70 +630,86 @@ export const salesInvoiceService = {
           quantity: qty,
           unitPrice: effectiveSellingUnitPrice,
           purchaseCostRate: effectiveAverageCostRate,
+          discount: discVal,
+          discountType: discType,
           discountPct,
           discountAmount: lineDiscountAmount,
-          gstRate: hasItemGst ? gst : 0,
+          discVal,
+          discType,
+          gstRate: effectiveGstRate,
           gstAmount: lineGstAmount,
+          taxAmount: lineGstAmount,
           taxableAmount: lineTaxableAmount,
           lineTotal: itemLineTotal,
           lineProfit,
           totalAmount: itemLineTotal,
         });
       }
-    }
+  }
 
-    const rawGrossSubtotal = itemSnapshots.reduce((sum, s) => sum + (Number(s.quantity || 1) * Number(s.unitPrice || 0)), 0);
-    const totalItemDiscounts = itemSnapshots.reduce((sum, s) => sum + (Number(s.discountAmount) || 0), 0);
-    const authoritativeDiscountAmount = Number(discountAmount || 0) || totalItemDiscounts;
+  const rawGrossSubtotal = itemSnapshots.reduce((sum, s) => sum + (Number(s.quantity || 1) * Number(s.unitPrice || 0)), 0);
+  const totalProductDiscounts = itemSnapshots.reduce((sum, s) => sum + (Number(s.discountAmount) || 0), 0);
+  const inputTotalDiscount = Number(discountAmount || 0);
 
-    if (authoritativeDiscountAmount > 0 && totalItemDiscounts === 0 && rawGrossSubtotal > 0) {
-      let allocatedDiscSum = 0;
-      itemSnapshots.forEach((s, idx) => {
-        const itemGross = (Number(s.quantity) || 1) * (Number(s.unitPrice) || 0);
-        const itemDisc = idx === itemSnapshots.length - 1
-          ? Math.max(0, Math.round((authoritativeDiscountAmount - allocatedDiscSum) * 100) / 100)
-          : Math.round(((itemGross / rawGrossSubtotal) * authoritativeDiscountAmount) * 100) / 100;
-        allocatedDiscSum += itemDisc;
-        s.discountAmount = itemDisc;
-        s.taxableAmount = Math.max(0, itemGross - itemDisc);
-        s.lineTotal = Math.max(0, itemGross - itemDisc + (Number(s.gstAmount) || 0));
-        s.totalAmount = s.lineTotal;
-      });
-    }
+  // If there is an overall bill discount passed that exceeds product discounts, or bill discount entered
+  const billDiscount = Math.max(0, inputTotalDiscount - totalProductDiscounts);
 
-    const authoritativeSubtotal = Math.round(rawGrossSubtotal > 0 ? rawGrossSubtotal : itemSnapshots.reduce((sum, s) => sum + (Number(s.lineTotal) || Number(s.totalAmount) || 0), 0));
-    const authoritativeTaxAmount = Math.round(itemSnapshots.reduce((sum, s) => sum + (Number(s.gstAmount) || 0), 0));
-    const roundedDiscountAmount = Math.round(authoritativeDiscountAmount);
-    const grandTotal = Math.max(0, Math.round(authoritativeSubtotal - roundedDiscountAmount + authoritativeTaxAmount));
+  if (billDiscount > 0 && rawGrossSubtotal > totalProductDiscounts) {
+    const netTaxableBase = rawGrossSubtotal - totalProductDiscounts;
+    let allocatedBillDiscSum = 0;
+    itemSnapshots.forEach((s, idx) => {
+      const itemTaxableBeforeBill = Number(s.taxableAmount || 0);
+      const itemBillDisc = idx === itemSnapshots.length - 1
+        ? Math.max(0, normalizeMoney(billDiscount - allocatedBillDiscSum))
+        : normalizeMoney((itemTaxableBeforeBill / netTaxableBase) * billDiscount);
+      allocatedBillDiscSum += itemBillDisc;
 
-    // CRITICAL: Normalize inputPaidAmount safely to numeric.
-    // If inputPaidAmount is null, undefined, empty string "", or invalid NaN, normalize it to 0.
-    // Never treat empty/null/undefined/NaN as grandTotal!
-    let paidAmount = 0;
-    if (inputPaidAmount !== undefined && inputPaidAmount !== null && inputPaidAmount !== '') {
-      const parsedPaid = Number(inputPaidAmount);
-      paidAmount = isNaN(parsedPaid) || parsedPaid < 0 ? 0 : Math.round(parsedPaid);
-    }
+      const finalItemTaxable = Math.max(0, normalizeMoney(itemTaxableBeforeBill - itemBillDisc));
+      const itemGst = Number(s.gstRate || 0) > 0 ? normalizeMoney((finalItemTaxable * Number(s.gstRate)) / 100) : 0;
 
-    let prevOutstanding = Math.round(Number(customerDoc?.outstandingBalance || 0));
-    let prevAdvance = Math.round(Number(customerDoc?.advanceBalance || 0));
+      s.taxableAmount = finalItemTaxable;
+      s.gstAmount = itemGst;
+      s.lineTotal = normalizeMoney(finalItemTaxable + itemGst);
+      s.totalAmount = s.lineTotal;
+    });
+  }
 
-    const advanceUsed = Math.min(prevAdvance, grandTotal);
-    const netBillToPay = grandTotal - advanceUsed;
-    let remainingAdvance = prevAdvance - advanceUsed;
+  const authoritativeSubtotal = normalizeMoney(rawGrossSubtotal);
+  const authoritativeTaxAmount = normalizeMoney(itemSnapshots.reduce((sum, s) => sum + (Number(s.gstAmount) || 0), 0));
+  const authoritativeDiscountAmount = normalizeMoney(totalProductDiscounts + billDiscount);
+  const grandTotal = Math.max(0, normalizeMoney(authoritativeSubtotal - authoritativeDiscountAmount + authoritativeTaxAmount));
 
-    let newBillDue = 0;
-    let extraPaid = 0;
-    let clearedPrevDue = 0;
-    let newTotalOutstanding = prevOutstanding;
-    let newCustomerAdvance = remainingAdvance;
+  // Normalize inputPaidAmount safely to numeric
+  let paidAmount = 0;
+  if (inputPaidAmount !== undefined && inputPaidAmount !== null && inputPaidAmount !== '') {
+    const parsedPaid = Number(inputPaidAmount);
+    paidAmount = isNaN(parsedPaid) || parsedPaid < 0 ? 0 : normalizeMoney(parsedPaid);
+  }
 
-    if (paidAmount > netBillToPay) {
-      throw new AppError(
-        'Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.',
-        HTTP_STATUS.BAD_REQUEST
-      );
-    }
+  let prevOutstanding = Math.round(Number(customerDoc?.outstandingBalance || 0));
+  let prevAdvance = Math.round(Number(customerDoc?.advanceBalance || 0));
+
+  const advanceUsed = Math.min(prevAdvance, grandTotal);
+  const netBillToPay = Math.max(0, normalizeMoney(grandTotal - advanceUsed));
+  let remainingAdvance = prevAdvance - advanceUsed;
+
+  let newBillDue = 0;
+  let extraPaid = 0;
+  let clearedPrevDue = 0;
+  let newTotalOutstanding = prevOutstanding;
+  let newCustomerAdvance = remainingAdvance;
+
+  const roundedNetBill = Math.round(netBillToPay);
+  const roundedPaid = Math.round(paidAmount);
+
+  if (paidAmount > netBillToPay && Math.abs(paidAmount - netBillToPay) <= 0.05) {
+    paidAmount = netBillToPay;
+  } else if (roundedPaid > roundedNetBill && paidAmount > netBillToPay + 0.01) {
+    throw new AppError(
+      'Payment cannot exceed the invoice amount. Please record extra payment from Customer Ledger.',
+      HTTP_STATUS.BAD_REQUEST
+    );
+  }
 
     if (paidAmount < netBillToPay) {
       newBillDue = Math.round(netBillToPay - paidAmount);
@@ -647,6 +726,8 @@ export const salesInvoiceService = {
     // 3. Invoice Number Generation
     const autoInvoiceNumber = await generateNextInvoiceNumber(userId);
 
+    const authoritativeTaxableAmount = Math.max(0, normalizeMoney(authoritativeSubtotal - authoritativeDiscountAmount));
+
     // 4. Save Invoice DB Document
     const newInvoice = await SalesInvoice.create({
       userId,
@@ -659,9 +740,13 @@ export const salesInvoiceService = {
       customerAddress: (customerObj?.address || data.customerAddress || '').trim(),
       items: itemSnapshots,
       subtotal: authoritativeSubtotal,
+      productDiscountAmount: totalProductDiscounts,
+      billDiscountAmount: billDiscount,
+      taxableAmount: authoritativeTaxableAmount,
       taxAmount: authoritativeTaxAmount,
       discountAmount: authoritativeDiscountAmount,
       totalAmount: grandTotal,
+      grandTotal,
       paidAmount,
       dueAmount: newBillDue,
       status,
@@ -806,6 +891,7 @@ export const salesInvoiceService = {
       const bName = i.brandName || prod?.brandId?.name || prod?.company || '';
       const cName = i.categoryName || prod?.categoryId?.name || 'General';
       const uName = i.unitName || prod?.defaultUnitId?.shortName || i.unit || 'Bag';
+      const hsn = i.hsnCode || prod?.hsnCode || prod?.hsn || '';
 
       const activeBatches = await ProductBatch.find({
         userId,
@@ -841,6 +927,8 @@ export const salesInvoiceService = {
 
         const bPurchaseRate = Number(batch.purchaseRate || 0);
         const bSellingPrice = Number(batch.sellingPrice || prod?.defaultSellingPrice || inputUnitPrice || 0);
+        const bGstRate = isConfigured(batch.gstRate) ? Number(batch.gstRate) : undefined;
+        const bDisc = isConfigured(batch.discount) ? Number(batch.discount) : undefined;
 
         itemBatchAllocations.push({
           batchId: batch._id,
@@ -848,19 +936,26 @@ export const salesInvoiceService = {
           quantity: allocatedQty,
           purchaseRate: bPurchaseRate,
           sellingPrice: bSellingPrice,
+          gstRate: bGstRate,
+          discount: bDisc,
+          discountType: batch.discountType || undefined,
+          hsnCode: batch.hsnCode || undefined,
         });
 
         remainingToAllocate -= allocatedQty;
       }
 
-      if (remainingToAllocate > 0) {
+      if (remainingToAllocate > 0 && itemBatchAllocations.length === 0) {
         const fallbackSellingPrice = inputUnitPrice || Number(prod?.defaultSellingPrice || 0);
         itemBatchAllocations.push({
           batchId: null,
           batchNumber: '',
-          quantity: remainingToAllocate,
+          quantity: qty,
           purchaseRate: Number(prod?.defaultPurchaseRate || 0),
           sellingPrice: fallbackSellingPrice,
+          gstRate: isConfigured(prod?.gstRate) ? Number(prod.gstRate) : undefined,
+          discount: isConfigured(prod?.discount) ? Number(prod.discount) : undefined,
+          discountType: prod?.discountType || undefined,
         });
       }
 
@@ -868,8 +963,24 @@ export const salesInvoiceService = {
 
       if (itemBatchAllocations.length > 1 && distinctSellingPrices.size > 1) {
         itemBatchAllocations.forEach((alloc, idx) => {
-          const allocLineTotal = alloc.quantity * alloc.sellingPrice;
+          const allocQty = alloc.quantity;
+          const allocSellingPrice = alloc.sellingPrice;
+          const allocLineTotal = allocQty * allocSellingPrice;
           calculatedSubtotal += allocLineTotal;
+
+          const allocGst = isConfigured(i.gstRate) || isConfigured(i.gstPercent)
+            ? Number(i.gstRate ?? i.gstPercent)
+            : resolveEffectiveGstRate(alloc, prod);
+
+          const allocDiscObj = isConfigured(i.discountPct) || isConfigured(i.discVal) || isConfigured(i.discountVal)
+            ? {
+                discount: Number(i.discountPct ?? i.discVal ?? i.discountVal),
+                discountType: i.discType || i.discountType || 'Percentage',
+              }
+            : resolveEffectiveDiscount(alloc, prod);
+
+          const allocDisc = allocDiscObj.discount;
+          const allocDiscType = allocDiscObj.discountType;
 
           previewItems.push({
             productId: pId,
@@ -879,13 +990,19 @@ export const salesInvoiceService = {
             brandName: bName,
             categoryName: cName,
             unitName: uName,
+            hsnCode: hsn,
+            gstRate: allocGst,
+            discount: allocDisc,
+            discountType: allocDiscType,
+            discVal: allocDisc,
+            discType: allocDiscType,
             image: prod?.image || i.image || '',
             batchNumber: alloc.batchNumber,
             batchAllocations: [alloc],
-            quantity: alloc.quantity,
-            qty: alloc.quantity,
-            unitPrice: alloc.sellingPrice,
-            price: alloc.sellingPrice,
+            quantity: allocQty,
+            qty: allocQty,
+            unitPrice: allocSellingPrice,
+            price: allocSellingPrice,
             totalAmount: allocLineTotal,
             lineTotal: allocLineTotal,
             totalStockAvailable,
@@ -904,6 +1021,21 @@ export const salesInvoiceService = {
         const lineTotal = qty * effectiveSellingUnitPrice;
         calculatedSubtotal += lineTotal;
 
+        const primaryAlloc = itemBatchAllocations[0];
+        const itemGst = isConfigured(i.gstRate) || isConfigured(i.gstPercent)
+          ? Number(i.gstRate ?? i.gstPercent)
+          : resolveEffectiveGstRate(primaryAlloc, prod);
+
+        const itemDiscObj = isConfigured(i.discountPct) || isConfigured(i.discVal) || isConfigured(i.discountVal)
+          ? {
+              discount: Number(i.discountPct ?? i.discVal ?? i.discountVal),
+              discountType: i.discType || i.discountType || 'Percentage',
+            }
+          : resolveEffectiveDiscount(primaryAlloc, prod);
+
+        const itemDisc = itemDiscObj.discount;
+        const itemDiscType = itemDiscObj.discountType;
+
         previewItems.push({
           productId: pId,
           originalProductId: pId,
@@ -912,6 +1044,12 @@ export const salesInvoiceService = {
           brandName: bName,
           categoryName: cName,
           unitName: uName,
+          hsnCode: hsn,
+          gstRate: itemGst,
+          discount: itemDisc,
+          discountType: itemDiscType,
+          discVal: itemDisc,
+          discType: itemDiscType,
           image: prod?.image || i.image || '',
           batchNumber: itemBatchAllocations[0]?.batchNumber || '',
           batchAllocations: itemBatchAllocations,
@@ -987,10 +1125,20 @@ export const salesInvoiceService = {
             if (alloc.batchId && alloc.quantity > 0) {
               await ProductBatch.updateOne(
                 { _id: alloc.batchId, userId },
-                { $inc: { currentStock: alloc.quantity } }
+                { $inc: { currentStock: alloc.quantity }, $set: { isActive: true } }
               ).exec();
             }
           }
+        } else if (item.batchId) {
+          await ProductBatch.updateOne(
+            { _id: item.batchId, userId },
+            { $inc: { currentStock: item.quantity }, $set: { isActive: true } }
+          ).exec();
+        } else if (item.batchNumber && item.productId) {
+          await ProductBatch.updateOne(
+            { productId: item.productId, batchNumber: item.batchNumber, userId },
+            { $inc: { currentStock: item.quantity }, $set: { isActive: true } }
+          ).exec();
         }
       }
 
@@ -1046,9 +1194,11 @@ export const salesInvoiceService = {
     delete cleanData._id;
 
     if (cleanData.totalAmount !== undefined || cleanData.paidAmount !== undefined) {
-      const normTotal = Math.max(0, normalizeMoney(cleanData.totalAmount !== undefined ? cleanData.totalAmount : 0));
+      const normTotal = Math.max(0, normalizeMoney(cleanData.totalAmount !== undefined ? cleanData.totalAmount : cleanData.grandTotal !== undefined ? cleanData.grandTotal : 0));
       const normPaid = Math.max(0, normalizeMoney(cleanData.paidAmount !== undefined ? cleanData.paidAmount : 0));
       const normDue = Math.max(0, normTotal - normPaid);
+      cleanData.totalAmount = normTotal;
+      cleanData.grandTotal = normTotal;
       cleanData.paidAmount = normPaid;
       cleanData.dueAmount = normDue;
       cleanData.status = calculateInvoicePaymentStatus(normTotal, normPaid, normDue, cleanData.status);

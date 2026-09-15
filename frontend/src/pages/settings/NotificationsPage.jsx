@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Save, MessageSquare, CheckCircle2, AlertCircle, Volume2, VolumeX, ShieldCheck, Smartphone, Check, X } from 'lucide-react';
 import { settingService } from '../../services/settingService';
 import { useSettings } from '../../contexts/SettingsContext';

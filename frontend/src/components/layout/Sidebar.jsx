@@ -20,7 +20,6 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import ShopDiscountModal from '../settings/ShopDiscountModal';
-import { dashboardService } from '../../services/dashboardService';
 import { settingService } from '../../services/settingService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { authService } from '../../services/authService';

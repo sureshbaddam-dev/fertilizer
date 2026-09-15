@@ -181,7 +181,7 @@ export default function PurchaseItemsTable({
 
                     {/* Amount (₹) */}
                     <td className="py-2.5 px-3 text-center font-bold text-gray-900 text-xs align-middle">
-                      ₹ {lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(lineTotal).toLocaleString('en-IN')}
                     </td>
 
                     {/* Actions */}
@@ -311,7 +311,7 @@ export default function PurchaseItemsTable({
                 <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 flex items-center justify-between font-mono">
                   <span className="text-[10px] text-gray-400 font-bold uppercase font-sans">Line Total</span>
                   <span className="text-xs font-bold text-[#00783C]">
-                    ₹ {lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹ {Math.round(lineTotal).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -333,7 +333,7 @@ export default function PurchaseItemsTable({
         <div className="flex items-center gap-2">
           <span>Total Amount:</span>
           <span className="text-xs sm:text-sm font-bold text-[#00783C]">
-            ₹ {totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ₹ {Math.round(totalAmount).toLocaleString('en-IN')}
           </span>
         </div>
       </div>

@@ -1,6 +1,6 @@
-import { getItemUnitPrice } from './pricing';
-import { buildFullShopAddress } from './pdfGenerator';
-import { authService } from '../services/authService';
+import { getItemUnitPrice, formatItemDiscount } from './pricing.js';
+import { buildFullShopAddress } from './pdfGenerator.js';
+import { authService } from '../services/authService.js';
 
 /**
  * Builds a clean, professional, print-ready HTML string for an A4 Tax Invoice.
@@ -36,10 +36,21 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
     : String(rawDate);
 
   const items = Array.isArray(invoice.items) ? invoice.items : [];
-  const subtotal = Number(invoice.subtotal || invoice.subTotal || invoice.totalAmount || 0);
-  const discountAmount = Number(invoice.discountAmount || invoice.discount || 0);
+  const rawSubtotal = items.reduce(
+    (sum, it) => sum + Number(it.quantity || it.qty || 1) * getItemUnitPrice(it),
+    0
+  );
+  const subtotal = Number(invoice.subtotal || rawSubtotal || invoice.subTotal || invoice.totalAmount || 0);
+  const productDiscount = Number(invoice.productDiscountAmount || 0);
+  const billDiscount = Number(invoice.billDiscountAmount || 0);
+  const discountAmount = Number(invoice.discountAmount || (productDiscount + billDiscount) || invoice.discount || 0);
+  const taxableAmount = Number(
+    invoice.taxableAmount !== undefined
+      ? invoice.taxableAmount
+      : Math.max(0, subtotal - discountAmount)
+  );
   const taxAmount = Number(invoice.taxAmount || 0);
-  const grandTotal = Number(invoice.grandTotal || invoice.totalAmount || invoice.total || (subtotal - discountAmount));
+  const grandTotal = Number(invoice.grandTotal || invoice.totalAmount || invoice.total || (taxableAmount + taxAmount));
   const currentPaid = Number(invoice.paidAmount !== undefined ? invoice.paidAmount : (invoice.paid || 0));
   const currentDue = Number(invoice.dueAmount !== undefined ? invoice.dueAmount : (invoice.due !== undefined ? invoice.due : Math.max(0, grandTotal - currentPaid)));
 
@@ -54,12 +65,6 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
   const customerGstin = invoice.customer?.gstin || '';
   const invoiceNo = invoice.invoiceNumber || invoice.refNo || 'INV-001';
   const paymentMode = invoice.paymentMode || invoice.paymentMethod || 'Cash';
-
-  const rawSubtotal = items.reduce(
-    (sum, it) => sum + Number(it.quantity || it.qty || 1) * getItemUnitPrice(it),
-    0
-  );
-  const billDisc = Number(invoice.discountAmount || invoice.discount || 0);
 
   const formatCurrency = (val) => `Rs. ${Math.round(Number(val || 0)).toLocaleString('en-IN')}`;
 
@@ -78,10 +83,11 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
     const effectiveDisc =
       disc > 0
         ? disc
-        : billDisc > 0 && rawSubtotal > 0
-        ? Math.round((itemGross / rawSubtotal) * billDisc * 100) / 100
+        : discountAmount > 0 && rawSubtotal > 0
+        ? Math.round((itemGross / rawSubtotal) * discountAmount * 100) / 100
         : 0;
     const rowTotal = Math.max(0, itemGross - effectiveDisc);
+    const discountDisplay = formatItemDiscount(item, effectiveDisc);
 
     const rowBg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
 
@@ -91,7 +97,7 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
         <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #0f172a;">${pName}</td>
         <td style="padding: 8px 10px; text-align: center; color: #1e293b; white-space: nowrap;">${qty} ${unit}</td>
         <td style="padding: 8px 10px; text-align: center; font-weight: 700; color: #0f172a; white-space: nowrap;">${formatCurrency(rate)}</td>
-        <td style="padding: 8px 10px; text-align: center; color: #475569; white-space: nowrap;">${effectiveDisc > 0 ? formatCurrency(effectiveDisc) : 'Rs. 0'}</td>
+        <td style="padding: 8px 10px; text-align: center; color: #475569; white-space: nowrap;">${discountDisplay}</td>
         <td style="padding: 8px 14px; text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap;">${formatCurrency(rowTotal)}</td>
       </tr>
     `;
@@ -397,17 +403,34 @@ export function buildInvoiceHtml(invoice, shopSettings = {}) {
           <span style="font-weight: 700; color: #0f172a;">${formatCurrency(subtotal)}</span>
         </div>
 
-        ${discountAmount > 0 ? `
+        ${productDiscount > 0 ? `
+          <div class="summary-row" style="color: #dc2626;">
+            <span>Product Discount:</span>
+            <span style="font-weight: 700;">- ${formatCurrency(productDiscount)}</span>
+          </div>
+        ` : discountAmount > 0 && billDiscount <= 0 ? `
           <div class="summary-row" style="color: #dc2626;">
             <span>Discount:</span>
             <span style="font-weight: 700;">- ${formatCurrency(discountAmount)}</span>
           </div>
         ` : ''}
 
+        ${billDiscount > 0 ? `
+          <div class="summary-row" style="color: #dc2626;">
+            <span>Bill Discount:</span>
+            <span style="font-weight: 700;">- ${formatCurrency(billDiscount)}</span>
+          </div>
+        ` : ''}
+
+        <div class="summary-row">
+          <span>Taxable Amount:</span>
+          <span style="font-weight: 700; color: #0f172a;">${formatCurrency(taxableAmount)}</span>
+        </div>
+
         ${taxAmount > 0 ? `
           <div class="summary-row">
-            <span>Tax Amount:</span>
-            <span style="font-weight: 700; color: #0f172a;">${formatCurrency(taxAmount)}</span>
+            <span>GST / Tax${invoice?.gstCalculation?.gstRateLabel ? ` (${invoice.gstCalculation.gstRateLabel})` : invoice?.gstRate ? ` (${invoice.gstRate}%)` : ''}:</span>
+            <span style="font-weight: 700; color: #0f172a;">+ ${formatCurrency(taxAmount)}</span>
           </div>
         ` : ''}
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Paperclip, Send, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Paperclip, Send, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';

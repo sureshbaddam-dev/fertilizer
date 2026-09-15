@@ -1479,24 +1479,24 @@ export default function SupplierLedgerPage() {
             <div className="space-y-0.5">
               <div className="flex justify-between font-medium">
                 <span>Gross Purchases:</span>
-                <span className="font-mono font-bold">₹ {Math.round(summary.grossPurchases || summary.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold">₹ {Math.round(summary.grossPurchases || summary.totalPurchases || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between font-medium text-rose-700">
                 <span>Purchase Returns:</span>
-                <span className="font-mono font-bold">₹ {Math.round(summary.purchaseReturns || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold">₹ {Math.round(summary.purchaseReturns || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between font-medium">
                 <span>Net Purchases:</span>
-                <span className="font-mono font-bold">₹ {Math.round(summary.netPurchases || ((summary.grossPurchases || summary.totalPurchases || 0) - (summary.purchaseReturns || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold">₹ {Math.round(summary.netPurchases || ((summary.grossPurchases || summary.totalPurchases || 0) - (summary.purchaseReturns || 0))).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between font-medium text-[#047857]">
                 <span>Total Payments:</span>
-                <span className="font-mono font-bold">₹ {Math.round(summary.totalPayments || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-bold">₹ {Math.round(summary.totalPayments || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className={`flex justify-between font-bold border-t border-slate-300 pt-1 mt-1 text-[11.5px] ${summary.closingBalance < 0 ? 'text-[#047857]' : summary.closingBalance > 0 ? 'text-[#dc2626]' : 'text-gray-900'}`}>
                 <span>Current Balance:</span>
                 <span className="font-mono font-extrabold">
-                  ₹ {Math.round(Math.abs(summary.closingBalance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })} {summary.closingBalance < 0 ? '(Advance)' : summary.closingBalance > 0 ? '(Payable)' : ''}
+                  ₹ {Math.round(Math.abs(summary.closingBalance || 0)).toLocaleString('en-IN')} {summary.closingBalance < 0 ? '(Advance)' : summary.closingBalance > 0 ? '(Payable)' : ''}
                 </span>
               </div>
             </div>

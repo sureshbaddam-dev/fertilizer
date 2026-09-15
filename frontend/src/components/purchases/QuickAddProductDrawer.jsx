@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ChevronDown, Sparkles, Plus, Check } from 'lucide-react';
+import { ChevronDown, Sparkles, Plus } from 'lucide-react';
 import FormDrawer from '../ui/FormDrawer';
 import SmartMasterSelect from '../ui/SmartMasterSelect';
 import ImageUpload from '../ui/ImageUpload';

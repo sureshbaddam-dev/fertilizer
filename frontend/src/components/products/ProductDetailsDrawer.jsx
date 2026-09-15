@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Edit, Trash2, Tag, Layers, ArrowUpRight, ArrowDownLeft, Clock, History, FileText, CheckCircle2, AlertCircle, Save, Check } from 'lucide-react';
+import { X, Edit, Trash2, Tag, Clock, History, CheckCircle2, Save } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
 import { authService } from '../../services/authService';
@@ -98,8 +98,10 @@ export default function ProductDetailsDrawer({
   const latestPurchaseRate = purchaseHistoryList[0]?.purchaseRate ?? currentActiveBatch?.purchaseRate ?? Number(detailProduct.defaultPurchaseRate || 0);
   const latestPurchaseDate = purchaseHistoryList[0]?.date ?? (currentActiveBatch?.createdAt ? new Date(currentActiveBatch.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A');
 
-  const hsnCode = detailProduct.hsnCode || product.hsnCode || null;
-  const gstRate = detailProduct.gstRate !== undefined && detailProduct.gstRate !== null ? `${detailProduct.gstRate}%` : null;
+  const hsnCode = detailProduct.hsnCode || product.hsnCode || currentActiveBatch?.hsnCode || null;
+  const productBasicGstRate = `${detailProduct.gstRate !== undefined && detailProduct.gstRate !== null ? Number(detailProduct.gstRate) : 0}%`;
+  const productBasicDiscount = `${detailProduct.discount !== undefined && detailProduct.discount !== null ? Number(detailProduct.discount) : 0}${detailProduct.discountType === 'Amount' ? ' ₹' : '%'}`;
+  const gstRate = productBasicGstRate;
   const descriptionText = detailProduct.description || product.description || null;
   const createdDateStr = detailProduct.createdAt ? new Date(detailProduct.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
@@ -273,14 +275,14 @@ export default function ProductDetailsDrawer({
               <div className="p-3 bg-gray-50/80 border border-gray-200/80 rounded-xl space-y-0.5">
                 <span className="text-[10px] font-semibold text-gray-500 block uppercase tracking-wider">Stock Value</span>
                 <span className="text-sm font-extrabold text-gray-900 block font-mono">
-                  ₹ {totalStockValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(totalStockValue).toLocaleString('en-IN')}
                 </span>
               </div>
 
               <div className="p-3 bg-gray-50/80 border border-gray-200/80 rounded-xl space-y-0.5">
                 <span className="text-[10px] font-semibold text-gray-500 block uppercase tracking-wider">Selling Price</span>
                 <span className="text-sm font-extrabold text-gray-900 block font-mono">
-                  ₹ {currentSellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(currentSellingPrice).toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -304,7 +306,7 @@ export default function ProductDetailsDrawer({
               <div className="p-2.5 bg-gray-50/50 border border-gray-200/70 rounded-lg space-y-0.5">
                 <span className="text-[10px] font-medium text-gray-500 block">Latest Purchase Rate</span>
                 <span className="text-xs font-bold text-gray-900 font-mono block">
-                  ₹ {Number(latestPurchaseRate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(Number(latestPurchaseRate || 0)).toLocaleString('en-IN')}
                 </span>
               </div>
 
@@ -315,7 +317,7 @@ export default function ProductDetailsDrawer({
             </div>
 
             {/* Additional Product Meta Cards */}
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">Low Stock Alert</span>
                 <span className="font-semibold text-gray-800 font-mono text-xs">{lowStockAlert} {unitName}</span>
@@ -326,7 +328,11 @@ export default function ProductDetailsDrawer({
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">GST Rate</span>
-                <span className="font-semibold text-gray-800 font-mono text-xs">{gstRate || '0%'}</span>
+                <span className="font-semibold text-gray-800 font-mono text-xs">{productBasicGstRate}</span>
+              </div>
+              <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
+                <span className="text-[9px] text-gray-400 block">Basic Discount</span>
+                <span className="font-semibold text-gray-800 font-mono text-xs">{productBasicDiscount}</span>
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">Created Date</span>
@@ -354,7 +360,7 @@ export default function ProductDetailsDrawer({
               <div>
                 <span className="text-[10px] uppercase font-bold text-emerald-200 tracking-wider block">Effective Selling Price (Oldest FIFO Batch)</span>
                 <div className="text-xl font-extrabold font-mono mt-0.5">
-                  ₹ {currentSellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(currentSellingPrice).toLocaleString('en-IN')}
                 </div>
               </div>
               <div className="text-right text-[11px] text-emerald-100">
@@ -380,11 +386,11 @@ export default function ProductDetailsDrawer({
                     </div>
                     <div className="flex justify-between border-b border-emerald-200/50 pb-1">
                       <span className="text-gray-600">Purchase Rate:</span>
-                      <strong className="font-mono text-gray-900">₹ {Number(currentActiveBatch.purchaseRate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      <strong className="font-mono text-gray-900">₹ {Math.round(Number(currentActiveBatch.purchaseRate || 0)).toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="flex justify-between border-b border-emerald-200/50 pb-1">
                       <span className="text-gray-600">Selling Price:</span>
-                      <strong className="font-mono text-[#047857]">₹ {Number(currentActiveBatch.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      <strong className="font-mono text-[#047857]">₹ {Math.round(Number(currentActiveBatch.sellingPrice || 0)).toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Remaining Qty:</span>
@@ -412,11 +418,11 @@ export default function ProductDetailsDrawer({
                     </div>
                     <div className="flex justify-between border-b border-purple-200/40 pb-1">
                       <span className="text-gray-600">Purchase Rate:</span>
-                      <strong className="font-mono text-gray-900">₹ {Number(upcomingBatch.purchaseRate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      <strong className="font-mono text-gray-900">₹ {Math.round(Number(upcomingBatch.purchaseRate || 0)).toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="flex justify-between border-b border-purple-200/40 pb-1">
                       <span className="text-gray-600">Selling Price:</span>
-                      <strong className="font-mono text-purple-700">₹ {Number(upcomingBatch.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      <strong className="font-mono text-purple-700">₹ {Math.round(Number(upcomingBatch.sellingPrice || 0)).toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Remaining Qty:</span>
@@ -468,9 +474,9 @@ export default function ProductDetailsDrawer({
                             title="Right-click or Long-press to edit price"
                           >
                             <td className="py-2.5 px-2.5 font-mono font-bold text-gray-900">{b.batchNumber}</td>
-                            <td className="py-2.5 px-2.5 text-right font-mono text-gray-700">₹ {Number(b.purchaseRate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-2.5 px-2.5 text-right font-mono text-gray-700">₹ {Math.round(Number(b.purchaseRate || 0)).toLocaleString('en-IN')}</td>
                             <td className="py-2.5 px-2.5 text-right font-mono font-bold text-[#047857]">
-                              ₹ {Number(b.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              ₹ {Math.round(Number(b.sellingPrice || 0)).toLocaleString('en-IN')}
                             </td>
                             <td className="py-2.5 px-2.5 text-center font-mono text-gray-600">{b.initialQuantity ?? b.quantityPurchased ?? 0}</td>
                             <td className="py-2.5 px-2.5 text-center font-mono font-bold text-gray-900">{b.currentStock ?? b.quantityRemaining ?? 0}</td>
@@ -784,7 +790,7 @@ export default function ProductDetailsDrawer({
                     Current {editModal.mode === 'purchase' ? 'Purchase Rate' : 'Selling Price'}:
                   </span>
                   <strong className="text-[#047857]">
-                    ₹ {Number(editModal.mode === 'purchase' ? editModal.batch.purchaseRate || 0 : editModal.batch.sellingPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹ {Math.round(Number(editModal.mode === 'purchase' ? editModal.batch.purchaseRate || 0 : editModal.batch.sellingPrice || 0)).toLocaleString('en-IN')}
                   </strong>
                 </div>
               </div>

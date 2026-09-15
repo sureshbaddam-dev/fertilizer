@@ -22,8 +22,6 @@ import { invoiceService } from '../../services/invoiceService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { authService } from '../../services/authService';
 import { buildFullShopAddress, generateInvoicePdf } from '../../utils/pdfGenerator';
-import { getItemUnitPrice } from '../../utils/pricing';
-import vedixaLogoImg from '../../assets/vedixa_logo.png';
 import PrintableInvoice from '../../components/sales/PrintableInvoice';
 import { printInvoiceHtml } from '../../utils/invoicePrintHelper';
 import { toast } from '../../contexts/ToastContext';

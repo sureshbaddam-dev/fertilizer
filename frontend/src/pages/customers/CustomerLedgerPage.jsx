@@ -1726,9 +1726,9 @@ export default function CustomerLedgerPage() {
                           <td className="py-2.5 px-3 font-mono text-gray-600">
                             {new Date(inv.date || inv.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold">₹ {(inv.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="py-2.5 px-3 text-right font-mono text-emerald-700">₹ {(inv.paidAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-red-600">₹ {(inv.dueAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold">₹ {Math.round(Number(inv.totalAmount || 0)).toLocaleString('en-IN')}</td>
+                          <td className="py-2.5 px-3 text-right font-mono text-emerald-700">₹ {Math.round(Number(inv.paidAmount || 0)).toLocaleString('en-IN')}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-red-600">₹ {Math.round(Number(inv.dueAmount || 0)).toLocaleString('en-IN')}</td>
                           <td className="py-2.5 px-3 text-center">
                             <span className={`px-2 py-0.5 font-bold text-[10px] rounded uppercase ${(inv.status || '').toLowerCase() === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                               }`}>
@@ -1791,7 +1791,7 @@ export default function CustomerLedgerPage() {
                           <td className="py-2.5 px-3 font-mono text-gray-600">
                             {new Date(p.date || p.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">₹ {(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">₹ {Math.round(Number(p.amount || 0)).toLocaleString('en-IN')}</td>
                           <td className="py-2.5 px-3 text-center">
                             <span className="px-2 py-0.5 bg-gray-100 text-gray-800 border border-gray-200 rounded font-bold text-[10px]">
                               {p.paymentMode || 'Cash'}
@@ -2211,7 +2211,7 @@ export default function CustomerLedgerPage() {
                 <div>
                   <span className="text-gray-500 font-medium">Amount Received:</span>
                   <div className="text-base font-black text-[#047857]">
-                    ₹ {Number(selectedReceiptPayment.credit || selectedReceiptPayment.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹ {Math.round(Number(selectedReceiptPayment.credit || selectedReceiptPayment.amount || 0)).toLocaleString('en-IN')}
                   </div>
                 </div>
               </div>
@@ -2523,30 +2523,30 @@ export default function CustomerLedgerPage() {
               <div className="space-y-0.5">
                 <div className="flex justify-between font-medium">
                   <span>PURCHASES:</span>
-                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.newPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-bold">₹ {Math.round(Number(monthlyCalculation.newPurchases || 0)).toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between font-medium text-[#047857]">
                   <span>PAYMENTS:</span>
-                  <span className="font-mono font-bold">₹ {Number(monthlyCalculation.payments || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-bold">₹ {Math.round(Number(monthlyCalculation.payments || 0)).toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between font-bold text-[#dc2626] border-t border-slate-300 pt-1 mt-1 text-[11.5px]">
                   <span>DUE / CLOSING BALANCE:</span>
-                  <span className="font-mono font-extrabold">₹ {Number(monthlyCalculation.closingDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-extrabold">₹ {Math.round(Number(monthlyCalculation.closingDue || 0)).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             ) : (
               <div className="space-y-0.5">
                 <div className="flex justify-between font-medium">
                   <span>Total Purchases:</span>
-                  <span className="font-mono font-bold">₹ {Number(totals.totalPurchases || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-bold">₹ {Math.round(Number(totals.totalPurchases || 0)).toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between font-medium text-[#047857]">
                   <span>Total Payments:</span>
-                  <span className="font-mono font-bold">₹ {Number(totals.totalPaid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-bold">₹ {Math.round(Number(totals.totalPaid || 0)).toLocaleString('en-IN')}</span>
                 </div>
                 <div className={`flex justify-between font-bold border-t border-slate-300 pt-1 mt-1 text-[11.5px] ${Number(totals.outstanding || 0) > 0 ? 'text-[#dc2626]' : 'text-[#047857]'}`}>
                   <span>Outstanding Balance:</span>
-                  <span className="font-mono font-extrabold">₹ {Number(totals.outstanding || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-extrabold">₹ {Math.round(Number(totals.outstanding || 0)).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             )}
@@ -2614,13 +2614,13 @@ export default function CustomerLedgerPage() {
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-semibold">
-                      {tx.debit > 0 ? Number(tx.debit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}
+                      {tx.debit > 0 ? Math.round(Number(tx.debit)).toLocaleString('en-IN') : '—'}
                     </td>
                     <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-semibold text-[#047857]">
-                      {tx.credit > 0 ? Number(tx.credit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}
+                      {tx.credit > 0 ? Math.round(Number(tx.credit)).toLocaleString('en-IN') : '—'}
                     </td>
                     <td className="py-1.5 px-2 text-right border border-gray-200 font-mono font-bold">
-                      {Number(tx.balance ?? (tx.runningBalance || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {Math.round(Number(tx.balance ?? (tx.runningBalance || 0))).toLocaleString('en-IN')}
                     </td>
                   </tr>
                 );

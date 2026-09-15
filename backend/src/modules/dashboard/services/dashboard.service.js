@@ -191,9 +191,9 @@ export const dashboardService = {
 
     // Today's Pending Payments (Due amount associated with today's invoices)
     const rawPendingPayments = todayInvoices.reduce((sum, inv) => {
-      const total = Number(inv.totalAmount || 0);
+      const total = Number(inv.totalAmount !== undefined ? inv.totalAmount : (inv.grandTotal ?? inv.subtotal ?? 0));
       const paid = Number(inv.paidAmount || 0);
-      const due = total - paid;
+      const due = inv.dueAmount !== undefined ? Number(inv.dueAmount) : Math.max(0, total - paid);
       return sum + (due > 0 ? due : 0);
     }, 0);
 
@@ -212,13 +212,15 @@ export const dashboardService = {
         ? new Date(bill.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
         : 'Today';
 
+      const billAmount = Number(bill.totalAmount !== undefined && bill.totalAmount !== null ? bill.totalAmount : (bill.grandTotal || bill.subtotal || 0));
+
       return {
         id: bill.invoiceNumber,
         invoiceNumber: bill.invoiceNumber,
         name: bill.customerName || 'General Customer',
         customerName: bill.customerName || 'General Customer',
-        amount: `₹ ${(bill.totalAmount || 0).toLocaleString('en-IN')}`,
-        rawAmount: bill.totalAmount || 0,
+        amount: `₹ ${billAmount.toLocaleString('en-IN')}`,
+        rawAmount: billAmount,
         status: bill.status || 'Paid',
         color: statusColor,
         date: billDateStr,

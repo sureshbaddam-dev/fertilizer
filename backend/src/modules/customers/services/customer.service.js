@@ -4,7 +4,7 @@ import { CustomerPayment } from '../models/customerPayment.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { ShopSettings } from '../../settings/models/shopSettings.model.js';
 import { logger } from '../../../config/logger.config.js';
-import { calculateInvoicePaymentStatus, normalizeMoney } from '../../../utils/pricingUtils.js';
+import { calculateInvoicePaymentStatus } from '../../../utils/pricingUtils.js';
 
 export async function generateNextPaymentReference(userId) {
   if (!userId) throw new Error('userId is required');

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Users, TrendingUp, RefreshCw, BarChart3, Radio, Activity, ShieldCheck, UserCheck } from 'lucide-react';
+import { Eye, Users, RefreshCw, BarChart3, Activity, ShieldCheck, UserCheck } from 'lucide-react';
 import {
   AreaChart,
   Area,

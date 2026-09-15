@@ -15,6 +15,7 @@ import { masterService } from '../../services/masterService';
 import { purchaseService } from '../../services/purchaseService';
 import { authService } from '../../services/authService';
 import { toast } from '../../contexts/ToastContext';
+import { isConfigured } from '../../utils/pricing';
 
 export default function NewPurchasePage() {
   const navigate = useNavigate();
@@ -156,15 +157,15 @@ export default function NewPurchasePage() {
     const defaultSellVal = Number(prod.defaultSellingPrice ?? prod.sellingPrice ?? 0);
 
     const rawProd = prod.product || prod;
-    const effectiveDiscount = prod.discount !== undefined && prod.discount !== null && Number(prod.discount) !== 0
+    const effectiveDiscount = isConfigured(prod.discount)
       ? prod.discount
-      : (rawProd.discount ?? '');
+      : (isConfigured(rawProd.discount) ? rawProd.discount : '');
 
     const effectiveDiscountType = prod.discountType || rawProd.discountType || 'Percentage';
 
-    const effectiveGstRate = prod.gstRate !== undefined && prod.gstRate !== null
+    const effectiveGstRate = isConfigured(prod.gstRate)
       ? prod.gstRate
-      : (rawProd.gstRate ?? 0);
+      : (isConfigured(rawProd.gstRate) ? rawProd.gstRate : 0);
 
     const newItem = {
       tempId: Date.now() + Math.random(),

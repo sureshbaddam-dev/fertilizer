@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import { CheckCircle2, Shield, ShieldCheck, Smile, Heart, Sun, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Shield, ShieldCheck, Smile, Heart } from 'lucide-react';
 import BrandLogo from '../components/common/BrandLogo';
 import loginProductsImg from '../assets/login_products.webp';
 import PageTracker from '../components/PageTracker';

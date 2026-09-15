@@ -17,7 +17,6 @@ import { supplierService } from '../../services/supplierService';
 import DataTable from '../../components/ui/DataTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import FormDrawer from '../../components/ui/FormDrawer';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { toast } from '../../contexts/ToastContext';
 
 const supplierSchema = z.object({

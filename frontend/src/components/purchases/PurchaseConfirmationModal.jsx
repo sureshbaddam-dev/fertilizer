@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, X, Calendar, User, Package, CheckCircle2, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { ShoppingBag, X, CheckCircle2, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 
 export default function PurchaseConfirmationModal({
   isOpen,
@@ -81,7 +81,7 @@ export default function PurchaseConfirmationModal({
             <div className="flex justify-between items-center text-gray-600">
               <span className="font-normal">Bill Total</span>
               <span className="font-bold text-gray-900">
-                ₹ {totalInvoiceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹ {Math.round(totalInvoiceAmount).toLocaleString('en-IN')}
               </span>
             </div>
 
@@ -89,7 +89,7 @@ export default function PurchaseConfirmationModal({
               <div className="flex justify-between items-center text-[#00783C] font-semibold">
                 <span>Supplier Advance Used</span>
                 <span>
-                  - ₹ {advanceUsed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  - ₹ {Math.round(advanceUsed).toLocaleString('en-IN')}
                 </span>
               </div>
             )}
@@ -98,7 +98,7 @@ export default function PurchaseConfirmationModal({
               <div className="flex justify-between items-center text-gray-700 font-semibold">
                 <span>Amount Payable</span>
                 <span className="font-bold text-gray-900">
-                  ₹ {payableAfterAdvance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₹ {Math.round(payableAfterAdvance).toLocaleString('en-IN')}
                 </span>
               </div>
             )}
@@ -107,7 +107,7 @@ export default function PurchaseConfirmationModal({
               <div className="flex justify-between items-center text-gray-600">
                 <span className="font-normal">Supplier Previous Due</span>
                 <span className="font-bold text-purple-900">
-                  ₹ {prevDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₹ {Math.round(prevDue).toLocaleString('en-IN')}
                 </span>
               </div>
             )}
@@ -115,7 +115,7 @@ export default function PurchaseConfirmationModal({
             <div className="flex justify-between items-center text-gray-600 pt-1.5 border-t border-gray-100">
               <span className="font-normal">Paid Amount</span>
               <span className="font-bold text-[#00783C]">
-                ₹ {paidVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹ {Math.round(paidVal).toLocaleString('en-IN')}
               </span>
             </div>
 
@@ -130,8 +130,8 @@ export default function PurchaseConfirmationModal({
               </span>
               <span className="text-xs sm:text-sm font-bold">
                 {finalSupplierBalance < 0
-                  ? `₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : `₹ ${dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  ? `₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')}`
+                  : `₹ ${Math.round(dueAmount).toLocaleString('en-IN')}`}
               </span>
             </div>
 
@@ -140,10 +140,10 @@ export default function PurchaseConfirmationModal({
               <span>Final Supplier Balance</span>
               <span className={finalSupplierBalance <= 0 ? 'text-[#00783C]' : 'text-red-600'}>
                 {finalSupplierBalance === 0
-                  ? '₹ 0.00'
+                  ? '₹ 0'
                   : finalSupplierBalance < 0
-                  ? `-₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Advance)`
-                  : `₹ ${finalSupplierBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  ? `-₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')} (Advance)`
+                  : `₹ ${Math.round(finalSupplierBalance).toLocaleString('en-IN')}`}
               </span>
             </div>
           </div>

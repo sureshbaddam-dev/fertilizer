@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X,
   Printer,
@@ -23,8 +22,8 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
 import AddCustomerModal from '../customers/AddCustomerModal';
-import PrintableInvoice from '../sales/PrintableInvoice';
 import { printInvoiceHtml } from '../../utils/invoicePrintHelper';
+import { calculateInvoiceTotals, resolveEffectiveDiscount, resolveEffectiveGstRate, isConfigured } from '../../utils/pricing';
 import { toast } from '../../contexts/ToastContext';
 
 // Memoized Cart Item Row Component to isolate re-renders on quantity / price input
@@ -104,7 +103,7 @@ const CartItemRow = React.memo(function CartItemRow({
 
       {/* 4. Line Amount = Qty x Effective Selling Price */}
       <div className="w-20 text-right font-mono font-extrabold text-gray-900 text-xs shrink-0">
-        ₹ {lineTotalVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+        ₹ {Math.round(lineTotalVal).toLocaleString('en-IN')}
       </div>
 
       {/* 5. Delete Button */}
@@ -251,41 +250,71 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   const isSelectingProdRef = useRef(false);
 
-  // Add Product to Cart
+  const getProductTotalAvailableStock = useCallback((product) => {
+    if (Array.isArray(product?.batches) && product.batches.length > 0) {
+      return product.batches.reduce((sum, b) => sum + Math.max(0, Number(b.quantityRemaining ?? b.currentStock ?? b.stock ?? 0)), 0);
+    }
+    return Math.max(0, Number(product?.totalStock ?? product?.currentStock ?? product?.stock ?? 0));
+  }, []);
+
+  // Add Product to Cart with strict stock pre-validation
   const addProductToCart = useCallback((product, options = { focusSearch: false }) => {
     if (!product) return;
     isSelectingProdRef.current = true;
 
-    const pId = product._id || product.id;
+    const pId = (product._id || product.id)?.toString();
     const pName = product.name || 'Product';
     const pPrice = Number(product.currentSellingPrice || product.sellingPrice || product.defaultSellingPrice || product.defaultMrp || product.mrp || product.price || 0);
     const pUnit = (product.defaultUnitId?.shortName) || product.defaultUnitId?.name || product.unit || 'Bag';
     const pBrand = (product.brandId?.name) || product.brand || 'Vedixa';
-    const pStock = Number(product.totalStock ?? product.currentStock ?? product.stock ?? 0);
+    const pStock = getProductTotalAvailableStock(product);
 
-    // Resolve discount from active batch or product basic
+    // Calculate current quantity of this product already in cart
+    const alreadyInCart = items
+      .filter((i) => (i.id?.toString() === pId || i.originalProductId?.toString() === pId))
+      .reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
+
+    const remainingStock = pStock - alreadyInCart;
+
+    if (remainingStock <= 0) {
+      toast.error(
+        pStock <= 0
+          ? `"${pName}" is currently out of stock.`
+          : `Insufficient stock for "${pName}". Available: ${pStock} ${pUnit}, already in cart: ${alreadyInCart}.`
+      );
+      setTimeout(() => { isSelectingProdRef.current = false; }, 150);
+      return;
+    }
+
+    // Resolve discount and GST rate from active FIFO batch or product master
     const activeBatch = Array.isArray(product.batches)
-      ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0 && (b.discount || b.gstRate)) || product.batches[0]
-      : null;
+      ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0) || product.batches[0]
+      : (product.currentActiveBatch || null);
 
-    const discVal = Number(
-      product.discountVal !== undefined && product.discountVal !== null
-        ? product.discountVal
-        : (activeBatch?.discount !== undefined && activeBatch?.discount !== null && activeBatch?.discount !== '' && Number(activeBatch?.discount) !== 0
-            ? activeBatch.discount
-            : (product.discount ?? 0))
-    );
+    const effDiscObj = isConfigured(product.discountVal)
+      ? { discount: Number(product.discountVal), discountType: product.discountType || 'Percentage' }
+      : resolveEffectiveDiscount(activeBatch, product);
 
-    const discType = product.discountType || activeBatch?.discountType || 'Percentage';
+    const discVal = effDiscObj.discount;
+    const discType = effDiscObj.discountType;
+
+    const itemGstRate = isConfigured(product.gstRate) && !isConfigured(activeBatch?.gstRate)
+      ? Number(product.gstRate)
+      : resolveEffectiveGstRate(activeBatch, product);
+
+    const itemHsn = product.hsnCode || activeBatch?.hsnCode || '';
 
     setItems((prev) => {
-      const existingIdx = prev.findIndex((i) => i.id === pId);
+      const existingIdx = prev.findIndex((i) => i.id?.toString() === pId);
       if (existingIdx >= 0) {
         const updated = [...prev];
         updated[existingIdx] = {
           ...updated[existingIdx],
           qty: updated[existingIdx].qty + 1,
           currentStock: pStock > 0 ? pStock : updated[existingIdx].currentStock,
+          totalStock: pStock > 0 ? pStock : updated[existingIdx].totalStock,
+          gstRate: itemGstRate,
+          hsnCode: itemHsn || updated[existingIdx].hsnCode,
         };
         return updated;
       }
@@ -293,19 +322,22 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         ...prev,
         {
           id: pId,
+          originalProductId: pId,
           name: pName,
           brand: pBrand,
           qty: 1,
           price: pPrice,
-          discVal: discVal > 0 ? discVal : 0,
-          discType: discVal > 0 ? discType : 'Percentage',
+          discVal: discVal,
+          discType: discType,
           unit: pUnit,
           image: product.image,
           currentStock: pStock,
           totalStock: pStock,
           batches: product.batches,
-          discount: product.discount,
-          discountType: product.discountType,
+          discount: discVal,
+          discountType: discType,
+          gstRate: itemGstRate,
+          hsnCode: itemHsn,
         },
       ];
     });
@@ -323,7 +355,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setTimeout(() => {
       isSelectingProdRef.current = false;
     }, 150);
-  }, []);
+  }, [items, getProductTotalAvailableStock]);
 
   const handleProdSearchKeyDown = (e) => {
     if (!isDrawerProdDropdownOpen || drawerProductOptions.length === 0) return;
@@ -379,18 +411,35 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
   };
 
-  // Stabilized Item Update Handlers via useCallback
+  // Stabilized Item Update Handlers via useCallback with strict stock checking
   const handleUpdateQty = useCallback((id, delta) => {
-    setItems((prev) =>
-      prev
-        .map((i) => {
-          if (i.id !== id && i.originalProductId !== id) return i;
-          const maxStock = Number(i.totalStock || i.currentStock || 99999);
-          const newQty = Math.min(maxStock, Math.max(1, (Number(i.qty) || 0) + delta));
-          return { ...i, qty: newQty };
-        })
-        .filter((i) => i.qty > 0)
-    );
+    setItems((prev) => {
+      const targetItem = prev.find((i) => i.id === id || i.originalProductId === id);
+      if (!targetItem) return prev;
+      const pId = (targetItem.originalProductId || targetItem.id)?.toString();
+      const prodMaxStock = Number(targetItem.totalStock ?? targetItem.currentStock ?? 99999);
+
+      const otherItemsQty = prev
+        .filter((i) => (i.id?.toString() === pId || i.originalProductId?.toString() === pId) && i.id !== id)
+        .reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
+
+      const currentLineQty = Number(targetItem.qty) || 0;
+      const requestedLineQty = currentLineQty + delta;
+
+      if (delta > 0 && otherItemsQty + requestedLineQty > prodMaxStock) {
+        toast.error(`Insufficient stock for "${targetItem.name}". Available: ${prodMaxStock}, already in cart: ${otherItemsQty + currentLineQty}.`);
+        return prev;
+      }
+
+      if (requestedLineQty < 1) {
+        return prev.filter((i) => i.id !== id);
+      }
+
+      return prev.map((i) => {
+        if (i.id !== id) return i;
+        return { ...i, qty: requestedLineQty };
+      });
+    });
   }, []);
 
   const handleDirectQtyInput = useCallback((id, rawVal) => {
@@ -400,14 +449,27 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     }
     const sanitizedVal = rawVal.length > 1 && rawVal.startsWith('0') ? rawVal.replace(/^0+/, '') || '0' : rawVal;
     const val = parseFloat(sanitizedVal);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val <= 0) return;
 
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id && i._id !== id && i.originalProductId !== id) return i;
-        return { ...i, qty: val };
-      })
-    );
+    setItems((prev) => {
+      const targetItem = prev.find((i) => i.id === id || i.originalProductId === id);
+      if (!targetItem) return prev;
+      const pId = (targetItem.originalProductId || targetItem.id)?.toString();
+      const prodMaxStock = Number(targetItem.totalStock ?? targetItem.currentStock ?? 99999);
+
+      const otherItemsQty = prev
+        .filter((i) => (i.id?.toString() === pId || i.originalProductId?.toString() === pId) && i.id !== id)
+        .reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
+
+      const maxAllowedForThisLine = Math.max(1, prodMaxStock - otherItemsQty);
+
+      if (val > maxAllowedForThisLine) {
+        toast.error(`Cannot exceed available stock of ${prodMaxStock} for "${targetItem.name}".`);
+        return prev.map((i) => (i.id === id ? { ...i, qty: maxAllowedForThisLine } : i));
+      }
+
+      return prev.map((i) => (i.id === id ? { ...i, qty: val } : i));
+    });
   }, []);
 
   const handleUpdatePrice = useCallback((id, newPrice) => {
@@ -476,6 +538,17 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       baseList = fifoPreview.items.map((pi) => {
         const pIdStr = (pi.productId || pi.originalProductId)?.toString();
         const parentItem = itemMap.get(pIdStr) || {};
+        const pGst = isConfigured(pi.gstRate)
+          ? Number(pi.gstRate)
+          : (isConfigured(parentItem.gstRate) ? Number(parentItem.gstRate) : 0);
+        const pHsn = pi.hsnCode || parentItem.hsnCode || '';
+        const pDiscVal = isConfigured(pi.discVal)
+          ? Number(pi.discVal)
+          : (isConfigured(parentItem.discVal)
+              ? Number(parentItem.discVal)
+              : (isConfigured(parentItem.discount) ? Number(parentItem.discount) : (isConfigured(pi.discount) ? Number(pi.discount) : 0)));
+        const pDiscType = pi.discType || parentItem.discType || parentItem.discountType || pi.discountType || 'Percentage';
+
         return {
           ...pi,
           id: pi.id || pi._id || pi.productId,
@@ -486,8 +559,12 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           image: pi.image || parentItem.image || '',
           qty: pi.quantity || pi.qty,
           price: pi.unitPrice || pi.price,
-          discVal: parentItem.discVal || pi.discVal || 0,
-          discType: parentItem.discType || pi.discType || 'Percentage',
+          discVal: pDiscVal,
+          discType: pDiscType,
+          discountVal: pDiscVal,
+          discountType: pDiscType,
+          gstRate: pGst,
+          hsnCode: pHsn,
         };
       });
     } else {
@@ -514,8 +591,10 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
           const alloc = Math.min(bStock, remainingToAlloc);
           const bPrice = Number(batch.sellingPrice || item.price || 0);
-          const bDisc = Number(batch.discount !== undefined && batch.discount !== null && batch.discount !== '' && Number(batch.discount) !== 0 ? batch.discount : (item.discVal || 0));
+          const bDisc = isConfigured(batch.discount) ? Number(batch.discount) : (isConfigured(item.discVal) ? Number(item.discVal) : 0);
           const bDiscType = batch.discountType || item.discType || 'Percentage';
+          const bGst = isConfigured(batch.gstRate) ? Number(batch.gstRate) : (isConfigured(item.gstRate) ? Number(item.gstRate) : 0);
+          const bHsn = batch.hsnCode || item.hsnCode || '';
 
           batchGroups.push({
             batchNumber: batch.batchNumber,
@@ -523,6 +602,8 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
             price: bPrice,
             discVal: bDisc,
             discType: bDiscType,
+            gstRate: bGst,
+            hsnCode: bHsn,
           });
 
           remainingToAlloc -= alloc;
@@ -533,8 +614,10 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
             batchNumber: '',
             qty: remainingToAlloc,
             price: item.price,
-            discVal: item.discVal || 0,
+            discVal: isConfigured(item.discVal) ? Number(item.discVal) : 0,
             discType: item.discType || 'Percentage',
+            gstRate: isConfigured(item.gstRate) ? Number(item.gstRate) : 0,
+            hsnCode: item.hsnCode || '',
           });
         }
 
@@ -552,6 +635,8 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
               price: group.price,
               discVal: group.discVal,
               discType: group.discType,
+              gstRate: group.gstRate,
+              hsnCode: group.hsnCode,
               isFifoSplit: true,
               fifoSplitNotice: idx > 0
                 ? `Taken from next batch at ₹${group.price} (Previous batch contained ${batchGroups[0].qty} ${item.unit}s @ ₹${batchGroups[0].price})`
@@ -566,8 +651,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     return baseList.map((pi) => {
       const q = Number(pi.qty || pi.quantity) || 0;
       const basePrice = Number(pi.price || pi.unitPrice) || 0;
-      const dVal = Number(pi.discVal || pi.discountVal || 0);
+      const dVal = Number(pi.discVal !== undefined && pi.discVal !== null ? pi.discVal : (pi.discountVal || 0));
       const dType = pi.discType || pi.discountType || 'Percentage';
+      const itemGst = Number(pi.gstRate ?? 0);
 
       let discPerUnit = 0;
       let effectivePrice = basePrice;
@@ -591,72 +677,33 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
         discLabel,
         discPerUnit,
         effectivePrice,
+        gstRate: itemGst,
         lineTotal: q * effectivePrice,
       };
     });
   }, [items, fifoPreview]);
 
-  const subtotal = useMemo(() => {
-    return displayItems.reduce((acc, i) => acc + (i.lineTotal || 0), 0);
-  }, [displayItems]);
-  const perItemDiscountTotal = useMemo(() => displayItems.reduce((acc, i) => acc + (Number(i.disc) || 0), 0), [displayItems]);
+  // Unified Invoice Calculations via Authoritative Pricing Engine
+  const invoiceCalculation = useMemo(() => {
+    return calculateInvoiceTotals({
+      items: displayItems,
+      manualDiscountValue,
+      manualDiscountType,
+      shopDiscountData,
+      isGstEnabled,
+      gstType,
+      defaultGstRate,
+    });
+  }, [displayItems, manualDiscountValue, manualDiscountType, shopDiscountData, isGstEnabled, gstType, defaultGstRate]);
 
-  // DISCOUNT PRIORITY ENGINE (#2, #3, #4):
-  // Priority: Manual Bill Discount -> Overrides -> Global Shop Discount. Never apply both together!
-  const activeDiscount = useMemo(() => {
-    const manualInput = manualDiscountValue.trim();
-    const isManualEntered = manualInput !== '' && !isNaN(Number(manualInput));
-
-    if (isManualEntered) {
-      const val = Number(manualInput);
-      const amount = manualDiscountType === 'percentage'
-        ? (subtotal * val) / 100
-        : val;
-      return {
-        type: manualDiscountType,
-        value: val,
-        amount: Math.min(subtotal, Math.max(0, amount)),
-        source: 'manual', // Overrides shop discount
-        label: `Manual Discount (${manualDiscountType === 'percentage' ? `${val}%` : `₹${val}`})`,
-      };
-    }
-
-    if (isShopDiscountEnabled) {
-      const shopVal = Number(shopDiscountData.discountValue);
-      const shopType = shopDiscountData.discountType || 'percentage';
-      const amount = shopType === 'percentage'
-        ? (subtotal * shopVal) / 100
-        : shopVal;
-      return {
-        type: shopType,
-        value: shopVal,
-        amount: Math.min(subtotal, Math.max(0, amount)),
-        source: 'shop', // Applied automatically
-        label: shopDiscountData.title || (shopType === 'percentage' ? `Flat ${shopVal}% OFF` : `Flat ₹${shopVal} OFF`),
-      };
-    }
-
-    return { type: 'none', value: 0, amount: 0, source: 'none', label: 'No Discount' };
-  }, [manualDiscountValue, manualDiscountType, subtotal, isShopDiscountEnabled, shopDiscountData]);
-
-  const totalDiscount = activeDiscount.amount;
-  const subtotalAfterDiscount = Math.max(0, subtotal - totalDiscount);
-
-  // Dynamic Tax (GST) Engine
-  const gstCalculation = useMemo(() => {
-    if (!isGstEnabled) {
-      return { isGstEnabled: false, gstRate: 0, gstAmount: 0, cgst: 0, sgst: 0, igst: 0, gstType: 'NONE' };
-    }
-    const rate = defaultGstRate;
-    const gstAmt = (subtotalAfterDiscount * rate) / 100;
-    if (gstType === 'IGST') {
-      return { isGstEnabled: true, gstRate: rate, gstAmount: gstAmt, cgst: 0, sgst: 0, igst: gstAmt, gstType: 'IGST' };
-    }
-    const half = gstAmt / 2;
-    return { isGstEnabled: true, gstRate: rate, gstAmount: gstAmt, cgst: half, sgst: half, igst: 0, gstType: 'CGST_SGST' };
-  }, [isGstEnabled, defaultGstRate, gstType, subtotalAfterDiscount]);
-
-  const grandTotal = Math.round(subtotalAfterDiscount + gstCalculation.gstAmount);
+  const subtotal = invoiceCalculation.grossSubtotal;
+  const productDiscountTotal = invoiceCalculation.productDiscountTotal;
+  const activeDiscount = invoiceCalculation.activeBillDiscount;
+  const billDiscountAmount = invoiceCalculation.billDiscountAmount;
+  const totalDiscount = invoiceCalculation.totalDiscount;
+  const subtotalAfterDiscount = invoiceCalculation.taxableSubtotal;
+  const gstCalculation = invoiceCalculation.gstCalculation;
+  const grandTotal = invoiceCalculation.grandTotal;
 
   // Sync default Paid Amount with Grand Total unless user manually edited
   useEffect(() => {
@@ -736,28 +783,37 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       customerMobile: customerData.mobile,
       isAddedCustomer: isAddedCust,
       customerMode,
-      items: displayItems.map((it) => ({
+      items: invoiceCalculation.items.map((it) => ({
         id: it.originalProductId || it.id || it._id,
         productId: it.originalProductId || it.id || it._id,
         name: it.name,
         qty: it.qty,
+        quantity: it.qty,
         price: it.price,
         unitPrice: it.price,
         unit: it.unit,
-        lineTotal: it.lineTotal !== undefined ? it.lineTotal : (it.qty * it.price),
+        unitName: it.unit,
+        lineTotal: it.lineTotal,
         currentStock: it.currentStock,
         primaryBatch: it.primaryBatch || null,
         batchNumber: it.batchNumber || '',
         batchCode: it.batchCode || '',
         gstRate: it.gstRate,
-        gstAmount: isGstEnabled ? (it.qty * it.price * defaultGstRate) / 100 : 0,
-        discount: it.discVal || it.discount,
-        discountType: it.discType || it.discountType,
+        gstAmount: it.gstAmount,
+        taxableAmount: it.taxableAmount,
+        discount: it.discVal || it.discountVal || 0,
+        discountType: it.discType || it.discountType || 'Percentage',
+        discountPct: it.discountPct || 0,
+        discountAmount: it.discountAmount || 0,
       })),
       subtotal,
+      productDiscountAmount: productDiscountTotal,
+      billDiscountAmount,
       discountAmount: totalDiscount,
+      taxableAmount: subtotalAfterDiscount,
       taxAmount: gstCalculation.gstAmount,
       totalAmount: grandTotal,
+      grandTotal,
       paidAmount: effectivePaidAmount,
       paymentMode: selectedPaymentMode,
       paymentMethod: selectedPaymentMode,
@@ -775,12 +831,18 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setLastSavedInvoice(savedInvoice);
 
     queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
     queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['product-details'] });
+    queryClient.invalidateQueries({ queryKey: ['product-detail-drawer'] });
     queryClient.invalidateQueries({ queryKey: ['customers-list-page'] });
     queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
     queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
     queryClient.invalidateQueries({ queryKey: ['customer-ledger-details'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
 
     return savedInvoice;
@@ -982,41 +1044,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       let savedInvoice = lastSavedInvoice;
 
       if (!savedInvoice) {
-        const idempotencyKey = `IDEMP-WA-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const payload = {
-          customer: customerData,
-          customerId: isAddedCust ? selectedCustomer?._id : null,
-          customerType: isAddedCust ? 'ADDED' : 'GENERAL',
-          customerName: customerData.name,
-          customerMobile: customerData.mobile,
-          items: displayItems.map((i) => ({
-            productId: i.originalProductId || i.id || i._id,
-            name: i.name,
-            qty: i.qty,
-            price: i.price,
-            unitPrice: i.price,
-            batchNumber: i.batchNumber || '',
-            gstAmount: isGstEnabled ? (i.qty * i.price * defaultGstRate) / 100 : 0,
-          })),
-          subtotal,
-          discountAmount: totalDiscount,
-          taxAmount: gstCalculation.gstAmount,
-          totalAmount: grandTotal,
-          paidAmount: effectivePaidAmount,
-          paymentMode: selectedPaymentMode,
-          notes: notes.trim(),
-          idempotencyKey,
-        };
-
-        const savedRes = await invoiceService.createInvoice(payload);
-        savedInvoice = savedRes?.data?.invoice || savedRes?.invoice || savedRes?.data || savedRes || {};
-        setLastSavedInvoice(savedInvoice);
-
-        queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
-        queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
-        queryClient.invalidateQueries({ queryKey: ['customer-ledger-profile'] });
-        queryClient.invalidateQueries({ queryKey: ['general-customers-list'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+        const validated = validateAndBuildInvoicePayload();
+        if (!validated) {
+          if (waWindow) {
+            try { waWindow.close(); } catch (_) {}
+          }
+          return;
+        }
+        savedInvoice = await executeSaveInvoice(validated.payload);
       }
 
       // 2. Re-fetch fresh Customer Ledger directly from database
@@ -1182,7 +1217,11 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       toast.success('Bill saved successfully');
 
       // Step B: Print the real HTML invoice document via isolated hidden iframe
-      await printInvoiceHtml(savedInvoice, shopSettings);
+      try {
+        await printInvoiceHtml(savedInvoice, shopSettings);
+      } catch (printErr) {
+        console.warn('Print launch notice:', printErr);
+      }
 
       // Step C: Reset form and close drawer
       resetBillForm();
@@ -1534,9 +1573,18 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           <div className="flex justify-between text-gray-600 font-medium">
             <span>Subtotal</span>
             <span className="font-mono font-bold text-gray-900">
-              ₹ {subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹ {Math.round(subtotal).toLocaleString('en-IN')}
             </span>
           </div>
+
+          {productDiscountTotal > 0 && (
+            <div className="flex justify-between text-xs font-semibold text-emerald-700">
+              <span>Product Discount</span>
+              <span className="font-mono font-extrabold">
+                - ₹ {Math.round(productDiscountTotal).toLocaleString('en-IN')}
+              </span>
+            </div>
+          )}
 
           {/* DISCOUNT PRIORITY CONTROLS (#2, #3, #4) */}
           <div className="space-y-1 border-t border-b border-gray-200/60 py-2">
@@ -1581,7 +1629,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
                     <button
                       type="button"
                       onClick={() => setManualDiscountValue('')}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-600 cursor-pointer"
                       title="Clear manual discount to restore Shop Discount"
                     >
                       <X className="w-3 h-3" />
@@ -1591,20 +1639,20 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
               </div>
             </div>
 
-            {activeDiscount.amount > 0 && (
+            {billDiscountAmount > 0 && (
               <div className="flex justify-between text-xs font-semibold text-emerald-700 pt-0.5">
                 <span>{activeDiscount.label}</span>
-                <span className="font-mono font-extrabold">- ₹ {activeDiscount.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span className="font-mono font-extrabold">- ₹ {Math.round(billDiscountAmount).toLocaleString('en-IN')}</span>
               </div>
             )}
 
-            {/* GST / Tax Row (Always visible with configured rate or ₹0.00) */}
+            {/* GST / Tax Row (Dynamic Rate Badge or Amount) */}
             <div className="flex justify-between text-xs font-semibold text-slate-700 pt-0.5 border-t border-slate-100">
               <span>
-                GST / Tax {gstCalculation.isGstEnabled ? `(${gstCalculation.gstRate}%)` : '(0%)'}
+                GST / Tax {gstCalculation.isGstEnabled ? `(${gstCalculation.gstRateLabel || `${gstCalculation.gstRate}%`})` : '(0%)'}
               </span>
               <span className="font-mono font-extrabold text-slate-900">
-                + ₹ {gstCalculation.gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                + ₹ {Math.round(gstCalculation.gstAmount).toLocaleString('en-IN')}
               </span>
             </div>
           </div>
@@ -1613,7 +1661,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           {advanceUsed > 0 && (
             <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50/80 p-2 rounded-xl border border-emerald-200 text-[11px]">
               <span>Customer Advance Applied</span>
-              <span className="font-mono">- ₹ {advanceUsed.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono">- ₹ {Math.round(advanceUsed).toLocaleString('en-IN')}</span>
             </div>
           )}
 
@@ -1621,7 +1669,7 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
           <div className="flex justify-between items-center text-gray-900 font-extrabold text-sm pt-1">
             <span>Current Invoice</span>
             <span className="font-mono text-[#047857] text-base font-extrabold">
-              ₹ {grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹ {Math.round(grandTotal).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -1631,13 +1679,13 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
               <div className="flex justify-between items-center text-amber-900 font-medium">
                 <span>Old Due (Previous Balance):</span>
                 <span className="font-mono font-bold text-amber-900">
-                  ₹ {customerOldDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(customerOldDue).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="flex justify-between items-center text-gray-900 font-black border-t border-amber-200/80 pt-1 text-[13px]">
                 <span>Total Amount Due:</span>
                 <span className="font-mono text-red-600 font-black">
-                  ₹ {(grandTotal + customerOldDue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(grandTotal + customerOldDue).toLocaleString('en-IN')}
                 </span>
               </div>
             </div>
@@ -1695,19 +1743,19 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
               <div className="flex justify-between text-slate-600 font-medium">
                 <span>Current Invoice Balance:</span>
                 <span className="font-mono font-bold text-slate-800">
-                  ₹ {Math.max(0, netBillToPay - effectivePaidAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(Math.max(0, netBillToPay - effectivePaidAmount)).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="flex justify-between text-slate-600 font-medium">
                 <span>Old Due:</span>
                 <span className="font-mono font-bold text-amber-800">
-                  ₹ {customerOldDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(customerOldDue).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="flex justify-between text-slate-900 font-black border-t border-slate-200 pt-1 text-xs">
                 <span>Remaining Total Balance:</span>
                 <span className="font-mono text-red-600">
-                  ₹ {(Math.max(0, netBillToPay - effectivePaidAmount) + customerOldDue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹ {Math.round(Math.max(0, netBillToPay - effectivePaidAmount) + customerOldDue).toLocaleString('en-IN')}
                 </span>
               </div>
             </div>

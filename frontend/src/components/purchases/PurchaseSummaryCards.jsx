@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, TrendingUp, BookOpen, Clock, Lightbulb, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Calculator, TrendingUp, Clock, Lightbulb, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function PurchaseSummaryCards({
@@ -59,7 +59,7 @@ export default function PurchaseSummaryCards({
           <div className="flex justify-between items-center text-gray-600 pt-1 border-t border-gray-100">
             <span className="font-normal">Total Invoice Amount</span>
             <span className="font-bold text-gray-900">
-              ₹ {totalInvoiceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹ {Math.round(totalInvoiceAmount).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -67,7 +67,7 @@ export default function PurchaseSummaryCards({
             <div className="flex justify-between items-center text-gray-600">
               <span className="font-normal">Total Discount</span>
               <span className="font-bold text-gray-900">
-                ₹ {totalDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹ {Math.round(totalDiscount).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -76,7 +76,7 @@ export default function PurchaseSummaryCards({
             <div className="flex justify-between items-center text-[#00783C] font-semibold">
               <span>Supplier Advance Used</span>
               <span>
-                - ₹ {advanceUsed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                - ₹ {Math.round(advanceUsed).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -85,7 +85,7 @@ export default function PurchaseSummaryCards({
             <div className="flex justify-between items-center text-gray-700 font-semibold">
               <span>Net Payable</span>
               <span className="text-gray-900 font-bold">
-                ₹ {payableAfterAdvance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹ {Math.round(payableAfterAdvance).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -94,7 +94,7 @@ export default function PurchaseSummaryCards({
             <div className="flex justify-between items-center text-gray-600">
               <span className="font-normal">Previous Supplier Due</span>
               <span className="font-bold text-purple-900">
-                ₹ {prevDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹ {Math.round(prevDue).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -102,7 +102,7 @@ export default function PurchaseSummaryCards({
           <div className="flex justify-between items-center text-gray-600">
             <span className="font-normal">Paid Amount</span>
             <span className="font-bold text-[#00783C]">
-              ₹ {paidVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹ {Math.round(paidVal).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -118,8 +118,8 @@ export default function PurchaseSummaryCards({
               </span>
               <span className="text-xs sm:text-sm">
                 {finalSupplierBalance < 0
-                  ? `₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : `₹ ${dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  ? `₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')}`
+                  : `₹ ${Math.round(dueAmount).toLocaleString('en-IN')}`}
               </span>
             </div>
           </div>
@@ -138,25 +138,23 @@ export default function PurchaseSummaryCards({
         <div className="space-y-2 text-xs">
           <div className="flex justify-between items-center text-gray-600">
             <span className="font-normal">Total Stock Increase</span>
-            <span className="font-bold text-[#00783C]">{totalQty} Units</span>
+            <span className="font-bold text-[#00783C]">+{totalQty} Units</span>
           </div>
 
           <div className="flex justify-between items-center text-gray-600">
-            <span className="font-normal">Low Stock Items Added</span>
-            <span className={`font-bold ${lowStockItemsCount > 0 ? 'text-amber-600' : 'text-gray-600'}`}>
-              {lowStockItemsCount} Items
-            </span>
+            <span className="font-normal">Products Added/Updated</span>
+            <span className="font-bold text-gray-900">{totalItemsCount} Types</span>
           </div>
         </div>
       </div>
 
-      {/* 3. Supplier Ledger (After Entry) */}
+      {/* 3. Supplier Balance Impact */}
       <div className="p-4 bg-white border border-gray-200/80 rounded-2xl shadow-2xs space-y-3">
         <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-          <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <BookOpen className="w-3.5 h-3.5" />
+          <div className="w-6 h-6 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
+            <Building2 className="w-3.5 h-3.5" />
           </div>
-          <h3 className="text-[14px] font-bold text-gray-900">Supplier Ledger (After Entry)</h3>
+          <h3 className="text-[14px] font-bold text-gray-900">Supplier Ledger Impact</h3>
         </div>
 
         <div className="space-y-2 text-xs">
@@ -164,15 +162,15 @@ export default function PurchaseSummaryCards({
             <span className="font-normal">Previous Balance</span>
             <span className={`font-bold ${prevDue < 0 ? 'text-[#00783C]' : 'text-gray-900'}`}>
               {prevDue < 0
-                ? `-₹ ${Math.abs(prevDue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Advance)`
-                : `₹ ${prevDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                ? `-₹ ${Math.round(Math.abs(prevDue)).toLocaleString('en-IN')} (Advance)`
+                : `₹ ${Math.round(prevDue).toLocaleString('en-IN')}`}
             </span>
           </div>
 
           <div className="flex justify-between items-center text-gray-600">
             <span className="font-normal">Purchase Bill Added</span>
             <span className="font-bold text-amber-600">
-              + ₹ {totalInvoiceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              + ₹ {Math.round(totalInvoiceAmount).toLocaleString('en-IN')}
             </span>
           </div>
 
@@ -180,7 +178,7 @@ export default function PurchaseSummaryCards({
             <div className="flex justify-between items-center text-gray-600">
               <span className="font-normal">Payment Deducted</span>
               <span className="font-bold text-[#00783C]">
-                - ₹ {paidVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                - ₹ {Math.round(paidVal).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -189,10 +187,10 @@ export default function PurchaseSummaryCards({
             <span>Total Running Balance</span>
             <span className={finalSupplierBalance <= 0 ? 'text-[#00783C]' : 'text-red-600'}>
               {finalSupplierBalance === 0
-                ? '₹ 0.00'
+                ? '₹ 0'
                 : finalSupplierBalance < 0
-                ? `-₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Advance)`
-                : `₹ ${finalSupplierBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                ? `-₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')} (Advance)`
+                : `₹ ${Math.round(finalSupplierBalance).toLocaleString('en-IN')}`}
             </span>
           </div>
 

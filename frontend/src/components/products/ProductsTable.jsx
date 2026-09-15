@@ -274,10 +274,10 @@ export default function ProductsTable({
                       {brandName}
                     </td>
                     <td className="py-2.5 px-2.5 text-center font-mono font-medium text-gray-800 text-xs align-middle whitespace-nowrap">
-                      ₹ {purchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(purchasePrice).toLocaleString('en-IN')}
                     </td>
                     <td className="py-2.5 px-2.5 text-center font-mono font-bold text-[#047857] text-xs align-middle whitespace-nowrap">
-                      ₹ {sellingPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹ {Math.round(sellingPrice).toLocaleString('en-IN')}
                     </td>
                     <td className="py-2.5 px-2.5 text-center font-mono font-bold text-gray-900 text-xs align-middle whitespace-nowrap">
                       {currentStock} {unitName}

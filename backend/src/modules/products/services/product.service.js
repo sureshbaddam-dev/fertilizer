@@ -6,7 +6,7 @@ import { categoryRepository } from '../../masters/repositories/category.reposito
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
-import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { normalizeMoney, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../../utils/pricingUtils.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { StockLedger } from '../../purchases/models/stockLedger.model.js';
@@ -478,9 +478,17 @@ export const productService = {
       }
 
       const effectivePurchaseRate = activeBatches[0]?.purchaseRate || pBatches[0]?.purchaseRate || pObj.defaultPurchaseRate || pObj.purchasePrice || 0;
+      const effectiveGstRate = resolveEffectiveGstRate(oldestActiveBatch, pObj);
+      const effectiveDiscObj = resolveEffectiveDiscount(oldestActiveBatch, pObj);
 
       return {
         ...pObj,
+        gstRate: pObj.gstRate !== undefined && pObj.gstRate !== null ? Number(pObj.gstRate) : 0,
+        discount: pObj.discount !== undefined && pObj.discount !== null ? Number(pObj.discount) : 0,
+        discountType: pObj.discountType || 'Percentage',
+        effectiveGstRate,
+        effectiveDiscount: effectiveDiscObj.discount,
+        effectiveDiscountType: effectiveDiscObj.discountType,
         totalStock: calculatedCurrentStock,
         currentStock: calculatedCurrentStock,
         defaultPurchaseRate: pObj.defaultPurchaseRate > 0 ? pObj.defaultPurchaseRate : effectivePurchaseRate,
@@ -692,10 +700,18 @@ export const productService = {
 
     const primaryBatchNumber = oldestActiveBatch?.batchNumber || annotatedBatches[0]?.batchNumber || undefined;
     const effectivePurchaseRate = activeBatches[0]?.purchaseRate || validBatches[0]?.purchaseRate || productObj.defaultPurchaseRate || productObj.purchasePrice || 0;
+    const effectiveGstRate = resolveEffectiveGstRate(oldestActiveBatch, productObj);
+    const effectiveDiscObj = resolveEffectiveDiscount(oldestActiveBatch, productObj);
 
     return {
       product: {
         ...productObj,
+        gstRate: productObj.gstRate !== undefined && productObj.gstRate !== null ? Number(productObj.gstRate) : 0,
+        discount: productObj.discount !== undefined && productObj.discount !== null ? Number(productObj.discount) : 0,
+        discountType: productObj.discountType || 'Percentage',
+        effectiveGstRate,
+        effectiveDiscount: effectiveDiscObj.discount,
+        effectiveDiscountType: effectiveDiscObj.discountType,
         totalStock: calculatedCurrentStock,
         currentStock: calculatedCurrentStock,
         defaultPurchaseRate: productObj.defaultPurchaseRate > 0 ? productObj.defaultPurchaseRate : effectivePurchaseRate,
@@ -1137,6 +1153,8 @@ export const productService = {
       defaultUnitId,
       hsnCode: (data.hsnCode && typeof data.hsnCode === 'string') ? data.hsnCode.trim() : undefined,
       gstRate: (data.gstRate !== undefined && data.gstRate !== null && data.gstRate !== '') ? Number(data.gstRate) : 0,
+      discount: (data.discount !== undefined && data.discount !== null && data.discount !== '') ? Number(data.discount) : 0,
+      discountType: data.discountType || 'Percentage',
       minimumStockAlert: Number(data.minimumStockAlert || data.minStockAlert) || 10,
       defaultPurchaseRate: Number(data.defaultPurchaseRate) || 0,
       defaultMrp: Number(data.defaultMrp) || 0,
@@ -1284,21 +1302,32 @@ export const productService = {
     }
 
     const targetBatchId = data.selectedBatchId || data.batchId;
-    const batchUpdateObj = {
-      sellingPrice: data.sellingPrice ?? data.defaultSellingPrice,
-      purchaseRate: data.purchaseRate ?? data.purchasePrice ?? data.defaultPurchaseRate,
-      mrp: data.mrp ?? data.defaultMrp,
-      discount: data.batchDiscount !== undefined ? data.batchDiscount : data.discount,
-      discountType: data.batchDiscountType || data.discountType || 'Percentage',
-      gstRate: data.batchGstRate !== undefined ? data.batchGstRate : data.gstRate,
-    };
+    if (targetBatchId || data.selectedBatchNumber) {
+      const batchUpdateObj = {};
+      if (data.sellingPrice !== undefined && data.sellingPrice !== '') batchUpdateObj.sellingPrice = Number(data.sellingPrice);
+      if (data.purchasePrice !== undefined && data.purchasePrice !== '') batchUpdateObj.purchaseRate = Number(data.purchasePrice);
+      else if (data.purchaseRate !== undefined && data.purchaseRate !== '') batchUpdateObj.purchaseRate = Number(data.purchaseRate);
+      if (data.mrp !== undefined && data.mrp !== '') batchUpdateObj.mrp = Number(data.mrp);
 
-    if (targetBatchId) {
-      await this.updateBatch(targetBatchId, batchUpdateObj, userId);
-    } else if (data.selectedBatchNumber) {
-      const bDoc = await ProductBatch.findOne({ userId, productId: id, batchNumber: data.selectedBatchNumber, isDeleted: { $ne: true } });
-      if (bDoc) {
-        await this.updateBatch(bDoc._id, batchUpdateObj, userId);
+      if (data.batchDiscount !== undefined) {
+        batchUpdateObj.discount = data.batchDiscount === null || data.batchDiscount === '' ? null : Number(data.batchDiscount);
+      }
+      if (data.batchDiscountType !== undefined) {
+        batchUpdateObj.discountType = data.batchDiscountType;
+      }
+      if (data.batchGstRate !== undefined) {
+        batchUpdateObj.gstRate = data.batchGstRate === null || data.batchGstRate === '' ? null : Number(data.batchGstRate);
+      }
+
+      if (Object.keys(batchUpdateObj).length > 0) {
+        if (targetBatchId) {
+          await this.updateBatch(targetBatchId, batchUpdateObj, userId);
+        } else if (data.selectedBatchNumber) {
+          const bDoc = await ProductBatch.findOne({ userId, productId: id, batchNumber: data.selectedBatchNumber, isDeleted: { $ne: true } });
+          if (bDoc) {
+            await this.updateBatch(bDoc._id, batchUpdateObj, userId);
+          }
+        }
       }
     }
 

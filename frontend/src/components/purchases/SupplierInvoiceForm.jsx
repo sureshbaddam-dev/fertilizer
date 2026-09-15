@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Phone, MapPin, Calendar, FileText, Pencil, Wallet, Clock, BarChart2, ArrowRight } from 'lucide-react';
+import { Plus, Phone, MapPin, Calendar, Pencil, Wallet, Clock, BarChart2, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import SmartMasterSelect from '../ui/SmartMasterSelect';
 
@@ -154,11 +154,11 @@ export default function SupplierInvoiceForm({
           <div className="min-w-0">
             <span className="text-[11px] text-gray-500 font-medium block leading-tight">Invoice Total</span>
             <span className="text-xs sm:text-sm font-bold text-gray-900 block truncate mt-0.5">
-              ₹ {totalInvoiceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹ {Math.round(totalInvoiceAmount).toLocaleString('en-IN')}
             </span>
             {advanceUsed > 0 && (
               <span className="text-[10px] text-[#00783C] font-semibold block truncate">
-                Less: ₹{advanceUsed.toLocaleString('en-IN')} Advance
+                Less: ₹{Math.round(advanceUsed).toLocaleString('en-IN')} Advance
               </span>
             )}
           </div>
@@ -175,22 +175,22 @@ export default function SupplierInvoiceForm({
               <span className="text-xs sm:text-sm font-bold text-gray-900 shrink-0">₹</span>
               <input
                 type="number"
-                step="0.01"
+                step="1"
                 onFocus={(e) => e.target.select()}
                 value={paidAmount === 0 || paidAmount === '0' || !paidAmount ? '' : paidAmount}
                 onChange={(e) => handlePaidChange(e.target.value)}
-                placeholder="0.00"
+                placeholder="0"
                 className="w-full text-xs sm:text-sm font-bold text-gray-900 focus:outline-none bg-transparent border-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
             {prevOutstanding > 0 && (
               <span className="text-[10px] text-blue-700 font-semibold block truncate">
-                Includes ₹{prevOutstanding.toLocaleString('en-IN')} Previous Due
+                Includes ₹{Math.round(prevOutstanding).toLocaleString('en-IN')} Previous Due
               </span>
             )}
             {advanceUsed > 0 && payableAfterAdvance > 0 && prevOutstanding <= 0 && (
               <span className="text-[10px] text-gray-500 font-medium block truncate">
-                Net Payable: ₹{payableAfterAdvance.toLocaleString('en-IN')}
+                Net Payable: ₹{Math.round(payableAfterAdvance).toLocaleString('en-IN')}
               </span>
             )}
           </div>
@@ -209,8 +209,8 @@ export default function SupplierInvoiceForm({
               dueAmount <= 0 ? 'text-[#00783C]' : 'text-amber-600'
             }`}>
               {finalSupplierBalance < 0
-                ? `₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Credit)`
-                : `₹ ${dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                ? `₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')} (Credit)`
+                : `₹ ${Math.round(dueAmount).toLocaleString('en-IN')}`}
             </span>
             {dueAmount === 0 && totalInvoiceAmount > 0 && finalSupplierBalance >= 0 && (
               <span className="text-[10px] text-[#00783C] font-semibold block truncate">
@@ -237,14 +237,14 @@ export default function SupplierInvoiceForm({
               }`}>
                 {!hasItems ? (
                   prevOutstanding < 0
-                    ? `₹ ${Math.abs(prevOutstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })} Advance Available`
-                    : `₹ ${prevOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? `₹ ${Math.round(Math.abs(prevOutstanding)).toLocaleString('en-IN')} Advance Available`
+                    : `₹ ${Math.round(prevOutstanding).toLocaleString('en-IN')}`
                 ) : (
                   finalSupplierBalance === 0
-                    ? '₹ 0.00'
+                    ? '₹ 0'
                     : finalSupplierBalance < 0
-                    ? `-₹ ${Math.abs(finalSupplierBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (Advance)`
-                    : `₹ ${finalSupplierBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? `-₹ ${Math.round(Math.abs(finalSupplierBalance)).toLocaleString('en-IN')} (Advance)`
+                    : `₹ ${Math.round(finalSupplierBalance).toLocaleString('en-IN')}`
                 )}
               </span>
               <button

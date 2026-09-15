@@ -15,16 +15,22 @@ const salesInvoiceItemSchema = new mongoose.Schema({
   brandName: { type: String, default: '' },
   categoryName: { type: String, default: '' },
   unitName: { type: String, default: 'Unit' },
+  unit: { type: String, default: 'Unit' },
   hsnCode: { type: String, default: '' },
   batchNumber: { type: String, default: '' },
   batchAllocations: [batchAllocationSchema],
   quantity: { type: Number, required: true, min: 1 },
   unitPrice: { type: Number, required: true, min: 0 },
   purchaseCostRate: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  discountType: { type: String, default: 'Percentage' },
   discountPct: { type: Number, default: 0 },
   discountAmount: { type: Number, default: 0 },
+  discVal: { type: Number, default: 0 },
+  discType: { type: String, default: 'Percentage' },
   gstRate: { type: Number, default: 0 },
   gstAmount: { type: Number, default: 0 },
+  taxAmount: { type: Number, default: 0 },
   taxableAmount: { type: Number, default: 0 },
   lineTotal: { type: Number, default: 0 },
   lineProfit: { type: Number, default: 0 },
@@ -43,9 +49,16 @@ const salesInvoiceSchema = new mongoose.Schema(
     customerAddress: { type: String, default: '' },
     items: [salesInvoiceItemSchema],
     subtotal: { type: Number, default: 0 },
-    taxAmount: { type: Number, default: 0 },
+    productDiscountAmount: { type: Number, default: 0 },
+    billDiscount: { type: Number, default: 0 },
+    billDiscountType: { type: String, default: 'amount' },
+    billDiscountAmount: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
+    taxableAmount: { type: Number, default: 0 },
+    gstRate: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true, min: 0 },
+    grandTotal: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
     status: {
@@ -68,9 +81,19 @@ const salesInvoiceSchema = new mongoose.Schema(
     notes: { type: String, default: '' },
     idempotencyKey: { type: String, default: null, index: true },
     isStockDeducted: { type: Boolean, default: true },
+    isDeleted: { type: Boolean, default: false, index: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
+
+// Virtual for grandTotal backward compatibility
+salesInvoiceSchema.virtual('invoiceGrandTotal').get(function () {
+  return this.grandTotal || this.totalAmount || 0;
+});
 
 salesInvoiceSchema.index({ userId: 1, invoiceNumber: 1 }, { unique: true });
 salesInvoiceSchema.index({ userId: 1, date: -1, createdAt: -1 });

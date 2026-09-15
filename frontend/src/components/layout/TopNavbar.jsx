@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, CheckCheck, Menu, Plus, Search, Store, Clock, CheckCircle2, MessageSquare, Megaphone, ChevronDown, ChevronRight, User, CreditCard, LogOut } from 'lucide-react';
+import { Bell, CheckCheck, Menu, Plus, Search, Store, MessageSquare, Megaphone, ChevronDown, ChevronRight, User, LogOut } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 import ProductAvatar from '../ui/ProductAvatar';
 import UserAvatar from '../ui/UserAvatar';

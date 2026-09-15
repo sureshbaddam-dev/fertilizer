@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RotateCcw, X, Check, Search, Truck, AlertCircle, ChevronDown, FileText, Calendar } from 'lucide-react';
+import { RotateCcw, X, Check, Search, Truck, AlertCircle } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { purchaseReturnService } from '../../services/purchaseService';
 import { authService } from '../../services/authService';
