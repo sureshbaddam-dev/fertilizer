@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
+import { resolveEffectiveDiscount } from '../../utils/pricing';
 
 export default function ProductCard({ product, onQuickAdd }) {
   const prodName = product.name || 'Product';
@@ -9,21 +10,14 @@ export default function ProductCard({ product, onQuickAdd }) {
   const priceVal = Number(product.defaultSellingPrice || product.sellingPrice || product.price || 0);
   const stockVal = Number(product.totalStock ?? product.currentStock ?? product.stock ?? 0);
 
-  // Discount resolution: Check active batch first, then product basic
+  // Discount resolution: Check active batch first, then product basic via centralized helper
   const activeBatch = Array.isArray(product.batches)
-    ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0 && (b.discount || b.gstRate)) || product.batches[0]
+    ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0) || product.batches[0]
     : null;
 
-  const discountVal = Number(
-    activeBatch?.discount !== undefined && activeBatch?.discount !== null && activeBatch?.discount !== '' && Number(activeBatch?.discount) !== 0
-      ? activeBatch.discount
-      : (product.discount ?? 0)
-  );
-
-  const discountType =
-    activeBatch?.discount !== undefined && activeBatch?.discount !== null && activeBatch?.discount !== '' && Number(activeBatch?.discount) !== 0
-      ? (activeBatch.discountType || 'Percentage')
-      : (product.discountType || 'Percentage');
+  const effDiscObj = resolveEffectiveDiscount(activeBatch, product);
+  const discountVal = effDiscObj.discount;
+  const discountType = effDiscObj.discountType;
 
   const hasDiscount = discountVal > 0;
 
@@ -48,7 +42,6 @@ export default function ProductCard({ product, onQuickAdd }) {
         ...product,
         discountVal: hasDiscount ? discountVal : 0,
         discountType,
-        effectiveSellingPrice: discountedPrice,
       });
     }
   };
@@ -95,7 +88,7 @@ export default function ProductCard({ product, onQuickAdd }) {
         <div className="mt-auto pt-0.5 flex items-center justify-between gap-1 pr-5 min-w-0">
           <div className="min-w-0 flex-1">
             <div className="text-[11.5px] sm:text-[12px] font-black text-amber-300 truncate leading-none flex items-baseline gap-0.5">
-              <span>₹{discountedPrice.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
+              <span>₹{priceVal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
               <span className="text-[8.5px] font-normal text-slate-400">/{unitName}</span>
             </div>
             <div className="text-[8.5px] sm:text-[9px] font-bold text-emerald-400 truncate leading-none mt-0.5">

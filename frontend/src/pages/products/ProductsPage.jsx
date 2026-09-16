@@ -243,6 +243,9 @@ export default function ProductsPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product-details'] });
       queryClient.invalidateQueries({ queryKey: ['product-detail-drawer'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+      queryClient.invalidateQueries({ queryKey: ['drawer-top-selling-products'] });
+      queryClient.invalidateQueries({ queryKey: ['top-selling-products'] });
       setSelectedViewProduct(updated);
       setIsEditingProduct(false);
       setLiveDraftValues(null);
@@ -364,7 +367,8 @@ export default function ProductsPage() {
                   setIsEditingProduct(false);
                   setLiveDraftValues(null);
                 }}
-                onEditProduct={() => {
+                onEditProduct={(fullProd) => {
+                  if (fullProd) setSelectedViewProduct(fullProd);
                   setIsEditingProduct(true);
                   setLiveDraftValues(null);
                 }}
@@ -383,6 +387,7 @@ export default function ProductsPage() {
                   categories={categories}
                   units={units}
                   isEmbedded={true}
+                  isSaving={updateMutation.isPending}
                   onClose={() => {
                     setIsEditingProduct(false);
                     setLiveDraftValues(null);

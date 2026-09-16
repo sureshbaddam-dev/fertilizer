@@ -1028,9 +1028,17 @@ export const productService = {
       if (data.discount === null || data.discount === '') {
         batch.discount = null;
         batch.discountType = null;
+        batch.isExplicitDiscountZero = false;
       } else if (isConfigured(data.discount)) {
         batch.discount = Number(data.discount);
+        if (batch.discount === 0) {
+          batch.isExplicitDiscountZero = data.isExplicitDiscountZero !== undefined ? Boolean(data.isExplicitDiscountZero) : true;
+        } else {
+          batch.isExplicitDiscountZero = false;
+        }
       }
+    } else if (data.isExplicitDiscountZero !== undefined) {
+      batch.isExplicitDiscountZero = Boolean(data.isExplicitDiscountZero);
     }
 
     if (data.discountType !== undefined) {
@@ -1040,9 +1048,17 @@ export const productService = {
     if (data.gstRate !== undefined) {
       if (data.gstRate === null || data.gstRate === '') {
         batch.gstRate = null;
+        batch.isExplicitGstZero = false;
       } else if (isConfigured(data.gstRate)) {
         batch.gstRate = Number(data.gstRate);
+        if (batch.gstRate === 0) {
+          batch.isExplicitGstZero = data.isExplicitGstZero !== undefined ? Boolean(data.isExplicitGstZero) : true;
+        } else {
+          batch.isExplicitGstZero = false;
+        }
       }
+    } else if (data.isExplicitGstZero !== undefined) {
+      batch.isExplicitGstZero = Boolean(data.isExplicitGstZero);
     }
 
     await batch.save();
@@ -1331,11 +1347,17 @@ export const productService = {
       if (data.batchDiscount !== undefined) {
         batchUpdateObj.discount = data.batchDiscount === null || data.batchDiscount === '' ? null : Number(data.batchDiscount);
       }
+      if (data.isExplicitDiscountZero !== undefined) {
+        batchUpdateObj.isExplicitDiscountZero = Boolean(data.isExplicitDiscountZero);
+      }
       if (data.batchDiscountType !== undefined) {
         batchUpdateObj.discountType = data.batchDiscountType;
       }
       if (data.batchGstRate !== undefined) {
         batchUpdateObj.gstRate = data.batchGstRate === null || data.batchGstRate === '' ? null : Number(data.batchGstRate);
+      }
+      if (data.isExplicitGstZero !== undefined) {
+        batchUpdateObj.isExplicitGstZero = Boolean(data.isExplicitGstZero);
       }
 
       if (Object.keys(batchUpdateObj).length > 0) {

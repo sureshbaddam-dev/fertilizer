@@ -25,14 +25,31 @@ export const isConfigured = (val) => {
 
 /**
  * Single source of truth for resolving effective GST rate.
- * Priority: Batch GST rate (if configured) -> Product GST rate (if configured) -> 0
- * NOTE: Explicit 0 in batch stops fallback to product!
+ * Priority:
+ * 1. Batch GST rate > 0 -> returns batch.gstRate
+ * 2. Batch GST rate === 0:
+ *    - If explicitly marked zero (isExplicitGstZero / isExplicitZero) -> returns 0
+ *    - If product GST rate is configured and > 0 -> returns product.gstRate (legacy default 0 fallback)
+ *    - Else -> returns 0
+ * 3. Batch GST rate null/undefined/missing:
+ *    - If product GST rate is configured -> returns product.gstRate
+ *    - Else -> returns 0
  */
 export const resolveEffectiveGstRate = (batch, product) => {
-  if (isConfigured(batch?.gstRate)) {
-    return Number(batch.gstRate);
+  if (batch && isConfigured(batch.gstRate)) {
+    const bGst = Number(batch.gstRate);
+    if (bGst > 0) {
+      return bGst;
+    }
+    if (batch.isExplicitGstZero === true || batch.isExplicitZero === true) {
+      return 0;
+    }
+    if (product && isConfigured(product.gstRate) && Number(product.gstRate) > 0) {
+      return Number(product.gstRate);
+    }
+    return 0;
   }
-  if (isConfigured(product?.gstRate)) {
+  if (product && isConfigured(product.gstRate)) {
     return Number(product.gstRate);
   }
   return 0;
@@ -40,17 +57,44 @@ export const resolveEffectiveGstRate = (batch, product) => {
 
 /**
  * Single source of truth for resolving effective discount.
- * Priority: Batch discount (if configured) -> Product discount (if configured) -> { discount: 0, discountType: 'Percentage' }
- * NOTE: Explicit 0 in batch stops fallback to product!
+ * Priority:
+ * 1. Batch discount > 0 -> returns { discount: batch.discount, discountType }
+ * 2. Batch discount === 0:
+ *    - If explicitly marked zero (isExplicitDiscountZero / isExplicitZero) -> returns { discount: 0, discountType }
+ *    - If product discount is configured and > 0 -> returns { discount: product.discount, discountType: product.discountType } (legacy default 0 fallback)
+ *    - Else -> returns { discount: 0, discountType }
+ * 3. Batch discount null/undefined/missing:
+ *    - If product discount is configured -> returns { discount: product.discount, discountType: product.discountType }
+ *    - Else -> returns { discount: 0, discountType: 'Percentage' }
  */
 export const resolveEffectiveDiscount = (batch, product) => {
-  if (isConfigured(batch?.discount)) {
+  if (batch && isConfigured(batch.discount)) {
+    const bDisc = Number(batch.discount);
+    const discType = batch.discountType || product?.discountType || 'Percentage';
+    if (bDisc > 0) {
+      return {
+        discount: bDisc,
+        discountType: discType,
+      };
+    }
+    if (batch.isExplicitDiscountZero === true || batch.isExplicitZero === true) {
+      return {
+        discount: 0,
+        discountType: discType,
+      };
+    }
+    if (product && isConfigured(product.discount) && Number(product.discount) > 0) {
+      return {
+        discount: Number(product.discount),
+        discountType: product.discountType || 'Percentage',
+      };
+    }
     return {
-      discount: Number(batch.discount),
-      discountType: batch.discountType || product?.discountType || 'Percentage',
+      discount: 0,
+      discountType: discType,
     };
   }
-  if (isConfigured(product?.discount)) {
+  if (product && isConfigured(product.discount)) {
     return {
       discount: Number(product.discount),
       discountType: product.discountType || 'Percentage',

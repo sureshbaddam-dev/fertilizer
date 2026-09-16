@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { ArrowLeft, Check, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Check, X, ChevronDown, Loader2 } from 'lucide-react';
 import ImageUpload from '../ui/ImageUpload';
 import { applySelectedImageMetadata } from '../../utils/imageMetadataHelper';
 import { toInputValue } from '../../utils/imageUtils';
@@ -16,6 +16,7 @@ export default function EditProductDrawer({
   onSave,
   onDraftChange,
   isEmbedded = false,
+  isSaving = false,
 }) {
   const [formData, setFormData] = useState({
     image: '',
@@ -119,25 +120,41 @@ export default function EditProductDrawer({
         const pPrice = initialBatch.purchaseRate ?? initialBatch.purchasePrice ?? product.defaultPurchaseRate;
         const sPrice = initialBatch.sellingPrice ?? product.defaultSellingPrice;
         const mrpVal = initialBatch.mrp ?? product.defaultMrp;
-        const discVal = initialBatch.discount;
         const discTypeVal = initialBatch.discountType || 'Percentage';
-        const gstVal = initialBatch.gstRate;
+
+        const getBatchGstInitial = (b, p) => {
+          if (!b || !isConfigured(b.gstRate)) return '';
+          const num = Number(b.gstRate);
+          if (num > 0) return String(num);
+          if (b.isExplicitGstZero === true || b.isExplicitZero === true) return '0';
+          if (p && isConfigured(p.gstRate) && Number(p.gstRate) > 0) return '';
+          return '';
+        };
+
+        const getBatchDiscInitial = (b, p) => {
+          if (!b || !isConfigured(b.discount)) return '';
+          const num = Number(b.discount);
+          if (num > 0) return String(num);
+          if (b.isExplicitDiscountZero === true || b.isExplicitZero === true) return '0';
+          if (p && isConfigured(p.discount) && Number(p.discount) > 0) return '';
+          return '';
+        };
 
         setBatchFormData({
-          purchasePrice: isConfigured(pPrice) && Number(pPrice) !== 0 ? String(pPrice) : (isConfigured(pPrice) ? '0' : ''),
-          sellingPrice: isConfigured(sPrice) && Number(sPrice) !== 0 ? String(sPrice) : (isConfigured(sPrice) ? '0' : ''),
-          mrp: isConfigured(mrpVal) && Number(mrpVal) !== 0 ? String(mrpVal) : (isConfigured(mrpVal) ? '0' : ''),
-          discount: isConfigured(discVal) ? String(discVal) : '',
+          purchasePrice: isConfigured(pPrice) ? String(pPrice) : '',
+          sellingPrice: isConfigured(sPrice) ? String(sPrice) : '',
+          mrp: isConfigured(mrpVal) ? String(mrpVal) : '',
+          discount: getBatchDiscInitial(initialBatch, product),
           discountType: discTypeVal,
-          gstRate: isConfigured(gstVal) ? String(gstVal) : '',
+          gstRate: getBatchGstInitial(initialBatch, product),
           currentStock: Number(initialBatch.currentStock ?? initialBatch.quantityRemaining ?? product.currentStock ?? 0),
         });
       } else {
         setSelectedBatchId('');
         setBatchFormData({
-          purchasePrice: isConfigured(product.defaultPurchaseRate) && Number(product.defaultPurchaseRate) !== 0 ? String(product.defaultPurchaseRate) : '',
-          sellingPrice: isConfigured(product.defaultSellingPrice) && Number(product.defaultSellingPrice) !== 0 ? String(product.defaultSellingPrice) : '',
-          mrp: isConfigured(product.defaultMrp) && Number(product.defaultMrp) !== 0 ? String(product.defaultMrp) : '',
+          purchasePrice: isConfigured(product.defaultPurchaseRate) ? String(product.defaultPurchaseRate) : '',
+          sellingPrice: isConfigured(product.defaultSellingPrice) ? String(product.defaultSellingPrice) : '',
+          mrp: isConfigured(product.defaultMrp) ? String(product.defaultMrp) : '',
           discount: '',
           discountType: 'Percentage',
           gstRate: '',
@@ -155,17 +172,33 @@ export default function EditProductDrawer({
       const pPrice = target.purchaseRate ?? target.purchasePrice ?? product.defaultPurchaseRate;
       const sPrice = target.sellingPrice ?? product.defaultSellingPrice;
       const mrpVal = target.mrp ?? product.defaultMrp;
-      const discVal = target.discount;
       const discTypeVal = target.discountType || 'Percentage';
-      const gstVal = target.gstRate;
+
+      const getBatchGstInitial = (b, p) => {
+        if (!b || !isConfigured(b.gstRate)) return '';
+        const num = Number(b.gstRate);
+        if (num > 0) return String(num);
+        if (b.isExplicitGstZero === true || b.isExplicitZero === true) return '0';
+        if (p && isConfigured(p.gstRate) && Number(p.gstRate) > 0) return '';
+        return '';
+      };
+
+      const getBatchDiscInitial = (b, p) => {
+        if (!b || !isConfigured(b.discount)) return '';
+        const num = Number(b.discount);
+        if (num > 0) return String(num);
+        if (b.isExplicitDiscountZero === true || b.isExplicitZero === true) return '0';
+        if (p && isConfigured(p.discount) && Number(p.discount) > 0) return '';
+        return '';
+      };
 
       setBatchFormData({
-        purchasePrice: isConfigured(pPrice) && Number(pPrice) !== 0 ? String(pPrice) : (isConfigured(pPrice) ? '0' : ''),
-        sellingPrice: isConfigured(sPrice) && Number(sPrice) !== 0 ? String(sPrice) : (isConfigured(sPrice) ? '0' : ''),
-        mrp: isConfigured(mrpVal) && Number(mrpVal) !== 0 ? String(mrpVal) : (isConfigured(mrpVal) ? '0' : ''),
-        discount: isConfigured(discVal) ? String(discVal) : '',
+        purchasePrice: isConfigured(pPrice) ? String(pPrice) : '',
+        sellingPrice: isConfigured(sPrice) ? String(sPrice) : '',
+        mrp: isConfigured(mrpVal) ? String(mrpVal) : '',
+        discount: getBatchDiscInitial(target, product),
         discountType: discTypeVal,
-        gstRate: isConfigured(gstVal) ? String(gstVal) : '',
+        gstRate: getBatchGstInitial(target, product),
         currentStock: Number(target.currentStock ?? target.quantityRemaining ?? 0),
       });
     }
@@ -197,6 +230,7 @@ export default function EditProductDrawer({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isSaving) return;
     const targetId = product._id || product.id || product.productId;
 
     if (!targetId) {
@@ -232,7 +266,9 @@ export default function EditProductDrawer({
         mrp: !batchFormData.mrp ? undefined : Number(batchFormData.mrp),
         batchDiscount: batchFormData.discount === '' || batchFormData.discount === undefined || batchFormData.discount === null ? null : Number(batchFormData.discount),
         batchDiscountType: batchFormData.discountType || 'Percentage',
+        isExplicitDiscountZero: batchFormData.discount === '0' || batchFormData.discount === 0,
         batchGstRate: batchFormData.gstRate === '' || batchFormData.gstRate === undefined || batchFormData.gstRate === null ? null : Number(batchFormData.gstRate),
+        isExplicitGstZero: batchFormData.gstRate === '0' || batchFormData.gstRate === 0,
       });
     }
   };
@@ -264,10 +300,20 @@ export default function EditProductDrawer({
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-3.5 py-1 btn-agri-primary rounded-md text-[11px] font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+            disabled={isSaving}
+            className="px-3.5 py-1 btn-agri-primary rounded-md text-[11px] font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Check className="w-3 h-3" />
-            <span>Save Changes</span>
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-3 h-3" />
+                <span>Save Changes</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -658,10 +704,20 @@ export default function EditProductDrawer({
         <button
           type="button"
           onClick={handleSubmit}
-          className="px-4 py-1 btn-agri-primary rounded-md text-[11px] font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+          disabled={isSaving}
+          className="px-4 py-1 btn-agri-primary rounded-md text-[11px] font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Check className="w-3 h-3" />
-          <span>Save Changes</span>
+          {isSaving ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Saving...</span>
+            </>
+          ) : (
+            <>
+              <Check className="w-3 h-3" />
+              <span>Save Changes</span>
+            </>
+          )}
         </button>
       </div>
     </div>

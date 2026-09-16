@@ -65,9 +65,17 @@ const productBatchSchema = new mongoose.Schema(
       enum: ['Percentage', 'Amount'],
       default: null,
     },
+    isExplicitDiscountZero: {
+      type: Boolean,
+      default: false,
+    },
     gstRate: {
       type: Number,
       default: null,
+    },
+    isExplicitGstZero: {
+      type: Boolean,
+      default: false,
     },
     initialQuantity: {
       type: Number,

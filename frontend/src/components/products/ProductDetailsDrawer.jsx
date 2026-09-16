@@ -5,6 +5,7 @@ import ProductAvatar from '../ui/ProductAvatar';
 import { productService } from '../../services/productService';
 import { authService } from '../../services/authService';
 import { toast } from '../../contexts/ToastContext';
+import { resolveEffectiveGstRate, resolveEffectiveDiscount, isConfigured } from '../../utils/pricing';
 
 export default function ProductDetailsDrawer({
   isOpen,
@@ -52,6 +53,9 @@ export default function ProductDetailsDrawer({
       queryClient.invalidateQueries({ queryKey: ['product-detail-drawer', currentUserId, productId] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product-history-drawer', currentUserId, productId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-products'] });
+      queryClient.invalidateQueries({ queryKey: ['drawer-top-selling-products'] });
+      queryClient.invalidateQueries({ queryKey: ['top-selling-products'] });
       setEditModal({ isOpen: false, mode: 'selling', batch: null });
       setEditPriceInput('');
       toast.success('Batch pricing updated successfully');
@@ -78,13 +82,15 @@ export default function ProductDetailsDrawer({
 
   const currentStock = Number(detailProduct.totalStock ?? detailProduct.currentStock ?? product.totalStock ?? 0);
   const lowStockAlert = Number(detailProduct.minimumStockAlert ?? detailProduct.lowStockAlert ?? 10);
-  const currentSellingPrice = Number(detailProduct.currentSellingPrice ?? detailProduct.sellingPrice ?? detailProduct.defaultSellingPrice ?? 0);
 
   // Batches classification
   const sortedBatches = [...rawBatches].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   const activeBatches = sortedBatches.filter((b) => (b.currentStock > 0 || b.quantityRemaining > 0) && b.isActive !== false);
   const currentActiveBatch = detailProduct.currentActiveBatch || activeBatches[0] || null;
   const upcomingBatch = detailProduct.upcomingBatch || activeBatches[1] || null;
+
+  // Catalog Selling Price (Batch selling price if configured > 0, else Product default selling price) - Never discounted
+  const currentSellingPrice = Number(currentActiveBatch?.sellingPrice > 0 ? currentActiveBatch.sellingPrice : (detailProduct.defaultSellingPrice ?? detailProduct.sellingPrice ?? detailProduct.currentSellingPrice ?? 0));
 
   // Stock value computation
   let totalStockValue = Number(detailProduct.totalStockValue || detailProduct.stockValue || 0);
@@ -99,9 +105,14 @@ export default function ProductDetailsDrawer({
   const latestPurchaseDate = purchaseHistoryList[0]?.date ?? (currentActiveBatch?.createdAt ? new Date(currentActiveBatch.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A');
 
   const hsnCode = detailProduct.hsnCode || product.hsnCode || currentActiveBatch?.hsnCode || null;
-  const productBasicGstRate = `${detailProduct.gstRate !== undefined && detailProduct.gstRate !== null ? Number(detailProduct.gstRate) : 0}%`;
-  const productBasicDiscount = `${detailProduct.discount !== undefined && detailProduct.discount !== null ? Number(detailProduct.discount) : 0}${detailProduct.discountType === 'Amount' ? ' ₹' : '%'}`;
-  const gstRate = productBasicGstRate;
+
+  // Effective Batch-First Resolution using centralized pricing utilities
+  const effectiveGstRate = resolveEffectiveGstRate(currentActiveBatch, detailProduct);
+  const effectiveDiscObj = resolveEffectiveDiscount(currentActiveBatch, detailProduct);
+
+  const effectiveGstRateText = `${effectiveGstRate}%`;
+  const effectiveDiscountText = `${effectiveDiscObj.discount}${effectiveDiscObj.discountType === 'Amount' ? ' ₹' : '%'}`;
+  const gstRate = effectiveGstRateText;
   const descriptionText = detailProduct.description || product.description || null;
   const createdDateStr = detailProduct.createdAt ? new Date(detailProduct.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
@@ -328,11 +339,11 @@ export default function ProductDetailsDrawer({
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">GST Rate</span>
-                <span className="font-semibold text-gray-800 font-mono text-xs">{productBasicGstRate}</span>
+                <span className="font-semibold text-gray-800 font-mono text-xs">{effectiveGstRateText}</span>
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
-                <span className="text-[9px] text-gray-400 block">Basic Discount</span>
-                <span className="font-semibold text-gray-800 font-mono text-xs">{productBasicDiscount}</span>
+                <span className="text-[9px] text-gray-400 block">Discount</span>
+                <span className="font-semibold text-gray-800 font-mono text-xs">{effectiveDiscountText}</span>
               </div>
               <div className="p-2 bg-gray-50/50 border border-gray-200/60 rounded-lg">
                 <span className="text-[9px] text-gray-400 block">Created Date</span>
@@ -395,7 +406,26 @@ export default function ProductDetailsDrawer({
                     <div className="flex justify-between border-b border-emerald-200/50 pb-1">
                       <span className="text-gray-600">Batch GST / Disc:</span>
                       <span className="font-mono text-gray-900 font-semibold">
-                        {currentActiveBatch.gstRate !== null && currentActiveBatch.gstRate !== undefined ? `${currentActiveBatch.gstRate}%` : 'Inherited'} / {currentActiveBatch.discount !== null && currentActiveBatch.discount !== undefined ? `${currentActiveBatch.discount}${currentActiveBatch.discountType === 'Amount' ? ' ₹' : '%'}` : 'Inherited'}
+                        {(() => {
+                          const gstStr = (() => {
+                            if (!currentActiveBatch || !isConfigured(currentActiveBatch.gstRate)) return 'Inherited';
+                            const num = Number(currentActiveBatch.gstRate);
+                            if (num > 0) return `${num}%`;
+                            if (currentActiveBatch.isExplicitGstZero === true || currentActiveBatch.isExplicitZero === true) return '0%';
+                            if (isConfigured(detailProduct.gstRate) && Number(detailProduct.gstRate) > 0) return 'Inherited';
+                            return '0%';
+                          })();
+                          const discStr = (() => {
+                            if (!currentActiveBatch || !isConfigured(currentActiveBatch.discount)) return 'Inherited';
+                            const num = Number(currentActiveBatch.discount);
+                            const typeStr = currentActiveBatch.discountType === 'Amount' ? ' ₹' : '%';
+                            if (num > 0) return `${num}${typeStr}`;
+                            if (currentActiveBatch.isExplicitDiscountZero === true || currentActiveBatch.isExplicitZero === true) return `0${typeStr}`;
+                            if (isConfigured(detailProduct.discount) && Number(detailProduct.discount) > 0) return 'Inherited';
+                            return `0${typeStr}`;
+                          })();
+                          return `${gstStr} / ${discStr}`;
+                        })()}
                       </span>
                     </div>
                     <div className="flex justify-between">
