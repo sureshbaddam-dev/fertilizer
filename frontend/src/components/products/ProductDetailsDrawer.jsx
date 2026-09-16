@@ -392,6 +392,12 @@ export default function ProductDetailsDrawer({
                       <span className="text-gray-600">Selling Price:</span>
                       <strong className="font-mono text-[#047857]">₹ {Math.round(Number(currentActiveBatch.sellingPrice || 0)).toLocaleString('en-IN')}</strong>
                     </div>
+                    <div className="flex justify-between border-b border-emerald-200/50 pb-1">
+                      <span className="text-gray-600">Batch GST / Disc:</span>
+                      <span className="font-mono text-gray-900 font-semibold">
+                        {currentActiveBatch.gstRate !== null && currentActiveBatch.gstRate !== undefined ? `${currentActiveBatch.gstRate}%` : 'Inherited'} / {currentActiveBatch.discount !== null && currentActiveBatch.discount !== undefined ? `${currentActiveBatch.discount}${currentActiveBatch.discountType === 'Amount' ? ' ₹' : '%'}` : 'Inherited'}
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Remaining Qty:</span>
                       <strong className="font-mono text-[#047857]">{currentActiveBatch.currentStock ?? currentActiveBatch.quantityRemaining ?? 0} {unitName}</strong>

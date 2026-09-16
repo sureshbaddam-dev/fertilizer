@@ -19,6 +19,7 @@ import PageLayout from '../../components/ui/PageHeaderContainer';
 import StatCard from '../../components/ui/StatCard';
 import Button from '../../components/ui/Button';
 import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
 import ProductAvatar from '../../components/ui/ProductAvatar';
 import InventoryDetailsDrawer from '../../components/inventory/InventoryDetailsDrawer';
 import DamageStockModal from '../../components/inventory/DamageStockModal';
@@ -28,6 +29,8 @@ import OpeningStockModal from '../../components/inventory/OpeningStockModal';
 export default function InventoryPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'LOW_STOCK' | 'OUT_OF_STOCK'
@@ -45,16 +48,18 @@ export default function InventoryPage() {
 
   // Fetch Products for Live Stock Data (Include all products with stock, even if catalog-archived)
   const { data: productsApi, isLoading } = useQuery({
-    queryKey: ['products-inventory'],
+    queryKey: ['products-inventory', currentUserId],
     queryFn: () => productService.getProducts({ limit: 200, includeInactive: true }),
     staleTime: 30 * 1000,
+    enabled: !!currentUserId,
   });
 
   // Fetch Adjustments Summary for 5th KPI Card
   const { data: adjustmentsApi } = useQuery({
-    queryKey: ['stock-adjustments'],
+    queryKey: ['stock-adjustments', currentUserId],
     queryFn: () => productService.getStockAdjustments(),
     staleTime: 30 * 1000,
+    enabled: !!currentUserId,
   });
 
   const rawProducts = useMemo(() => {
@@ -154,20 +159,20 @@ export default function InventoryPage() {
 
   // Handlers for Damaged Stock Write-off & Supplier Return
   const handleSaveDamage = () => {
-    queryClient.invalidateQueries(['products-inventory']);
-    queryClient.invalidateQueries(['products']);
-    queryClient.invalidateQueries(['stock-adjustments']);
-    queryClient.invalidateQueries(['dashboard-summary']);
-    queryClient.invalidateQueries(['reports-bi']);
+    queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+    queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['reports-bi'] });
   };
 
   const handleSaveReturn = () => {
-    queryClient.invalidateQueries(['products-inventory']);
-    queryClient.invalidateQueries(['products']);
-    queryClient.invalidateQueries(['stock-adjustments']);
-    queryClient.invalidateQueries(['dashboard-summary']);
-    queryClient.invalidateQueries(['supplier-ledger']);
-    queryClient.invalidateQueries(['reports-bi']);
+    queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+    queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] });
+    queryClient.invalidateQueries({ queryKey: ['reports-bi'] });
   };
 
   return (
@@ -694,11 +699,11 @@ export default function InventoryPage() {
         onClose={() => setIsOpeningStockModalOpen(false)}
         products={rawProducts}
         onSaveSuccess={() => {
-          queryClient.invalidateQueries(['products-inventory']);
-          queryClient.invalidateQueries(['products']);
-          queryClient.invalidateQueries(['stock-adjustments']);
-          queryClient.invalidateQueries(['dashboard-summary']);
-          queryClient.invalidateQueries(['reports-bi']);
+          queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          queryClient.invalidateQueries({ queryKey: ['reports-bi'] });
         }}
       />
 

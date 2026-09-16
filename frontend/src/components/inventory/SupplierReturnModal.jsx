@@ -185,13 +185,15 @@ export default function SupplierReturnModal({ isOpen, onClose, products = [], on
 
       // Invalidate queries across the application
       await Promise.all([
-        queryClient.invalidateQueries(['products-inventory']),
-        queryClient.invalidateQueries(['products-reports']),
-        queryClient.invalidateQueries(['dashboard-summary']),
-        queryClient.invalidateQueries(['reports-bi']),
-        queryClient.invalidateQueries(['supplier-ledger']),
-        queryClient.invalidateQueries(['suppliers']),
-        queryClient.invalidateQueries(['purchases']),
+        queryClient.invalidateQueries({ queryKey: ['products-inventory'] }),
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] }),
+        queryClient.invalidateQueries({ queryKey: ['products-reports'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['reports-bi'] }),
+        queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] }),
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
+        queryClient.invalidateQueries({ queryKey: ['purchases'] }),
       ]);
 
       toast.success('Supplier return recorded successfully');

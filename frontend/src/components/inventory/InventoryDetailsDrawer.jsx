@@ -4,17 +4,20 @@ import { X, ExternalLink } from 'lucide-react';
 import ProductAvatar from '../ui/ProductAvatar';
 import { Link } from 'react-router-dom';
 import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
 
 export default function InventoryDetailsDrawer({ isOpen, onClose, product }) {
   const [activeTab, setActiveTab] = useState('stockMovements'); // 'stockMovements' | 'purchaseHistory' | 'salesHistory'
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   const pId = product?._id || product?.id;
 
   // Fetch Live Product History from MongoDB
   const { data: historyApi, isLoading: isHistoryLoading } = useQuery({
-    queryKey: ['product-history', pId],
+    queryKey: ['product-history', currentUserId, pId],
     queryFn: () => productService.getProductHistory(pId),
-    enabled: isOpen && !!pId,
+    enabled: Boolean(isOpen && pId && currentUserId),
     staleTime: 30 * 1000,
   });
 

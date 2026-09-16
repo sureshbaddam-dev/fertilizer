@@ -8,7 +8,7 @@ import { ProductBatch } from '../../products/models/productBatch.model.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
-import { normalizeMoney } from '../../../utils/pricingUtils.js';
+import { normalizeMoney, isConfigured } from '../../../utils/pricingUtils.js';
 import { parseTransactionTimestamp } from '../../../utils/dateUtils.js';
 import { generateNextBatchNumber } from '../../products/services/product.service.js';
 
@@ -160,6 +160,10 @@ export const purchaseService = {
         assignedInCurrentPurchase.add(batchNumber);
 
         // Always create a new, distinct ProductBatch for each purchase item line
+        const batchGstRate = isConfigured(item.gstRate) ? Number(item.gstRate) : (isConfigured(item.gstPercent) ? Number(item.gstPercent) : null);
+        const batchDiscount = isConfigured(item.discount) ? Number(item.discount) : (isConfigured(item.discountPercent) ? Number(item.discountPercent) : null);
+        const batchDiscountType = item.discountType || (batchDiscount !== null ? 'Percentage' : null);
+
         const [batchRecord] = await ProductBatch.create(
           [
             {
@@ -173,6 +177,9 @@ export const purchaseService = {
               purchaseRate: itemRate,
               mrp: itemMrp,
               sellingPrice: itemSellingPrice,
+              gstRate: batchGstRate,
+              discount: batchDiscount,
+              discountType: batchDiscountType,
               initialQuantity: itemQty,
               currentStock: itemQty,
               isActive: true,

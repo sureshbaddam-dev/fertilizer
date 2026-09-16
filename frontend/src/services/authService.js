@@ -17,6 +17,11 @@ const notifyListeners = () => {
 
 
 const saveTokens = (data) => {
+  try {
+    queryClient.clear();
+  } catch (_e) {
+    // ignore
+  }
   if (data?.accessToken) {
     localStorage.setItem('vedixa_access_token', data.accessToken);
     localStorage.setItem('mandhi_access_token', data.accessToken);
@@ -30,18 +35,14 @@ const saveTokens = (data) => {
     localStorage.setItem('vedixa_user', JSON.stringify(normalized));
     localStorage.setItem('mandhi_user', JSON.stringify(normalized));
   }
-  try {
-    queryClient.invalidateQueries(['user-profile']);
-    queryClient.invalidateQueries(['shop-settings-global']);
-    queryClient.invalidateQueries(['shop-settings-profile']);
-    queryClient.invalidateQueries(['my-subscription']);
-  } catch (_e) {
-    // ignore cache invalidation errors on background save
-  }
 };
 
 const clearTokens = () => {
-  queryClient.clear();
+  try {
+    queryClient.clear();
+  } catch (_e) {
+    // ignore
+  }
   localStorage.removeItem('vedixa_access_token');
   localStorage.removeItem('vedixa_refresh_token');
   localStorage.removeItem('vedixa_user');
@@ -114,18 +115,8 @@ export const authService = {
   async verifySignupOtp(data) {
     const response = await apiClient.post('/auth/signup/verify-otp', data);
     if (response.success && response.data) {
-      if (response.data.accessToken) {
-        localStorage.setItem('vedixa_access_token', response.data.accessToken);
-        localStorage.setItem('mandhi_access_token', response.data.accessToken);
-      }
-      if (response.data.refreshToken) {
-        localStorage.setItem('vedixa_refresh_token', response.data.refreshToken);
-        localStorage.setItem('mandhi_refresh_token', response.data.refreshToken);
-      }
-      if (response.data.user) {
-        localStorage.setItem('vedixa_user', JSON.stringify(response.data.user));
-        localStorage.setItem('mandhi_user', JSON.stringify(response.data.user));
-      }
+      saveTokens(response.data);
+      notifyListeners();
     }
     return response;
   },
@@ -140,6 +131,7 @@ export const authService = {
   },
 
   async login(data) {
+    clearTokens();
     const response = await apiClient.post('/auth/login', data);
     if (response.success && response.data?.accessToken) {
       saveTokens(response.data);

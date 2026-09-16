@@ -58,16 +58,16 @@ const productBatchSchema = new mongoose.Schema(
     },
     discount: {
       type: Number,
-      default: 0,
+      default: null,
     },
     discountType: {
       type: String,
       enum: ['Percentage', 'Amount'],
-      default: 'Percentage',
+      default: null,
     },
     gstRate: {
       type: Number,
-      default: 0,
+      default: null,
     },
     initialQuantity: {
       type: Number,

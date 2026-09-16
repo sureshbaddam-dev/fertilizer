@@ -6,7 +6,7 @@ import { categoryRepository } from '../../masters/repositories/category.reposito
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
 import { logger } from '../../../config/logger.config.js';
-import { normalizeMoney, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../../utils/pricingUtils.js';
+import { isConfigured, normalizeMoney, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../../utils/pricingUtils.js';
 import { PurchaseItem } from '../../purchases/models/purchaseItem.model.js';
 import { SalesInvoice } from '../../sales/models/salesInvoice.model.js';
 import { StockLedger } from '../../purchases/models/stockLedger.model.js';
@@ -76,12 +76,13 @@ export async function generateNextBatchNumber(userId, session = null) {
 /**
  * Private helper: Resolves the supplier for a product/batch from PurchaseItem history
  */
-async function resolveSupplierFromBatch({ batchId = null, batchNumber = '', productId = null, session = null } = {}) {
+async function resolveSupplierFromBatch({ batchId = null, batchNumber = '', productId = null, userId = null, session = null } = {}) {
   const opts = session ? { session } : {};
   let resolvedSupplier = null;
 
   if (batchId) {
-    const pItem = await PurchaseItem.findOne({ batchId }, null, opts)
+    const filter = userId ? { batchId, userId } : { batchId };
+    const pItem = await PurchaseItem.findOne(filter, null, opts)
       .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
       .lean();
     if (pItem?.purchaseId?.supplierId) {
@@ -90,7 +91,8 @@ async function resolveSupplierFromBatch({ batchId = null, batchNumber = '', prod
   }
 
   if (!resolvedSupplier && batchNumber && productId) {
-    const pItem = await PurchaseItem.findOne({ batchNumber, productId }, null, opts)
+    const filter = userId ? { batchNumber, productId, userId } : { batchNumber, productId };
+    const pItem = await PurchaseItem.findOne(filter, null, opts)
       .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
       .lean();
     if (pItem?.purchaseId?.supplierId) {
@@ -99,7 +101,8 @@ async function resolveSupplierFromBatch({ batchId = null, batchNumber = '', prod
   }
 
   if (!resolvedSupplier && productId) {
-    const pItem = await PurchaseItem.findOne({ productId }, null, opts)
+    const filter = userId ? { productId, userId } : { productId };
+    const pItem = await PurchaseItem.findOne(filter, null, opts)
       .sort({ createdAt: -1 })
       .populate({ path: 'purchaseId', populate: { path: 'supplierId', select: 'name companyName mobile' } })
       .lean();
@@ -181,15 +184,24 @@ export const productService = {
         ? oldestActiveBatch.sellingPrice
         : (pObj.defaultSellingPrice ?? pObj.sellingPrice ?? 0);
       const effectiveSellingPrice = normalizeMoney(rawSellingPrice);
+      const effectiveGstRate = resolveEffectiveGstRate(oldestActiveBatch, pObj);
+      const effectiveDiscObj = resolveEffectiveDiscount(oldestActiveBatch, pObj);
 
       pObj.totalSoldQty = salesMap.get(pIdStr) || 0;
       pObj.batches = activeBatches.length > 0 ? activeBatches : pBatches;
       pObj.activeBatches = activeBatches;
       pObj.currentActiveBatch = oldestActiveBatch;
       pObj.upcomingBatch = upcomingBatch;
+      pObj.gstRate = pObj.gstRate !== undefined && pObj.gstRate !== null ? Number(pObj.gstRate) : 0;
+      pObj.discount = pObj.discount !== undefined && pObj.discount !== null ? Number(pObj.discount) : 0;
+      pObj.discountType = pObj.discountType || 'Percentage';
+      pObj.effectiveGstRate = effectiveGstRate;
+      pObj.effectiveDiscount = effectiveDiscObj.discount;
+      pObj.effectiveDiscountType = effectiveDiscObj.discountType;
+      pObj.defaultSellingPrice = Number(pDoc.defaultSellingPrice ?? pDoc.sellingPrice ?? 0);
+      pObj.sellingPrice = Number(pDoc.defaultSellingPrice ?? pDoc.sellingPrice ?? 0);
       pObj.currentSellingPrice = effectiveSellingPrice;
-      pObj.sellingPrice = effectiveSellingPrice;
-      pObj.defaultSellingPrice = effectiveSellingPrice;
+      pObj.effectiveSellingPrice = effectiveSellingPrice;
 
       return pObj;
     });
@@ -494,8 +506,9 @@ export const productService = {
         defaultPurchaseRate: pObj.defaultPurchaseRate > 0 ? pObj.defaultPurchaseRate : effectivePurchaseRate,
         purchaseRate: pObj.purchaseRate > 0 ? pObj.purchaseRate : effectivePurchaseRate,
         purchasePrice: pObj.purchasePrice > 0 ? pObj.purchasePrice : effectivePurchaseRate,
-        defaultSellingPrice: effectiveSellingPrice,
-        sellingPrice: effectiveSellingPrice,
+        defaultSellingPrice: Number(pObj.defaultSellingPrice ?? pObj.sellingPrice ?? 0),
+        sellingPrice: Number(pObj.defaultSellingPrice ?? pObj.sellingPrice ?? 0),
+        effectiveSellingPrice,
         currentSellingPrice: effectiveSellingPrice,
         stockValue: calculatedStockValue,
         totalStockValue: calculatedStockValue,
@@ -717,8 +730,9 @@ export const productService = {
         defaultPurchaseRate: productObj.defaultPurchaseRate > 0 ? productObj.defaultPurchaseRate : effectivePurchaseRate,
         purchaseRate: productObj.purchaseRate > 0 ? productObj.purchaseRate : effectivePurchaseRate,
         purchasePrice: productObj.purchasePrice > 0 ? productObj.purchasePrice : effectivePurchaseRate,
-        defaultSellingPrice: effectiveSellingPrice,
-        sellingPrice: effectiveSellingPrice,
+        defaultSellingPrice: Number(productObj.defaultSellingPrice ?? productObj.sellingPrice ?? 0),
+        sellingPrice: Number(productObj.defaultSellingPrice ?? productObj.sellingPrice ?? 0),
+        effectiveSellingPrice,
         currentSellingPrice: effectiveSellingPrice,
         currentActiveBatch: oldestActiveBatch,
         upcomingBatch: upcomingBatch,
@@ -838,6 +852,7 @@ export const productService = {
         batchId: deductedBatchId,
         batchNumber: deductedBatchNumber,
         productId,
+        userId,
         session,
       });
       const resolvedSupplierId = supplierDoc?._id || supplierDoc || null;
@@ -1010,20 +1025,23 @@ export const productService = {
     }
 
     if (data.discount !== undefined) {
-      const disc = Number(data.discount);
-      if (!isNaN(disc) && disc >= 0) {
-        batch.discount = disc;
+      if (data.discount === null || data.discount === '') {
+        batch.discount = null;
+        batch.discountType = null;
+      } else if (isConfigured(data.discount)) {
+        batch.discount = Number(data.discount);
       }
     }
 
     if (data.discountType !== undefined) {
-      batch.discountType = data.discountType;
+      batch.discountType = data.discountType || null;
     }
 
     if (data.gstRate !== undefined) {
-      const gst = Number(data.gstRate);
-      if (!isNaN(gst) && gst >= 0) {
-        batch.gstRate = gst;
+      if (data.gstRate === null || data.gstRate === '') {
+        batch.gstRate = null;
+      } else if (isConfigured(data.gstRate)) {
+        batch.gstRate = Number(data.gstRate);
       }
     }
 
@@ -1188,8 +1206,8 @@ export const productService = {
       await productRepository.upsertBatch(batchData);
     }
 
-    const populatedNew = await productRepository.findByIdPopulated(newProduct._id);
-    const batchesNew = await productRepository.findBatchesByProduct(newProduct._id);
+    const populatedNew = await productRepository.findByIdPopulated(newProduct._id, userId);
+    const batchesNew = await productRepository.findBatchesByProduct(newProduct._id, userId);
     const validBatchesNew = batchesNew.filter((b) => Boolean(b.batchNumber));
     const resObj = populatedNew.toObject ? populatedNew.toObject() : { ...populatedNew };
 
@@ -1204,7 +1222,7 @@ export const productService = {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError(`Invalid Product ID format: '${id}'`, HTTP_STATUS.BAD_REQUEST);
     }
-    const product = await productRepository.findById(id);
+    const product = await productRepository.findById(id, userId);
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -1291,6 +1309,7 @@ export const productService = {
 
     if (batchCode) {
       await productRepository.upsertBatch({
+        userId,
         productId: id,
         batchNumber: batchCode,
         purchaseRate: Number(data.defaultPurchaseRate) || product.defaultPurchaseRate || 0,
@@ -1331,8 +1350,8 @@ export const productService = {
       }
     }
 
-    const updatedPopulated = await productRepository.findByIdPopulated(id);
-    const batches = await productRepository.findBatchesByProduct(id);
+    const updatedPopulated = await productRepository.findByIdPopulated(id, userId);
+    const batches = await productRepository.findBatchesByProduct(id, userId);
     const validBatches = batches.filter((b) => Boolean(b.batchNumber));
     const resObj = updatedPopulated.toObject ? updatedPopulated.toObject() : { ...updatedPopulated };
 
@@ -1346,7 +1365,8 @@ export const productService = {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError(`Invalid Product ID format: '${id}'`, HTTP_STATUS.BAD_REQUEST);
     }
-    const product = await Product.findById(id).exec();
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    const product = await Product.findOne(filter).exec();
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -1362,11 +1382,12 @@ export const productService = {
     return product;
   },
 
-  async restoreProduct(id) {
+  async restoreProduct(id, userId = null) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw new AppError(`Invalid Product ID format: '${id}'`, HTTP_STATUS.BAD_REQUEST);
     }
-    const product = await Product.findById(id).exec();
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    const product = await Product.findOne(filter).exec();
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }

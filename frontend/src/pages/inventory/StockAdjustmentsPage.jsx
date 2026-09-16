@@ -18,6 +18,7 @@ import StatCard from '../../components/ui/StatCard';
 import Button from '../../components/ui/Button';
 import ProductAvatar from '../../components/ui/ProductAvatar';
 import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
 import StockAdjustmentDetailsModal from '../../components/inventory/StockAdjustmentDetailsModal';
 import DamageStockModal from '../../components/inventory/DamageStockModal';
 import SupplierReturnModal from '../../components/inventory/SupplierReturnModal';
@@ -25,6 +26,8 @@ import SupplierReturnModal from '../../components/inventory/SupplierReturnModal'
 export default function StockAdjustmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   const [activeTab, setActiveTab] = useState('DAMAGE'); // 'DAMAGE' | 'SUPPLIER_RETURN'
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,16 +43,18 @@ export default function StockAdjustmentsPage() {
 
   // Fetch adjustments
   const { data: adjustmentsApi, isLoading } = useQuery({
-    queryKey: ['stock-adjustments'],
+    queryKey: ['stock-adjustments', currentUserId],
     queryFn: () => productService.getStockAdjustments(),
     staleTime: 30 * 1000,
+    enabled: !!currentUserId,
   });
 
   // Fetch products for modal dropdowns
   const { data: productsApi } = useQuery({
-    queryKey: ['products-inventory'],
+    queryKey: ['products-inventory', currentUserId],
     queryFn: () => productService.getProducts({ limit: 200 }),
     staleTime: 30 * 1000,
+    enabled: !!currentUserId,
   });
 
   const rawProducts = useMemo(() => {
@@ -109,14 +114,16 @@ export default function StockAdjustmentsPage() {
   };
 
   const handleSaveDamage = () => {
-    queryClient.invalidateQueries(['stock-adjustments']);
-    queryClient.invalidateQueries(['products-inventory']);
+    queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+    queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
   };
 
   const handleSaveReturn = () => {
-    queryClient.invalidateQueries(['stock-adjustments']);
-    queryClient.invalidateQueries(['products-inventory']);
-    queryClient.invalidateQueries(['supplier-ledger']);
+    queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+    queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+    queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] });
   };
 
   return (

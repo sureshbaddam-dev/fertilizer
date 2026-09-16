@@ -230,12 +230,12 @@ export default function OpeningStockModal({
       }
 
       // Invalidate relevant queries
-      queryClient.invalidateQueries(['products-inventory']);
-      queryClient.invalidateQueries(['products']);
-      queryClient.invalidateQueries(['stock-adjustments']);
-      queryClient.invalidateQueries(['opening-stocks']);
-      queryClient.invalidateQueries(['dashboard-summary']);
-      queryClient.invalidateQueries(['reports-bi']);
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+      queryClient.invalidateQueries({ queryKey: ['opening-stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['reports-bi'] });
 
       if (onSaveSuccess) {
         onSaveSuccess(res?.data?.data || res?.data);

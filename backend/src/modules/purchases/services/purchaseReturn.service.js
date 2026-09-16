@@ -23,10 +23,7 @@ export const purchaseReturnService = {
     }
 
     const productQuery = userId ? { _id: productId, userId } : { _id: productId };
-    let product = await Product.findOne(productQuery).lean();
-    if (!product) {
-      product = await Product.findById(productId).lean();
-    }
+    const product = await Product.findOne(productQuery).lean();
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -171,7 +168,8 @@ export const purchaseReturnService = {
     }
 
     // 1. Verify Product & Stock
-    const product = await Product.findById(productId);
+    const filter = userId ? { _id: productId, userId } : { _id: productId };
+    const product = await Product.findOne(filter);
     if (!product) {
       throw new AppError('Product not found', HTTP_STATUS.NOT_FOUND);
     }
@@ -337,22 +335,22 @@ export const purchaseReturnService = {
       const newStock = Math.max(0, prevStock - returnQtyNum);
 
       if (session) {
-        await Product.findByIdAndUpdate(productId, { totalStock: newStock }, { session });
+        await Product.findOneAndUpdate({ _id: productId, userId }, { totalStock: newStock }, { session });
       } else {
-        await Product.findByIdAndUpdate(productId, { totalStock: newStock });
+        await Product.findOneAndUpdate({ _id: productId, userId }, { totalStock: newStock });
       }
 
       let remainingBatchQtyToDeduct = returnQtyNum;
 
       if (purchaseItem?.batchId) {
-        const targetBatch = await ProductBatch.findById(purchaseItem.batchId);
+        const targetBatch = await ProductBatch.findOne({ _id: purchaseItem.batchId, userId });
         if (targetBatch && targetBatch.currentStock > 0) {
           const deductFromThis = Math.min(targetBatch.currentStock, remainingBatchQtyToDeduct);
           const updatedStock = targetBatch.currentStock - deductFromThis;
           if (session) {
-            await ProductBatch.findByIdAndUpdate(targetBatch._id, { currentStock: updatedStock, isActive: updatedStock > 0 }, { session });
+            await ProductBatch.findOneAndUpdate({ _id: targetBatch._id, userId }, { currentStock: updatedStock, isActive: updatedStock > 0 }, { session });
           } else {
-            await ProductBatch.findByIdAndUpdate(targetBatch._id, { currentStock: updatedStock, isActive: updatedStock > 0 });
+            await ProductBatch.findOneAndUpdate({ _id: targetBatch._id, userId }, { currentStock: updatedStock, isActive: updatedStock > 0 });
           }
           remainingBatchQtyToDeduct -= deductFromThis;
         }

@@ -64,13 +64,13 @@ export default function ProductsPage() {
 
   // Fetch Single Product Details API when selectedProductId changes
   const { data: singleProductRes } = useQuery({
-    queryKey: ['product-details', selectedProductId],
+    queryKey: ['product-details', currentUserId, selectedProductId],
     queryFn: async () => {
       if (!selectedProductId) return null;
       const res = await productService.getProductById(selectedProductId);
       return res.data?.product || res.data;
     },
-    enabled: Boolean(selectedProductId),
+    enabled: Boolean(selectedProductId && currentUserId),
     staleTime: 5 * 60 * 1000,
   });
 

@@ -18,6 +18,7 @@ import { customerService } from '../../services/customerService';
 import { productService } from '../../services/productService';
 import { invoiceService } from '../../services/invoiceService';
 import { settingService } from '../../services/settingService';
+import { authService } from '../../services/authService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { generateMonthlyStatementPdf } from '../../utils/pdfGenerator';
 import { calculateCustomerStatement, buildWhatsAppStatementMessage } from '../../utils/statementCalculator';
@@ -121,6 +122,8 @@ const CartItemRow = React.memo(function CartItemRow({
 
 export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
 
   // Cart Items State
   const [items, setItems] = useState([]);
@@ -158,17 +161,20 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
   const [selectedPaymentMode, setSelectedPaymentMode] = useState('Cash');
   const [notes, setNotes] = useState('');
 
-  // Debounce Drawer Product Search
+  // Sync debounced values
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedDrawerProdSearch(drawerProdSearch.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [drawerProdSearch]);
-
-  // Debounce Customer Autocomplete Search
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedCustomerInput(customerInput.trim()), 250);
-    return () => clearTimeout(timer);
+    const handler = setTimeout(() => {
+      setDebouncedCustomerInput(customerInput.trim());
+    }, 250);
+    return () => clearTimeout(handler);
   }, [customerInput]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedDrawerProdSearch(drawerProdSearch.trim());
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [drawerProdSearch]);
 
   // Reset product suggestions dropdown state on drawer open (suggestions remain HIDDEN initially)
   useEffect(() => {
@@ -185,14 +191,14 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     setSelectedProdIndex(-1);
   }, [drawerProdSearch]);
 
-  // Close Dropdowns on Click Outside
+  // Click outside listener for product search & customer dropdowns
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (customerContainerRef.current && !customerContainerRef.current.contains(e.target)) {
-        setIsCustomerDropdownOpen(false);
-      }
-      if (drawerProdRef.current && !drawerProdRef.current.contains(e.target)) {
+    const handleClickOutside = (event) => {
+      if (drawerProdRef.current && !drawerProdRef.current.contains(event.target)) {
         setIsDrawerProdDropdownOpen(false);
+      }
+      if (customerContainerRef.current && !customerContainerRef.current.contains(event.target)) {
+        setIsCustomerDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -201,9 +207,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Fetch Customers for Autocomplete (with debouncing and stable cache)
   const { data: drawerCustomersApi } = useQuery({
-    queryKey: ['drawer-customers', debouncedCustomerInput],
+    queryKey: ['drawer-customers', currentUserId, debouncedCustomerInput],
     queryFn: () => customerService.getCustomers({ search: debouncedCustomerInput }),
-    enabled: customerMode === 'add' && Boolean(isOpen),
+    enabled: customerMode === 'add' && Boolean(isOpen) && Boolean(currentUserId),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -215,9 +221,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Fetch Top Selling Products for In-Drawer Product Search (with stable cache)
   const { data: drawerProductsApi } = useQuery({
-    queryKey: ['drawer-top-selling-products', debouncedDrawerProdSearch],
+    queryKey: ['drawer-top-selling-products', currentUserId, debouncedDrawerProdSearch],
     queryFn: () => productService.getTopSellingProducts({ search: debouncedDrawerProdSearch }),
-    enabled: isDrawerProdDropdownOpen && Boolean(isOpen),
+    enabled: isDrawerProdDropdownOpen && Boolean(isOpen) && Boolean(currentUserId),
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -229,8 +235,9 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
 
   // Fetch Active Shop Discount from Backend DB (Single Source of Truth)
   const { data: shopDiscountApi } = useQuery({
-    queryKey: ['shop-discount'],
+    queryKey: ['shop-discount', currentUserId],
     queryFn: () => settingService.getShopDiscount(),
+    enabled: Boolean(currentUserId),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -262,9 +269,13 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
     if (!product) return;
     isSelectingProdRef.current = true;
 
+    const activeBatch = Array.isArray(product.batches)
+      ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0) || product.batches[0]
+      : (product.currentActiveBatch || null);
+
     const pId = (product._id || product.id)?.toString();
     const pName = product.name || 'Product';
-    const pPrice = Number(product.currentSellingPrice || product.sellingPrice || product.defaultSellingPrice || product.defaultMrp || product.mrp || product.price || 0);
+    const pPrice = Number(activeBatch?.sellingPrice || product.defaultSellingPrice || product.sellingPrice || product.currentSellingPrice || 0);
     const pUnit = (product.defaultUnitId?.shortName) || product.defaultUnitId?.name || product.unit || 'Bag';
     const pBrand = (product.brandId?.name) || product.brand || 'Vedixa';
     const pStock = getProductTotalAvailableStock(product);
@@ -286,22 +297,10 @@ export default function BillingDrawer({ isOpen, onClose, quickAddedProduct }) {
       return;
     }
 
-    // Resolve discount and GST rate from active FIFO batch or product master
-    const activeBatch = Array.isArray(product.batches)
-      ? product.batches.find((b) => Number(b.quantityRemaining ?? b.currentStock ?? 0) > 0) || product.batches[0]
-      : (product.currentActiveBatch || null);
-
-    const effDiscObj = isConfigured(product.discountVal)
-      ? { discount: Number(product.discountVal), discountType: product.discountType || 'Percentage' }
-      : resolveEffectiveDiscount(activeBatch, product);
-
+    const effDiscObj = resolveEffectiveDiscount(activeBatch, product);
     const discVal = effDiscObj.discount;
     const discType = effDiscObj.discountType;
-
-    const itemGstRate = isConfigured(product.gstRate) && !isConfigured(activeBatch?.gstRate)
-      ? Number(product.gstRate)
-      : resolveEffectiveGstRate(activeBatch, product);
-
+    const itemGstRate = resolveEffectiveGstRate(activeBatch, product);
     const itemHsn = product.hsnCode || activeBatch?.hsnCode || '';
 
     setItems((prev) => {

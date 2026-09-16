@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { invoiceService } from '../../services/invoiceService';
 import { productService } from '../../services/productService';
+import { authService } from '../../services/authService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { getItemUnitPrice, calculateInvoiceTotals, normalizeMoney, resolveEffectiveDiscount, resolveEffectiveGstRate } from '../../utils/pricing';
 import { toast } from '../../contexts/ToastContext';
@@ -24,6 +25,8 @@ export default function EditInvoicePage() {
   const { invoiceId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id || currentUser?._id;
   const { settings: shopSettings } = useSettings();
 
   const [customerName, setCustomerName] = useState('');
@@ -93,9 +96,10 @@ export default function EditInvoicePage() {
 
   // Fetch All Products once for ultra-fast local search
   const { data: allProductsApi } = useQuery({
-    queryKey: ['all-products-for-edit-invoice'],
+    queryKey: ['all-products-for-edit-invoice', currentUserId],
     queryFn: () => productService.getProducts({ limit: 1000 }),
     staleTime: 5 * 60 * 1000,
+    enabled: Boolean(currentUserId),
   });
 
   const allProducts = useMemo(() => {
@@ -133,7 +137,7 @@ export default function EditInvoicePage() {
     if (!prod) return;
     const rawBatches = prod.batches || [];
     const activeBatch = rawBatches.find((b) => (b.currentStock > 0 || b.stock > 0)) || rawBatches[0] || null;
-    const price = getItemUnitPrice(prod, activeBatch);
+    const price = Number(activeBatch?.sellingPrice || prod.defaultSellingPrice || prod.sellingPrice || getItemUnitPrice(prod));
     const effDisc = resolveEffectiveDiscount(activeBatch, prod);
     const effGst = resolveEffectiveGstRate(activeBatch, prod);
 

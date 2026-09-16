@@ -97,10 +97,11 @@ export default function DamageStockModal({ isOpen, onClose, products = [], onSav
       const response = await productService.recordDamagedStock(payload);
 
       // Invalidate queries across the application
-      queryClient.invalidateQueries(['products-inventory']);
-      queryClient.invalidateQueries(['products']);
-      queryClient.invalidateQueries(['dashboard-summary']);
-      queryClient.invalidateQueries(['reports-bi']);
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['reports-bi'] });
 
       toast.success('Damaged stock recorded successfully');
 
