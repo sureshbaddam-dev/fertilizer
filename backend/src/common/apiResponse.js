@@ -14,9 +14,17 @@ export const sendError = (
   errors = null,
   statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR
 ) => {
-  return res.status(statusCode).json({
+  let finalStatus = statusCode;
+  let finalErrors = errors;
+
+  if (typeof errors === 'number') {
+    finalStatus = errors;
+    finalErrors = null;
+  }
+
+  return res.status(finalStatus).json({
     success: false,
     message,
-    errors,
+    errors: finalErrors,
   });
 };

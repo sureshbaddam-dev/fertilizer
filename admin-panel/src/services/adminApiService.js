@@ -46,13 +46,12 @@ const getAuthHeaders = () => {
 
 export const adminApiService = {
   // Auth
-  sendAdminOtp: async (mobile) => {
-    const res = await axios.post(`${API_BASE_URL}/auth/send-otp`, { mobile });
-    return res.data?.data;
-  },
-
-  verifyAdminOtp: async (mobile, otp) => {
-    const res = await axios.post(`${API_BASE_URL}/auth/verify-otp`, { mobile, otp });
+  adminLogin: async (credentials = {}) => {
+    const payload =
+      typeof credentials === 'string'
+        ? { username: 'admin.vedixa', password: credentials }
+        : { username: credentials.username || 'admin.vedixa', password: credentials.password };
+    const res = await axios.post(`${API_BASE_URL}/auth/login`, payload);
     const data = res.data?.data;
     if (data?.accessToken) {
       localStorage.setItem('adminAccessToken', data.accessToken);

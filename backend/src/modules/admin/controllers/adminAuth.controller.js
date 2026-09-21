@@ -19,15 +19,9 @@ const REFRESH_COOKIE_OPTIONS = {
   path: '/',
 };
 
-export const sendAdminOtp = asyncHandler(async (req, res) => {
-  const { mobile } = req.body;
-  const result = await adminAuthService.sendAdminOtp(mobile);
-  return sendSuccess(res, result.message || 'OTP sent to authorized Admin mobile number via SMS.', result, HTTP_STATUS.OK);
-});
-
-export const verifyAdminOtp = asyncHandler(async (req, res) => {
-  const { mobile, otp } = req.body;
-  const result = await adminAuthService.verifyAdminOtp(mobile, otp, req);
+export const adminLogin = asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
+  const result = await adminAuthService.loginAdmin({ username, password }, req);
 
   if (result.accessToken) {
     res.cookie('adminToken', result.accessToken, ACCESS_COOKIE_OPTIONS);
@@ -41,7 +35,12 @@ export const verifyAdminOtp = asyncHandler(async (req, res) => {
 });
 
 export const refreshAdminToken = asyncHandler(async (req, res) => {
-  return sendSuccess(res, 'Admin token active.', {}, HTTP_STATUS.OK);
+  const result = await adminAuthService.refreshAdminToken(req);
+  if (result.accessToken) {
+    res.cookie('adminToken', result.accessToken, ACCESS_COOKIE_OPTIONS);
+    res.cookie('token', result.accessToken, ACCESS_COOKIE_OPTIONS);
+  }
+  return sendSuccess(res, 'Admin token refreshed successfully.', result, HTTP_STATUS.OK);
 });
 
 export const adminLogout = asyncHandler(async (req, res) => {

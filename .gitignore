@@ -41,3 +41,17 @@ tmp/
 # Load tests & performance test suites
 load-tests/
 
+# Flutter Mobile App (Excluded from Web Repository)
+mobile-app/
+**/mobile-app/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.apk
+*.aab
+*.ipa
+key.properties
+*.keystore
+*.jks
+

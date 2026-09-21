@@ -54,6 +54,11 @@ export const envConfig = {
     senderName: process.env.EMAIL_FROM_NAME || process.env.BREVO_SENDER_NAME || 'VEDIXA ERP',
     templateId: parseInt(process.env.BREVO_TEMPLATE_ID || '2', 10),
   },
+  admin: {
+    username: process.env.ADMIN_USERNAME || 'admin.vedixa',
+    passwordHash: process.env.ADMIN_PASSWORD_HASH || '$2b$10$W1xTz85XahV0d9d/U5WVQeSUuBmCUC/DP.a8PJXH2LKNffbnOxfs6',
+    jwtSecret: process.env.ADMIN_JWT_SECRET || 'super_secret_admin_jwt_key_vedixa_2026_x89a',
+  },
   vapid: {
     publicKey: process.env.VAPID_PUBLIC_KEY || '',
     privateKey: process.env.VAPID_PRIVATE_KEY || '',

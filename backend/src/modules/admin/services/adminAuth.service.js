@@ -4,154 +4,134 @@ import { User } from '../../auth/user.model.js';
 import { logger } from '../../../config/logger.config.js';
 import { AppError } from '../../../utils/appError.js';
 import { HTTP_STATUS } from '../../../common/httpStatuses.js';
-import { sendTwilioVerification, checkTwilioVerification } from '../utils/twilioVerify.util.js';
+import { envConfig } from '../../../config/env.config.js';
 
-const COOLDOWN_MS = 60 * 1000; // 60 seconds
-
-// In-memory security store for 60s resend cooldown
-const cooldownStore = new Map(); // key: cleanDigits -> expireTimestamp
-
-function normalizeDigits(mobileStr) {
-  if (!mobileStr) return '';
-  return mobileStr.toString().replace(/\D/g, '');
-}
+// Default bcrypt hash for 'Siri@1317'
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$10$W1xTz85XahV0d9d/U5WVQeSUuBmCUC/DP.a8PJXH2LKNffbnOxfs6';
+const DEFAULT_ADMIN_JWT_SECRET = 'super_secret_admin_jwt_key_vedixa_2026_x89a';
+const FALLBACK_ADMIN_ID = '660000000000000000000001';
 
 export const adminAuthService = {
   /**
-   * Send Admin Login OTP via Twilio Verify API v2
+   * Secure Admin Login using fixed Username and Password (Bcrypt verified)
+   * @param {Object} credentials - { username, password }
    */
-  async sendAdminOtp(mobile) {
-    const rawMobile = (mobile || '').trim();
-    const cleanDigits = normalizeDigits(rawMobile);
+  async loginAdmin({ username, password } = {}) {
+    const expectedUsername = (process.env.ADMIN_USERNAME || envConfig.admin?.username || 'admin.vedixa').trim();
+    const rawUsername = (username !== undefined && username !== null && username !== '' ? username : expectedUsername).toString().trim();
+    const rawPassword = (password || '').toString();
 
-    logger.info(`[ADMIN OTP] sendAdminOtp requested for mobile input: "${rawMobile}" (clean digits: ${cleanDigits})`);
-
-    if (!cleanDigits || cleanDigits.length < 10) {
-      throw new AppError('Please enter a valid 10-digit mobile number.', HTTP_STATUS.BAD_REQUEST);
+    if (!rawPassword) {
+      throw new AppError('Invalid username or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    const envAdminPhone = process.env.ADMIN_PHONE_NUMBER || '+919848081875';
-    const cleanEnvPhone = normalizeDigits(envAdminPhone);
+    const expectedPasswordHash = process.env.ADMIN_PASSWORD_HASH || envConfig.admin?.passwordHash || DEFAULT_ADMIN_PASSWORD_HASH;
 
-    // 1. Validate fixed authorized Admin mobile number (+919848081875)
-    const isAuthorized =
-      cleanDigits === cleanEnvPhone ||
-      (cleanDigits.length >= 10 && cleanEnvPhone.length >= 10 && cleanDigits.slice(-10) === cleanEnvPhone.slice(-10));
+    // Validate username (case-insensitive)
+    const isUsernameMatch = rawUsername.toLowerCase() === expectedUsername.toLowerCase();
 
-    if (!isAuthorized) {
-      logger.warn(`[ADMIN OTP] Unauthorized mobile attempt: "${rawMobile}". Rejecting with HTTP 403.`);
-      throw new AppError('This mobile number is not authorized for Admin access.', HTTP_STATUS.FORBIDDEN);
+    // Validate password using secure bcrypt comparison
+    let isPasswordMatch = false;
+    try {
+      isPasswordMatch = await bcrypt.compare(rawPassword, expectedPasswordHash);
+    } catch (err) {
+      logger.error({ err }, '[ADMIN AUTH] Error during bcrypt password verification');
+      isPasswordMatch = false;
     }
 
-    // 2. Enforce 60-second resend cooldown
-    const cooldownExpiresAt = cooldownStore.get(cleanDigits);
-    if (cooldownExpiresAt && Date.now() < cooldownExpiresAt) {
-      const remainingSeconds = Math.ceil((cooldownExpiresAt - Date.now()) / 1000);
-      throw new AppError(
-        `Please wait ${remainingSeconds} seconds before requesting another OTP.`,
-        HTTP_STATUS.TOO_MANY_REQUESTS
+    // Generic error response if either username or password does not match
+    if (!isUsernameMatch || !isPasswordMatch) {
+      logger.warn(
+        { username: rawUsername, isUsernameMatch, isPasswordMatch },
+        '[ADMIN AUTH] Failed admin login attempt.'
       );
+      throw new AppError('Invalid username or password', HTTP_STATUS.UNAUTHORIZED);
     }
 
-    // 3. Call Twilio Verify API v2 FIRST and await real HTTP response
-    // If Twilio fails, sendTwilioVerification throws an AppError and code halts before setting cooldown store.
-    const twilioResult = await sendTwilioVerification(rawMobile);
-
-    // 4. ONLY AFTER Twilio Verify accepts the request, activate 60s cooldown
-    cooldownStore.set(cleanDigits, Date.now() + COOLDOWN_MS);
-
-    logger.info(
-      { mobile: cleanDigits, sid: twilioResult.sid, status: twilioResult.status },
-      '[ADMIN AUTH] Twilio Verify API request accepted. 60s cooldown activated.'
-    );
-
-    return {
-      mobile: rawMobile,
-      cooldownSeconds: 60,
-      verificationSid: twilioResult.sid,
-      message: 'OTP sent to authorized Admin mobile number via SMS.',
-    };
-  },
-
-  /**
-   * Verify Admin Login OTP via Twilio Verify Check & Issue Admin-only Token
-   */
-  async verifyAdminOtp(mobile, otp, req) {
-    const rawMobile = (mobile || '').trim();
-    const cleanDigits = normalizeDigits(rawMobile);
-    const rawOtp = (otp || '').trim();
-
-    logger.info(`[ADMIN OTP] verifyAdminOtp requested for mobile: "${rawMobile}"`);
-
-    if (!rawOtp || rawOtp.length < 4) {
-      throw new AppError('Please enter a valid OTP code.', HTTP_STATUS.BAD_REQUEST);
-    }
-
-    const envAdminPhone = process.env.ADMIN_PHONE_NUMBER || '+919848081875';
-    const cleanEnvPhone = normalizeDigits(envAdminPhone);
-
-    // Validate fixed authorized Admin mobile number
-    const isAuthorized =
-      cleanDigits === cleanEnvPhone ||
-      (cleanDigits.length >= 10 && cleanEnvPhone.length >= 10 && cleanDigits.slice(-10) === cleanEnvPhone.slice(-10));
-
-    if (!isAuthorized) {
-      throw new AppError('This mobile number is not authorized for Admin access.', HTTP_STATUS.FORBIDDEN);
-    }
-
-    // Call Twilio Verify Check API
-    // Throws AppError if OTP code is invalid, expired, or status is not 'approved'
-    await checkTwilioVerification(rawMobile, rawOtp);
-
-    // Retrieve or provision Single Authorized Admin User in DB
-    const last10Digits = cleanDigits.slice(-10);
-    const adminQuery = {
-      $or: [
-        { mobile: cleanDigits },
-        { mobile: `+91${last10Digits}` },
-        { mobile: last10Digits },
-        { role: { $in: ['super_admin', 'SUPER_ADMIN'] } },
-      ],
+    // Provision / sync Super Admin user in DB safely
+    let adminUserId = FALLBACK_ADMIN_ID;
+    let adminUserObj = {
+      _id: adminUserId,
+      ownerName: 'Super Admin',
+      username: expectedUsername,
+      mobile: process.env.ADMIN_PHONE_NUMBER || '+919848081875',
+      email: 'admin.vedixa@vedixaerp.com',
+      role: 'super_admin',
+      isActive: true,
     };
 
-    const adminMatches = await User.find(adminQuery).sort({ createdAt: 1 });
-    let adminUser = adminMatches[0] || null;
+    try {
+      if (User.db?.readyState === 1 || (User.base?.connection && User.base.connection.readyState === 1)) {
+        const envAdminPhone = (process.env.ADMIN_PHONE_NUMBER || '+919848081875').trim();
+        const cleanPhone = envAdminPhone.replace(/\D/g, '');
+        const last10 = cleanPhone.slice(-10);
 
-    // Deduplicate: if multiple admin records exist, delete duplicates to maintain EXACTLY ONE Super Admin account
-    if (adminMatches.length > 1) {
-      const duplicateIds = adminMatches.slice(1).map((u) => u._id);
-      await User.deleteMany({ _id: { $in: duplicateIds } });
-      logger.info({ deletedCount: duplicateIds.length }, '[ADMIN AUTH] Deduplicated extra Super Admin database records.');
-    }
+        const adminQuery = {
+          $or: [
+            { email: 'admin.vedixa@vedixaerp.com' },
+            { email: 'admin@vedixa.com' },
+            { mobile: envAdminPhone },
+            { mobile: `+91${last10}` },
+            { mobile: last10 },
+            { role: { $in: ['super_admin', 'SUPER_ADMIN'] } },
+          ],
+        };
 
-    const standardizedMobile = envAdminPhone.startsWith('+') ? envAdminPhone : `+91${last10Digits}`;
+        const adminMatches = await User.find(adminQuery).sort({ createdAt: 1 });
+        let adminUser = adminMatches && adminMatches.length > 0 ? adminMatches[0] : null;
 
-    if (!adminUser) {
-      const defaultPasswordHash = await bcrypt.hash('Admin@12345', 10);
-      adminUser = await User.create({
-        ownerName: 'Super Admin',
-        mobile: standardizedMobile,
-        email: 'admin@vedixa.com',
-        passwordHash: defaultPasswordHash,
-        role: 'super_admin',
-        isMobileVerified: true,
-        isActive: true,
-      });
-    } else {
-      adminUser.mobile = standardizedMobile;
-      adminUser.role = 'super_admin';
-      adminUser.isMobileVerified = true;
-      adminUser.isActive = true;
-      await adminUser.save();
+        if (!adminUser) {
+          try {
+            adminUser = await User.create({
+              ownerName: 'Super Admin',
+              mobile: envAdminPhone,
+              email: 'admin.vedixa@vedixaerp.com',
+              passwordHash: expectedPasswordHash,
+              role: 'super_admin',
+              isMobileVerified: true,
+              isActive: true,
+            });
+          } catch (createErr) {
+            logger.warn({ createErr: createErr.message }, '[ADMIN AUTH] User.create warning, attempting findOne fallback');
+            adminUser = await User.findOne({
+              $or: [{ mobile: envAdminPhone }, { mobile: last10 }, { email: 'admin.vedixa@vedixaerp.com' }],
+            });
+          }
+        }
+
+        if (adminUser) {
+          adminUser.role = 'super_admin';
+          adminUser.isMobileVerified = true;
+          adminUser.isActive = true;
+          adminUserId = adminUser._id.toString();
+          adminUserObj = {
+            _id: adminUser._id,
+            ownerName: adminUser.ownerName || 'Super Admin',
+            username: expectedUsername,
+            mobile: adminUser.mobile,
+            email: adminUser.email,
+            role: 'super_admin',
+            isActive: true,
+          };
+          try {
+            await adminUser.save();
+          } catch (_saveErr) {
+            // ignore save warnings if no changes or validation mismatch
+          }
+        }
+      }
+    } catch (dbErr) {
+      logger.warn({ dbErr: dbErr.message }, '[ADMIN AUTH] DB sync warning during admin login, proceeding with verified JWT');
     }
 
     // Sign Admin-Only Access Token using ADMIN_JWT_SECRET
-    const adminSecret = process.env.ADMIN_JWT_SECRET || 'super_secret_admin_jwt_key_vedixa_2026_x89a';
+    const adminSecret = process.env.ADMIN_JWT_SECRET || envConfig.admin?.jwtSecret || DEFAULT_ADMIN_JWT_SECRET;
     const accessToken = jwt.sign(
       {
-        id: adminUser._id.toString(),
-        role: adminUser.role,
+        id: adminUserId,
+        role: 'super_admin',
         isAdminToken: true,
+        username: expectedUsername,
       },
       adminSecret,
       { expiresIn: '24h' }
@@ -159,30 +139,73 @@ export const adminAuthService = {
 
     const refreshToken = jwt.sign(
       {
-        id: adminUser._id.toString(),
-        role: adminUser.role,
+        id: adminUserId,
+        role: 'super_admin',
         isAdminToken: true,
+        username: expectedUsername,
       },
       adminSecret,
       { expiresIn: '7d' }
     );
 
-    // Save refresh token on user model
-    adminUser.currentRefreshToken = refreshToken;
-    await adminUser.save();
+    logger.info({ adminId: adminUserId, username: expectedUsername }, '[ADMIN AUTH] Admin login successful.');
 
-    logger.info({ adminId: adminUser._id, mobile: cleanDigits }, '[ADMIN AUTH] Admin OTP verified via Twilio Verify API v2 successfully');
+    return {
+      user: adminUserObj,
+      accessToken,
+      refreshToken,
+    };
+  },
+
+  /**
+   * Refresh Admin token using existing refresh token or access token cookie
+   */
+  async refreshAdminToken(req) {
+    const token =
+      req.cookies?.adminRefreshToken ||
+      req.cookies?.adminToken ||
+      req.cookies?.token ||
+      (req.headers?.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+
+    if (!token) {
+      throw new AppError('No active Admin session token provided', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    const adminSecret = process.env.ADMIN_JWT_SECRET || envConfig.admin?.jwtSecret || DEFAULT_ADMIN_JWT_SECRET;
+    let decoded;
+    try {
+      decoded = jwt.verify(token, adminSecret);
+    } catch (_err) {
+      throw new AppError('Unauthorized. Invalid or expired Admin token.', HTTP_STATUS.UNAUTHORIZED);
+    }
+
+    if (!decoded || !decoded.isAdminToken) {
+      throw new AppError('Forbidden. Token is not authorized for Admin access.', HTTP_STATUS.FORBIDDEN);
+    }
+
+    const expectedUsername = (process.env.ADMIN_USERNAME || envConfig.admin?.username || 'admin.vedixa').trim();
+    const adminUserId = decoded.id || FALLBACK_ADMIN_ID;
+
+    const newAccessToken = jwt.sign(
+      {
+        id: adminUserId,
+        role: 'super_admin',
+        isAdminToken: true,
+        username: expectedUsername,
+      },
+      adminSecret,
+      { expiresIn: '24h' }
+    );
 
     return {
       user: {
-        _id: adminUser._id,
-        ownerName: adminUser.ownerName,
-        mobile: adminUser.mobile,
-        email: adminUser.email,
-        role: adminUser.role,
+        _id: adminUserId,
+        ownerName: 'Super Admin',
+        username: expectedUsername,
+        email: 'admin.vedixa@vedixaerp.com',
+        role: 'super_admin',
       },
-      accessToken,
-      refreshToken,
+      accessToken: newAccessToken,
     };
   },
 };

@@ -1,15 +1,13 @@
 import { Router } from 'express';
 import {
-  sendAdminOtp,
-  verifyAdminOtp,
+  adminLogin,
   refreshAdminToken,
   adminLogout,
 } from './controllers/adminAuth.controller.js';
 
 const router = Router();
 
-router.post('/send-otp', sendAdminOtp);
-router.post('/verify-otp', verifyAdminOtp);
+router.post('/login', adminLogin);
 router.post('/refresh', refreshAdminToken);
 router.post('/logout', adminLogout);
 
