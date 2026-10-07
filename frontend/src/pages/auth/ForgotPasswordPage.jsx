@@ -34,9 +34,6 @@ export default function ForgotPasswordPage() {
     try {
       const response = await authService.forgotPassword({ mobile: data.mobile });
       if (response.success) {
-        if (import.meta.env.DEV && response.data?.otp) {
-          console.log(`🔐 Development OTP\nMobile : ${data.mobile}\nOTP : ${response.data.otp}`);
-        }
         navigate('/verify-otp', { state: { mobileNumber: data.mobile, flow: 'reset' } });
       }
     } catch (error) {

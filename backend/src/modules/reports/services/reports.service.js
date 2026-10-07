@@ -67,25 +67,58 @@ export const reportsService = {
       }
     }
 
-    if (filters.paymentMode && filters.paymentMode !== 'ALL') {
-      salesMatch.paymentMode = filters.paymentMode;
-    }
-
-    // Build base Purchase match query excluding cancelled purchases
+    // Build base Purchase match query excluding deleted purchases
     const purchaseMatch = {
       userId: userObjId,
-      status: { $ne: 'Cancelled' },
+      isDeleted: { $ne: true },
     };
 
-    if (periodStartDate && periodEndDate) {
-      purchaseMatch.purchaseDate = { $gte: periodStartDate, $lte: periodEndDate };
+    if (filters.category && filters.category !== 'ALL') {
+      const { Product } = await import('../../products/models/product.model.js');
+      let catFilter = {};
+      if (mongoose.Types.ObjectId.isValid(filters.category)) {
+        catFilter = { userId: userObjId, categoryId: new mongoose.Types.ObjectId(filters.category), isDeleted: { $ne: true } };
+      } else {
+        const { Category } = await import('../../masters/models/category.model.js');
+        const catDocs = await Category.find({
+          userId: userObjId,
+          $or: [{ name: new RegExp(filters.category, 'i') }, { slug: new RegExp(filters.category, 'i') }],
+          isDeleted: { $ne: true },
+        }).select('_id').lean().exec();
+        const catIds = catDocs.map((c) => c._id);
+        catFilter = { userId: userObjId, categoryId: { $in: catIds }, isDeleted: { $ne: true } };
+      }
+      const matchedProducts = await Product.find(catFilter).select('_id').lean().exec();
+      const matchedProductIds = matchedProducts.map((p) => p._id);
+      salesMatch['items.productId'] = { $in: matchedProductIds };
+
+      const { PurchaseItem } = await import('../../purchases/models/purchaseItem.model.js');
+      const matchedPurchaseItems = await PurchaseItem.find({
+        userId: userObjId,
+        productId: { $in: matchedProductIds },
+        isDeleted: { $ne: true },
+      }).select('purchaseId').lean().exec();
+      const matchedPurchaseIds = matchedPurchaseItems.map((pi) => pi.purchaseId);
+      purchaseMatch._id = { $in: matchedPurchaseIds };
+    }
+
+    if (filters.paymentMode && filters.paymentMode !== 'ALL') {
+      salesMatch.paymentMode = filters.paymentMode;
     }
 
     if (filters.supplier && filters.supplier !== 'ALL') {
       if (mongoose.Types.ObjectId.isValid(filters.supplier)) {
         purchaseMatch.supplierId = new mongoose.Types.ObjectId(filters.supplier);
       } else {
-        purchaseMatch.supplierName = new RegExp(filters.supplier, 'i');
+        const matchingSuppliers = await Supplier.find({
+          userId: userObjId,
+          $or: [
+            { name: new RegExp(filters.supplier, 'i') },
+            { companyName: new RegExp(filters.supplier, 'i') },
+          ],
+        }).select('_id').lean().exec();
+        const supIds = matchingSuppliers.map((s) => s._id);
+        purchaseMatch.supplierId = supIds.length > 0 ? { $in: supIds } : new mongoose.Types.ObjectId();
       }
     }
 
@@ -393,28 +426,65 @@ export const reportsService = {
       Purchase.aggregate([
         { $match: purchaseMatch },
         {
+          $addFields: {
+            resolvedDate: { $ifNull: ['$purchaseDate', '$createdAt'] },
+          },
+        },
+        {
+          $lookup: {
+            from: 'suppliers',
+            localField: 'supplierId',
+            foreignField: '_id',
+            as: 'supplierDoc',
+          },
+        },
+        {
+          $addFields: {
+            resolvedSupplierName: {
+              $ifNull: [
+                { $arrayElemAt: ['$supplierDoc.companyName', 0] },
+                { $ifNull: [{ $arrayElemAt: ['$supplierDoc.name', 0] }, 'Supplier'] },
+              ],
+            },
+          },
+        },
+        {
           $facet: {
             todayPurchase: [
-              { $match: { createdAt: { $gte: startOfToday, $lte: endOfToday } } },
+              { $match: { resolvedDate: { $gte: startOfToday, $lte: endOfToday } } },
               { $group: { _id: null, total: { $sum: '$totalInvoiceAmount' } } },
             ],
             weeklyPurchase: [
-              { $match: { createdAt: { $gte: startOfWeek } } },
+              { $match: { resolvedDate: { $gte: startOfWeek, $lte: endOfToday } } },
               { $group: { _id: null, total: { $sum: '$totalInvoiceAmount' } } },
             ],
             monthlyPurchase: [
-              { $match: { createdAt: { $gte: startOfMonth } } },
+              { $match: { resolvedDate: { $gte: startOfMonth, $lte: endOfToday } } },
               { $group: { _id: null, total: { $sum: '$totalInvoiceAmount' } } },
             ],
             prevMonthlyPurchase: [
-              { $match: { createdAt: { $gte: startOfPrevMonth, $lte: endOfPrevMonth } } },
+              { $match: { resolvedDate: { $gte: startOfPrevMonth, $lte: endOfPrevMonth } } },
               { $group: { _id: null, total: { $sum: '$totalInvoiceAmount' } } },
             ],
             yearlyPurchase: [
-              { $match: { createdAt: { $gte: startOfYear } } },
+              { $match: { resolvedDate: { $gte: startOfYear, $lte: endOfToday } } },
               { $group: { _id: null, total: { $sum: '$totalInvoiceAmount' } } },
             ],
-            totalPurchase: [
+            allTimePurchase: [
+              {
+                $group: {
+                  _id: null,
+                  totalPurchaseVal: { $sum: '$totalInvoiceAmount' },
+                  totalPaid: { $sum: '$paidAmount' },
+                  totalDue: { $sum: '$dueAmount' },
+                  totalBills: { $sum: 1 },
+                },
+              },
+            ],
+            periodPurchase: [
+              ...(periodStartDate && periodEndDate
+                ? [{ $match: { resolvedDate: { $gte: periodStartDate, $lte: periodEndDate } } }]
+                : []),
               {
                 $group: {
                   _id: null,
@@ -426,10 +496,13 @@ export const reportsService = {
               },
             ],
             topSuppliers: [
+              ...(periodStartDate && periodEndDate
+                ? [{ $match: { resolvedDate: { $gte: periodStartDate, $lte: periodEndDate } } }]
+                : []),
               {
                 $group: {
                   _id: '$supplierId',
-                  supplierName: { $first: { $ifNull: ['$supplierName', 'Supplier'] } },
+                  supplierName: { $first: '$resolvedSupplierName' },
                   totalPurchased: { $sum: '$totalInvoiceAmount' },
                   totalPaid: { $sum: '$paidAmount' },
                   balance: { $sum: '$dueAmount' },
@@ -439,25 +512,39 @@ export const reportsService = {
               { $limit: 10 },
             ],
             recentPurchases: [
-              { $sort: { createdAt: -1 } },
+              { $sort: { resolvedDate: -1, createdAt: -1 } },
               { $limit: 10 },
               {
                 $project: {
                   id: '$_id',
-                  docNo: { $ifNull: ['$purchaseInvoiceNumber', 'PUR-000'] },
-                  date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                  party: { $ifNull: ['$supplierName', 'Supplier'] },
+                  docNo: { $ifNull: ['$purchaseNumber', { $ifNull: ['$supplierInvoiceNumber', 'PUR-000'] }] },
+                  date: { $dateToString: { format: '%Y-%m-%d', date: '$resolvedDate' } },
+                  party: '$resolvedSupplierName',
                   amount: { $ifNull: ['$totalInvoiceAmount', 0] },
-                  status: { $ifNull: ['$status', 'Completed'] },
+                  status: { $cond: [{ $gt: ['$dueAmount', 0] }, 'Due', 'Paid'] },
                 },
               },
             ],
             monthlyPurchaseTrend: [
+              { $match: { resolvedDate: { $gte: startOfYear, $lte: endOfToday } } },
               {
                 $group: {
-                  _id: { $month: '$createdAt' },
+                  _id: { $month: '$resolvedDate' },
                   purchase: { $sum: '$totalInvoiceAmount' },
                   paid: { $sum: '$paidAmount' },
+                },
+              },
+              { $sort: { _id: 1 } },
+            ],
+            dailyPurchaseTrend: [
+              ...(periodStartDate && periodEndDate
+                ? [{ $match: { resolvedDate: { $gte: periodStartDate, $lte: periodEndDate } } }]
+                : [{ $match: { resolvedDate: { $gte: startOfMonth, $lte: endOfToday } } }]),
+              {
+                $group: {
+                  _id: { $dateToString: { format: '%Y-%m-%d', date: '$resolvedDate' } },
+                  purchase: { $sum: '$totalInvoiceAmount' },
+                  count: { $sum: 1 },
                 },
               },
               { $sort: { _id: 1 } },
@@ -599,8 +686,16 @@ export const reportsService = {
     const monthlyPurchase = Math.round(purchaseDataObj.monthlyPurchase?.[0]?.total || 0);
     const prevMonthlyPurchase = Math.round(purchaseDataObj.prevMonthlyPurchase?.[0]?.total || 0);
     const yearlyPurchase = Math.round(purchaseDataObj.yearlyPurchase?.[0]?.total || 0);
-    const totalPurchaseVal = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPurchaseVal || 0);
-    const totalPurchasePaid = Math.round(purchaseDataObj.totalPurchase?.[0]?.totalPaid || 0);
+    const allTimePurchaseVal = Math.round(purchaseDataObj.allTimePurchase?.[0]?.totalPurchaseVal || 0);
+    const allTimePurchasePaid = Math.round(purchaseDataObj.allTimePurchase?.[0]?.totalPaid || 0);
+
+    const isPeriodFiltered = Boolean(periodStartDate && periodEndDate);
+    const totalPurchaseVal = isPeriodFiltered
+      ? Math.round(purchaseDataObj.periodPurchase?.[0]?.totalPurchaseVal || 0)
+      : allTimePurchaseVal;
+    const totalPurchasePaid = isPeriodFiltered
+      ? Math.round(purchaseDataObj.periodPurchase?.[0]?.totalPaid || 0)
+      : allTimePurchasePaid;
 
     // Authoritative Current Stock Valuation exactly matching Inventory Page
     const currentStockVal = Math.round(
@@ -926,7 +1021,11 @@ export const reportsService = {
         outstandingPayables: finalSupplierOutstanding,
         purchaseGrowth: purchaseGrowthPct,
         charts: {
-          purchaseTrend: [],
+          purchaseTrend: (purchaseDataObj.dailyPurchaseTrend || []).map((d) => ({
+            date: d._id,
+            purchase: d.purchase || 0,
+            count: d.count || 0,
+          })),
           monthlyPurchase: monthlySalesTrend,
           supplierPurchaseTrend: (purchaseDataObj.topSuppliers || []).map((s) => ({ name: s.supplierName, amount: s.totalPurchased })),
         },

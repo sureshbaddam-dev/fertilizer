@@ -52,6 +52,9 @@ import {
 } from 'recharts';
 
 import { reportsService } from '../../services/reportsService';
+import { customerService } from '../../services/customerService';
+import { supplierService } from '../../services/supplierService';
+import { masterService } from '../../services/masterService';
 import PageLayout from '../../components/ui/PageHeaderContainer';
 import { exportReportToPDF, exportReportToExcel, printExecutiveReport } from '../../utils/reportExporter';
 
@@ -73,15 +76,45 @@ export default function ReportsPage() {
   // Opening Stock Modal State
   const [showOpeningStockModal, setShowOpeningStockModal] = useState(false);
 
-  // Global Filters
+  // Global Filters - Default view is TOTAL (Total Sales/Purchases / All Time)
   const [filters, setFilters] = useState({
-    dateRange: 'THIS_MONTH',
+    dateRange: 'TOTAL',
+    startDate: '',
+    endDate: '',
     customer: 'ALL',
     supplier: 'ALL',
     category: 'ALL',
     product: 'ALL',
     paymentMode: 'ALL',
   });
+
+  // Dynamic Dropdown Data (Customers, Suppliers, Categories)
+  const { data: customersData, isLoading: isCustomersLoading } = useQuery({
+    queryKey: ['reports-filter-customers'],
+    queryFn: () => customerService.getCustomers({ limit: 1000 }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const customerList = useMemo(() => {
+    return customersData?.data?.customers || customersData?.customers || [];
+  }, [customersData]);
+
+  const { data: suppliersData, isLoading: isSuppliersLoading } = useQuery({
+    queryKey: ['reports-filter-suppliers'],
+    queryFn: () => supplierService.getSuppliers({ isActive: 'true' }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const supplierList = useMemo(() => {
+    return suppliersData?.data?.suppliers || suppliersData?.suppliers || [];
+  }, [suppliersData]);
+
+  const { data: categoriesData, isLoading: isCategoriesLoading } = useQuery({
+    queryKey: ['reports-filter-categories'],
+    queryFn: () => masterService.getCategories({ isActive: 'true' }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const categoryList = useMemo(() => {
+    return categoriesData?.data?.categories || categoriesData?.categories || [];
+  }, [categoriesData]);
 
   // Fetch Live Analytics Payload from Backend
   const { data: biApi, isLoading } = useQuery({
@@ -110,9 +143,30 @@ export default function ReportsPage() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (newTab === 'SALES') {
+        next.supplier = 'ALL';
+      } else if (newTab === 'PURCHASES') {
+        next.customer = 'ALL';
+      }
+      return next;
+    });
+  };
+
+  const defaultPeriodLabel = useMemo(() => {
+    if (activeTab === 'SALES') return 'Total Sales (All Time)';
+    if (activeTab === 'PURCHASES') return 'Total Purchases (All Time)';
+    return 'Total Business (All Time)';
+  }, [activeTab]);
+
   const resetFilters = () => {
     setFilters({
-      dateRange: 'THIS_MONTH',
+      dateRange: 'TOTAL',
+      startDate: '',
+      endDate: '',
       customer: 'ALL',
       supplier: 'ALL',
       category: 'ALL',
@@ -165,7 +219,7 @@ export default function ReportsPage() {
             <div className="flex items-center gap-2 p-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/80">
               <button
                 type="button"
-                onClick={() => setActiveTab('SALES')}
+                onClick={() => handleTabChange('SALES')}
                 className={`px-5 py-2.5 rounded-xl text-xs font-black cursor-pointer transition-all flex items-center gap-2 ${
                   activeTab === 'SALES'
                     ? 'bg-[#047857] text-white shadow-md'
@@ -178,7 +232,7 @@ export default function ReportsPage() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab('PURCHASES')}
+                onClick={() => handleTabChange('PURCHASES')}
                 className={`px-5 py-2.5 rounded-xl text-xs font-black cursor-pointer transition-all flex items-center gap-2 ${
                   activeTab === 'PURCHASES'
                     ? 'bg-blue-600 text-white shadow-md'
@@ -191,7 +245,7 @@ export default function ReportsPage() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab('OVERALL_BUSINESS')}
+                onClick={() => handleTabChange('OVERALL_BUSINESS')}
                 className={`px-5 py-2.5 rounded-xl text-xs font-black cursor-pointer transition-all flex items-center gap-2 ${
                   activeTab === 'OVERALL_BUSINESS'
                     ? 'bg-purple-700 text-white shadow-md'
@@ -208,7 +262,7 @@ export default function ReportsPage() {
               type="button"
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center gap-2 self-start md:self-auto ${
-                showFilters || Object.values(filters).some((v) => v !== 'ALL' && v !== 'THIS_MONTH')
+                showFilters || Object.values(filters).some((v) => v && v !== 'ALL' && v !== 'TOTAL')
                   ? 'bg-emerald-50 text-[#047857] border-emerald-300 shadow-xs'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               }`}
@@ -223,14 +277,15 @@ export default function ReportsPage() {
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Filter className="w-3.5 h-3.5 text-[#047857]" /> Contextual Dashboard Filters
+                  <Filter className="w-3.5 h-3.5 text-[#047857]" /> Contextual Dashboard Filters ({activeTab === 'SALES' ? 'Sales' : activeTab === 'PURCHASES' ? 'Purchases' : 'Overall Business'})
                 </h4>
                 <button type="button" onClick={resetFilters} className="text-xs font-bold text-emerald-700 hover:underline cursor-pointer">
                   Reset Filters
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                {/* 1. Time Period */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500">Time Period</label>
                   <select
@@ -238,39 +293,90 @@ export default function ReportsPage() {
                     onChange={(e) => handleFilterChange('dateRange', e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
                   >
+                    <option value="TOTAL">{defaultPeriodLabel}</option>
                     <option value="TODAY">Today</option>
                     <option value="THIS_WEEK">This Week</option>
                     <option value="THIS_MONTH">This Month</option>
                     <option value="THIS_YEAR">This Year</option>
+                    <option value="CUSTOM">Custom Date Range</option>
                   </select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500">Customer</label>
-                  <select
-                    value={filters.customer}
-                    onChange={(e) => handleFilterChange('customer', e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
-                  >
-                    <option value="ALL">All Customers</option>
-                    <option value="WALKIN">Walk-in Customer</option>
-                    <option value="REGULAR">Regular Farmers</option>
-                  </select>
-                </div>
+                {/* Custom Date Range Pickers */}
+                {filters.dateRange === 'CUSTOM' && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500">From Date</label>
+                      <input
+                        type="date"
+                        value={filters.startDate || ''}
+                        onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500">To Date</label>
+                      <input
+                        type="date"
+                        value={filters.endDate || ''}
+                        onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
+                      />
+                    </div>
+                  </>
+                )}
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500">Supplier</label>
-                  <select
-                    value={filters.supplier}
-                    onChange={(e) => handleFilterChange('supplier', e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
-                  >
-                    <option value="ALL">All Suppliers</option>
-                    <option value="IFFCO">IFFCO India</option>
-                    <option value="COROMANDEL">Coromandel</option>
-                  </select>
-                </div>
+                {/* 2. Customer Filter (Only in SALES or OVERALL_BUSINESS) */}
+                {(activeTab === 'SALES' || activeTab === 'OVERALL_BUSINESS') && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500">Customer</label>
+                    <select
+                      value={filters.customer}
+                      onChange={(e) => handleFilterChange('customer', e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
+                    >
+                      <option value="ALL">All Customers</option>
+                      {isCustomersLoading ? (
+                        <option value="" disabled>Loading customers...</option>
+                      ) : customerList.length > 0 ? (
+                        customerList.map((c) => (
+                          <option key={c._id} value={c._id}>
+                            {c.name} {c.mobile ? `(${c.mobile})` : ''}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>No customers found</option>
+                      )}
+                    </select>
+                  </div>
+                )}
 
+                {/* 3. Supplier Filter (Only in PURCHASES or OVERALL_BUSINESS) */}
+                {(activeTab === 'PURCHASES' || activeTab === 'OVERALL_BUSINESS') && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500">Supplier</label>
+                    <select
+                      value={filters.supplier}
+                      onChange={(e) => handleFilterChange('supplier', e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
+                    >
+                      <option value="ALL">All Suppliers</option>
+                      {isSuppliersLoading ? (
+                        <option value="" disabled>Loading suppliers...</option>
+                      ) : supplierList.length > 0 ? (
+                        supplierList.map((s) => (
+                          <option key={s._id} value={s._id}>
+                            {s.companyName ? `${s.companyName} (${s.name})` : s.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>No suppliers found</option>
+                      )}
+                    </select>
+                  </div>
+                )}
+
+                {/* 4. Category Filter (Applicable to both Sales and Purchases) */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500">Category</label>
                   <select
@@ -279,11 +385,21 @@ export default function ReportsPage() {
                     className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-[#047857]"
                   >
                     <option value="ALL">All Categories</option>
-                    <option value="NITROGEN">Nitrogen Fertilizers</option>
-                    <option value="NPK">NPK Complexes</option>
+                    {isCategoriesLoading ? (
+                      <option value="" disabled>Loading categories...</option>
+                    ) : categoryList.length > 0 ? (
+                      categoryList.map((cat) => (
+                        <option key={cat._id} value={cat._id}>
+                          {cat.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No categories found</option>
+                    )}
                   </select>
                 </div>
 
+                {/* 5. Payment Mode Filter */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500">Payment Mode</label>
                   <select
@@ -297,6 +413,7 @@ export default function ReportsPage() {
                     <option value="Card">Card</option>
                     <option value="Credit">Credit</option>
                     <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cheque">Cheque</option>
                   </select>
                 </div>
               </div>

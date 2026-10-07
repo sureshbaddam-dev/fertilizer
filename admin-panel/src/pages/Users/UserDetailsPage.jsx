@@ -7,9 +7,6 @@ import {
   Calendar,
   Phone,
   Mail,
-  Activity,
-  Award,
-  HelpCircle,
   PauseCircle,
   PlayCircle,
   XCircle,
@@ -24,8 +21,6 @@ import {
   ShoppingBag,
   Users,
   FileText,
-  PackageCheck,
-  Receipt,
   MapPin,
   Bell,
 } from 'lucide-react';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Users, Sparkles, Eye, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Users, Sparkles, Eye, ShieldAlert } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
 import GrantSubscriptionModal from '../../components/GrantSubscriptionModal';
