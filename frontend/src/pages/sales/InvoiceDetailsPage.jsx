@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,6 +21,7 @@ import { authService } from '../../services/authService';
 import { buildFullShopAddress, generateInvoicePdf } from '../../utils/pdfGenerator';
 import PrintableInvoice from '../../components/sales/PrintableInvoice';
 import { printInvoiceHtml } from '../../utils/invoicePrintHelper';
+import { toast } from '../../contexts/ToastContext';
 
 export default function InvoiceDetailsPage() {
   const { invoiceId } = useParams();
